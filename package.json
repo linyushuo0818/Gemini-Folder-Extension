@@ -1,0 +1,16 @@
+{
+    "name":  "gemini-project-extension",
+    "private":  true,
+    "version":  "0.1.44",
+    "type":  "module",
+    "scripts":  {
+                    "build":  "vite build",
+                    "dev":  "vite build --watch",
+                    "lint":  "tsc -p tsconfig.json --noEmit"
+                },
+    "devDependencies":  {
+                            "@types/chrome":  "^0.0.262",
+                            "typescript":  "^5.3.3",
+                            "vite":  "^5.0.0"
+                        }
+}
