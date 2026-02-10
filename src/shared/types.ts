@@ -43,6 +43,7 @@ export interface Project {
 export interface ChatRef {
   conversationId: string;
   title: string;
+  isPinned?: boolean;
   projectId?: string | null;
   updatedAt: number;
   lastUrl?: string;
@@ -81,9 +82,9 @@ export type BackgroundRequest =
   | { type: 'moveChat'; conversationId: string; projectId: string | null }
   | { type: 'upsertChatRefs'; chats: ChatRef[] }
   | { type: 'exportProject'; projectId: string }
-  | { type: 'updateUiPrefs'; prefs: Partial<UiPrefs> };
+  | { type: 'updateUiPrefs'; prefs: Partial<UiPrefs> }
+  | { type: 'refreshStateCache' };
 
 export type BackgroundResponse =
   | { ok: true; state?: StoredState; json?: string; filename?: string }
   | { ok: false; error: string };
-

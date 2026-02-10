@@ -3,6 +3,10 @@ node_modules/
 
 # Build output
 dist/
+release/
+store-upload*/
+store-upload/
+_local/
 
 # Local backups and notes
 backups/

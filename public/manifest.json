@@ -1,31 +1,34 @@
 {
-    "manifest_version":  3,
-    "name":  "Gemini Projects",
-    "version":  "0.1.44",
-    "description":  "Group Gemini chats into local Projects.",
-    "permissions":  [
-                        "storage",
-                        "clipboardWrite"
-                    ],
-    "host_permissions":  [
-                             "https://gemini.google.com/*"
-                         ],
-    "background":  {
-                       "service_worker":  "background.js",
-                       "type":  "module"
-                   },
-    "content_scripts":  [
-                            {
-                                "matches":  [
-                                                "https://gemini.google.com/*"
-                                            ],
-                                "js":  [
-                                           "content.js"
-                                       ],
-                                "run_at":  "document_idle"
-                            }
-                        ],
-    "action":  {
-                   "default_title":  "Gemini Projects"
-               }
+    "manifest_version": 3,
+    "name": "Gemini Projects",
+    "version": "0.1.49",
+    "description": "Group Gemini chats into local Projects.",
+    "permissions": [
+        "storage"
+    ],
+    "host_permissions": [
+        "https://gemini.google.com/*",
+        "https://chatgpt.com/*",
+        "https://chat.openai.com/*"
+    ],
+    "background": {
+        "service_worker": "background.js",
+        "type": "module"
+    },
+    "content_scripts": [
+        {
+            "matches": [
+                "https://gemini.google.com/*",
+                "https://chatgpt.com/*",
+                "https://chat.openai.com/*"
+            ],
+            "js": [
+                "content.js"
+            ],
+            "run_at": "document_idle"
+        }
+    ],
+    "action": {
+        "default_title": "Gemini Projects"
+    }
 }

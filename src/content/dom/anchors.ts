@@ -1,18 +1,83 @@
 ﻿const PROJECTS_HOST_ID = 'gemini-projects-host';
 const OVERLAY_HOST_ID = 'gemini-projects-overlay';
+const GEMS_SECTION_LABELS_EN = ['Gem', 'Gems'];
+const CHATS_SECTION_LABELS_EN = ['Chat', 'Chats'];
+const GEMS_SECTION_LABELS_ZH = ['\u5b9d\u77f3', '\u6211\u7684 Gem', '\u6211\u7684 Gems'];
+const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929', '\u804a\u5929\u8bb0\u5f55', '\u5bf9\u8bdd'];
 
 function normalizeText(value: string | null): string {
   return (value || '').trim().toLowerCase();
+}
+
+function includesAnyLabel(text: string, labels: string[]): boolean {
+  const normalized = normalizeText(text);
+  return labels.some((label) => normalized.includes(normalizeText(label)));
+}
+
+function isZhLanguage(lang: string): boolean {
+  return normalizeText(lang).startsWith('zh');
+}
+
+function detectUiLanguage(): 'zh' | 'en' {
+  const docLang = document.documentElement?.lang || '';
+  if (isZhLanguage(docLang)) {
+    return 'zh';
+  }
+
+  const browserLangs = [navigator.language || '', ...(navigator.languages || [])];
+  if (browserLangs.some((lang) => isZhLanguage(lang))) {
+    return 'zh';
+  }
+
+  return 'en';
+}
+
+function getSectionLabelGroups(): {
+  gemsPrimary: string[];
+  chatsPrimary: string[];
+  gemsFallback: string[];
+  chatsFallback: string[];
+} {
+  if (detectUiLanguage() === 'zh') {
+    return {
+      gemsPrimary: GEMS_SECTION_LABELS_ZH,
+      chatsPrimary: CHATS_SECTION_LABELS_ZH,
+      gemsFallback: GEMS_SECTION_LABELS_EN,
+      chatsFallback: CHATS_SECTION_LABELS_EN
+    };
+  }
+  return {
+    gemsPrimary: GEMS_SECTION_LABELS_EN,
+    chatsPrimary: CHATS_SECTION_LABELS_EN,
+    gemsFallback: GEMS_SECTION_LABELS_ZH,
+    chatsFallback: CHATS_SECTION_LABELS_ZH
+  };
+}
+
+function mergeLabels(primary: string[], fallback: string[]): string[] {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+  for (const label of [...primary, ...fallback]) {
+    const key = normalizeText(label);
+    if (!seen.has(key)) {
+      seen.add(key);
+      merged.push(label);
+    }
+  }
+  return merged;
 }
 
 export function findSidebarRoot(): HTMLElement | null {
   const candidates = Array.from(
     document.querySelectorAll<HTMLElement>('nav, aside, [role="navigation"], [role="complementary"]')
   );
+  const labels = getSectionLabelGroups();
+  const gemLabels = mergeLabels(labels.gemsPrimary, labels.gemsFallback);
+  const chatLabels = mergeLabels(labels.chatsPrimary, labels.chatsFallback);
 
   for (const candidate of candidates) {
     const text = candidate.textContent || '';
-    if (text.includes('Gems') && text.includes('Chats')) {
+    if (includesAnyLabel(text, gemLabels) && includesAnyLabel(text, chatLabels)) {
       return candidate;
     }
   }
@@ -20,11 +85,12 @@ export function findSidebarRoot(): HTMLElement | null {
   return null;
 }
 
-function findSectionByText(root: HTMLElement, text: string): HTMLElement | null {
-  const target = normalizeText(text);
+function findSectionByTexts(root: HTMLElement, labels: string[]): HTMLElement | null {
+  const targets = labels.map((label) => normalizeText(label));
   const elements = root.querySelectorAll<HTMLElement>('div, span, h2, h3, h4, button, p');
   for (const element of elements) {
-    if (normalizeText(element.textContent) === target) {
+    const normalized = normalizeText(element.textContent);
+    if (targets.includes(normalized)) {
       return element;
     }
   }
@@ -32,11 +98,13 @@ function findSectionByText(root: HTMLElement, text: string): HTMLElement | null 
 }
 
 export function findGemsSection(root: HTMLElement): HTMLElement | null {
-  return findSectionByText(root, 'Gems');
+  const labels = getSectionLabelGroups();
+  return findSectionByTexts(root, labels.gemsPrimary) || findSectionByTexts(root, labels.gemsFallback);
 }
 
 export function findChatsSection(root: HTMLElement): HTMLElement | null {
-  return findSectionByText(root, 'Chats');
+  const labels = getSectionLabelGroups();
+  return findSectionByTexts(root, labels.chatsPrimary) || findSectionByTexts(root, labels.chatsFallback);
 }
 
 export function findChatsListContainer(chatsHeader: HTMLElement | null): HTMLElement | null {

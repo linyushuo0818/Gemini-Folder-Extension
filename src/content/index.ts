@@ -12,6 +12,8 @@ import { attachChatMenuEnhancer } from './dom/menus';
 import { createProjectsPanel } from './ui/projectsPanel';
 import * as prompts from './prompts';
 
+import { initChatGPT } from './chatgpt';
+
 const DEBUG_LOG = false;
 const DEBUG_PROJECT = true;
 
@@ -53,6 +55,23 @@ function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
   });
 }
 
+function normalizeChatTitleAndPinned(rawTitle: string, row?: Element | null): { title: string; pinnedFromDom: boolean } {
+  const source = (rawTitle || '').trim();
+  const rowText = ((row as HTMLElement | null)?.textContent || '').trim();
+  const combined = `${source} ${rowText}`.toLowerCase();
+
+  const pinnedFromDom = /(?:\bpinned\b|已置顶|置顶)/i.test(combined);
+  const cleaned = source
+    .replace(/\s*(?:[-–—|·•]?\s*)?(?:pinned)(?:\.{3}|…)?\s*$/i, '')
+    .replace(/\s*(?:[-–—|·•]?\s*)?(?:已置顶|置顶)(?:\.{3}|…)?\s*$/i, '')
+    .trim();
+
+  return {
+    title: cleaned || source,
+    pinnedFromDom
+  };
+}
+
 export function getChatProjectId(conversationId: string): string | null {
   return state.chatIndex.get(conversationId)?.projectId ?? null;
 }
@@ -85,6 +104,11 @@ export function renderUnassignedChatsSection(chatIndex: Map<string, ChatRef>) {
 }
 
 async function bootstrap() {
+  if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('openai.com')) {
+    initChatGPT();
+    return;
+  }
+
   const response = await sendMessage({ type: 'getState' });
   if (response.ok && response.state) {
     state.projects = response.state.projects;
@@ -205,10 +229,13 @@ function attachChatClickTracker() {
     const conversationId = getConversationId(link.href);
     if (!conversationId) return;
     const existing = state.chatIndex.get(conversationId);
-    const title = (link.textContent || '').trim() || existing?.title || '';
+    const row = link.closest('[role="listitem"], li, div') || link;
+    const normalized = normalizeChatTitleAndPinned((link.textContent || '').trim() || existing?.title || '', row);
+    const title = normalized.title || existing?.title || '';
     state.chatIndex.set(conversationId, {
       conversationId,
       title,
+      isPinned: normalized.pinnedFromDom ? true : (existing?.isPinned ?? false),
       projectId: existing?.projectId ?? null,
       updatedAt: Date.now(),
       lastUrl: link.href
@@ -219,6 +246,7 @@ function attachChatClickTracker() {
         {
           conversationId,
           title,
+          isPinned: normalized.pinnedFromDom ? true : (existing?.isPinned ?? false),
           projectId: existing?.projectId ?? null,
           updatedAt: Date.now(),
           lastUrl: link.href
@@ -237,11 +265,13 @@ function syncChatsFromDom() {
     const row = link.closest('[role="listitem"], li, div') || link;
     const conversationId = getConversationIdFromChatRow(row) || getConversationId(link.href);
     if (!conversationId) return;
-    const title = (link.textContent || '').trim();
+    const normalized = normalizeChatTitleAndPinned((link.textContent || '').trim(), row);
+    const title = normalized.title;
     if (!title) return;
     updates.push({
       conversationId,
       title,
+      isPinned: normalized.pinnedFromDom ? true : (state.chatIndex.get(conversationId)?.isPinned ?? false),
       updatedAt: Date.now(),
       projectId: state.chatIndex.get(conversationId)?.projectId ?? null,
       lastUrl: link.href
@@ -250,9 +280,11 @@ function syncChatsFromDom() {
 
   if (updates.length) {
     updates.forEach((chat) => {
+      const existing = state.chatIndex.get(chat.conversationId);
       state.chatIndex.set(chat.conversationId, {
         ...chat,
-        projectId: state.chatIndex.get(chat.conversationId)?.projectId ?? chat.projectId
+        projectId: existing?.projectId ?? chat.projectId,
+        isPinned: typeof chat.isPinned === 'boolean' ? chat.isPinned : (existing?.isPinned ?? false)
       });
     });
     sendMessage({ type: 'upsertChatRefs', chats: updates }).catch(() => undefined);

@@ -58,6 +58,7 @@ function moveChat(state: StoredState, conversationId: string, projectId: string 
   state.chatIndex[conversationId] = {
     conversationId,
     title: existing?.title ?? '',
+    isPinned: existing?.isPinned ?? false,
     projectId,
     updatedAt: Date.now(),
     lastUrl: existing?.lastUrl
@@ -71,6 +72,7 @@ function upsertChatRefs(state: StoredState, chats: ChatRef[]): StoredState {
     state.chatIndex[chat.conversationId] = {
       conversationId: chat.conversationId,
       title: chat.title || existing?.title || '',
+      isPinned: typeof chat.isPinned === 'boolean' ? chat.isPinned : (existing?.isPinned ?? false),
       projectId: chat.projectId ?? existing?.projectId ?? null,
       updatedAt: chat.updatedAt ?? existing?.updatedAt ?? Date.now(),
       lastUrl: chat.lastUrl ?? existing?.lastUrl
@@ -114,6 +116,13 @@ function updateUiPrefs(state: StoredState, prefs: Partial<StoredState['uiPrefs']
 }
 
 async function handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
+  switch (message.type) {
+    case 'refreshStateCache': {
+      cachedState = await loadState().catch(() => createEmptyState());
+      return { ok: true, state: cachedState };
+    }
+  }
+
   const state = await getState();
 
   switch (message.type) {
@@ -151,4 +160,3 @@ chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendR
     .catch((error: Error) => sendResponse({ ok: false, error: error.message }));
   return true;
 });
-

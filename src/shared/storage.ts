@@ -28,12 +28,31 @@ export function migrateState(raw: unknown): StoredState {
       ? (candidate.chatIndex as Record<string, ChatRef & { lastSeenAt?: number; lastUrl?: string }>)
       : {};
   const chatIndex: Record<string, ChatRef> = {};
+
+  const normalizeStoredTitle = (title: string): { title: string; isPinned: boolean } => {
+    const source = (title || '').trim();
+    if (!source) return { title: '', isPinned: false };
+
+    const hasPinnedToken = /(?:\bpinned\b|已置顶|置顶)/i.test(source);
+    const cleaned = source
+      .replace(/\s*(?:[-–—|·•]?\s*)?(?:pinned)(?:\.{3}|…)?\s*$/i, '')
+      .replace(/\s*(?:[-–—|·•]?\s*)?(?:已置顶|置顶)(?:\.{3}|…)?\s*$/i, '')
+      .trim();
+
+    return {
+      title: cleaned || source,
+      isPinned: hasPinnedToken
+    };
+  };
+
   Object.entries(rawChatIndex).forEach(([key, value]) => {
     if (!value || typeof value !== 'object') return;
     const conversationId = value.conversationId || key;
+    const normalized = normalizeStoredTitle(value.title || '');
     chatIndex[conversationId] = {
       conversationId,
-      title: value.title || '',
+      title: normalized.title,
+      isPinned: typeof value.isPinned === 'boolean' ? value.isPinned : normalized.isPinned,
       projectId: value.projectId ?? null,
       updatedAt:
         typeof value.updatedAt === 'number'
@@ -63,4 +82,3 @@ export async function loadState(): Promise<StoredState> {
 export async function saveState(state: StoredState): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY]: state });
 }
-

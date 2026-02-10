@@ -1,5 +1,6 @@
 ﻿
 import { Prompt, promptStore } from './store';
+import { exportAllData, triggerImport } from '../../shared/backup';
 
 const PICKER_ID = 'gp-prompt-picker-root';
 
@@ -344,19 +345,29 @@ export class PromptPicker {
         --gp-font-sans: 'GP Styrene', 'Styrene A', 'Styrene B', 'Styrene', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         --gp-font-serif: 'GP Tiempos', 'Tiempos Text', 'Tiempos Headline', 'Tiempos', 'Anthropic Serif Web Text', 'Anthropic Serif Text', 'Anthropic Serif', 'Source Serif 4', 'Noto Serif SC', 'Songti SC', 'SimSun', 'Georgia', serif; 
         
+        /* Anthropic-inspired palette */
+        --gp-surface: #ede9e0;
+        --gp-surface-elevated: #f5f2ea;
+        --gp-ink: #1b1a18;
+        --gp-stone: #a4a19b;
+        --gp-slate: #5b5954;
+        --gp-muted: #838079;
+        --gp-coral: #d97c5d;
+
         /* Light Mode Defaults */
-        --gp-bg-glass: rgba(255, 255, 255, 0.85); /* Glassy white */
-        --gp-fg: #1F1F1F;
-        --gp-fg-secondary: #6B6B6B;
-        --gp-fg-tertiary: #9E9E9C;
-        --gp-border: rgba(0, 0, 0, 0.06);
-        --gp-bg-hover: rgba(0, 0, 0, 0.04);
-        --gp-bg-active: rgba(0, 0, 0, 0.08);
-        --gp-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.04);
-        --gp-shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.14), 0 0 1px rgba(0,0,0,0.1);
-        --gp-danger: #D93025;
-        --gp-accent: #000000; /* Primary Action Color */
-        --gp-accent-fg: #FFFFFF;
+        --gp-bg-glass: rgba(237, 233, 224, 0.94);
+        --gp-fg: var(--gp-ink);
+        --gp-fg-secondary: var(--gp-slate);
+        --gp-fg-tertiary: var(--gp-muted);
+        --gp-border: rgba(91, 89, 84, 0.24);
+        --gp-bg-hover: rgba(91, 89, 84, 0.08);
+        --gp-bg-active: rgba(91, 89, 84, 0.14);
+        --gp-shadow-sm: 0 4px 12px rgba(27, 26, 24, 0.08);
+        --gp-shadow-lg: 0 24px 48px -14px rgba(27, 26, 24, 0.22), 0 0 1px rgba(27, 26, 24, 0.18);
+        --gp-danger: #b85a3e;
+        --gp-accent: var(--gp-ink);
+        --gp-accent-fg: var(--gp-surface);
+        --gp-focus: var(--gp-coral);
         --gp-radius-lg: 16px;
         --gp-radius-md: 10px;
         --gp-radius-sm: 6px;
@@ -364,18 +375,19 @@ export class PromptPicker {
 
       /* Dark Mode - Explicit Data Attribute Strategy */
       :host([data-gp-theme="dark"]) {
-        --gp-bg-glass: rgba(30, 30, 30, 0.85); /* Glassy dark */
-        --gp-fg: #F5F5F7;
-        --gp-fg-secondary: #A1A1A6;
-        --gp-fg-tertiary: #6E6E73;
-        --gp-border: rgba(255, 255, 255, 0.1);
-        --gp-bg-hover: rgba(255, 255, 255, 0.06);
-        --gp-bg-active: rgba(255, 255, 255, 0.1);
-        --gp-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
-        --gp-shadow-lg: 0 24px 48px -12px rgba(0, 0, 0, 0.4), 0 0 1px rgba(255,255,255,0.1);
-        --gp-danger: #FF453A;
-        --gp-accent: #FFFFFF;
-        --gp-accent-fg: #000000;
+        --gp-bg-glass: rgba(27, 26, 24, 0.94);
+        --gp-fg: #ede9e0;
+        --gp-fg-secondary: #c9c5bc;
+        --gp-fg-tertiary: #a4a19b;
+        --gp-border: rgba(237, 233, 224, 0.16);
+        --gp-bg-hover: rgba(237, 233, 224, 0.08);
+        --gp-bg-active: rgba(237, 233, 224, 0.14);
+        --gp-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.32);
+        --gp-shadow-lg: 0 26px 52px -12px rgba(0, 0, 0, 0.52), 0 0 1px rgba(237, 233, 224, 0.2);
+        --gp-danger: #ff8b67;
+        --gp-accent: #ede9e0;
+        --gp-accent-fg: #1b1a18;
+        --gp-focus: #d97c5d;
       }
 
       * { box-sizing: border-box; outline: none; }
@@ -420,14 +432,14 @@ export class PromptPicker {
 
       .search-row {
         position: relative;
-        background: rgba(128, 128, 128, 0.08); /* Search pill background */
+        background: rgba(91, 89, 84, 0.09);
         border-radius: 99px;
         transition: box-shadow 0.2s, background 0.2s;
         border: 1px solid transparent;
       }
       .search-row:focus-within {
-        background: var(--gp-bg-glass);
-        box-shadow: 0 0 0 2px var(--gp-accent);
+        background: var(--gp-surface-elevated);
+        box-shadow: 0 0 0 2px var(--gp-focus);
       }
 
       .search-box {
@@ -501,7 +513,7 @@ export class PromptPicker {
         width: 8px;
       }
       .list::-webkit-scrollbar-thumb {
-        background: rgba(127, 127, 127, 0.45);
+        background: rgba(131, 128, 121, 0.7);
         border-radius: 999px;
       }
       
@@ -541,7 +553,7 @@ export class PromptPicker {
         bottom: 10px;
         width: 3px;
         border-radius: 0 4px 4px 0;
-        background: #000;
+        background: var(--gp-accent);
         opacity: 0;
         transform: scaleY(0.65);
         transform-origin: center;
@@ -562,10 +574,6 @@ export class PromptPicker {
         opacity: 1;
         transform: scaleY(1);
       }
-      :host([data-gp-theme="dark"]) .item::before {
-        background: #fff;
-      }
-
       .item-header {
         display: flex;
         justify-content: space-between;
@@ -635,9 +643,9 @@ export class PromptPicker {
         justify-content: center;
         border-radius: 8px;
         border: none;
-        background: var(--gp-bg-glass); /* Floating button look */
+        background: var(--gp-surface-elevated);
         backdrop-filter: blur(4px);
-        box-shadow: 0 2px 6px rgba(0,0,0,0.08); /* Lift off */
+        box-shadow: 0 2px 8px rgba(27, 26, 24, 0.12);
         color: var(--gp-fg-secondary);
         cursor: pointer;
         transition: all 0.15s;
@@ -645,12 +653,9 @@ export class PromptPicker {
       }
       .item-action-btn:hover {
         transform: translateY(-2px);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.12);
+        box-shadow: 0 4px 12px rgba(27, 26, 24, 0.18);
         color: var(--gp-fg);
-        background: white; /* Brighten on hover in light mode */
-      }
-      :host([data-gp-theme="dark"]) .item-action-btn:hover {
-        background: #333;
+        background: var(--gp-surface);
       }
       .item-action-btn.danger:hover {
         color: var(--gp-danger);
@@ -661,7 +666,7 @@ export class PromptPicker {
         display: flex;
         gap: 8px;
         align-items: center;
-        background: rgba(127, 127, 127, 0.18);
+        background: rgba(131, 128, 121, 0.18);
         padding: 4px 6px;
         border-radius: 10px;
         box-shadow: var(--gp-shadow-sm);
@@ -726,8 +731,8 @@ export class PromptPicker {
       }
       .inline-editor-input:focus,
       .inline-editor-textarea:focus {
-        border-color: rgba(120, 120, 120, 0.45);
-        background: rgba(127, 127, 127, 0.12);
+        border-color: rgba(217, 124, 93, 0.7);
+        background: rgba(237, 233, 224, 0.78);
       }
       .inline-editor-textarea {
         min-height: 108px;
@@ -769,7 +774,32 @@ export class PromptPicker {
         pointer-events: none;
       }
       .footer-buttons {
-        display: block;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        pointer-events: auto;
+      }
+      .btn-utility {
+        height: 36px;
+        border-radius: 999px;
+        border: 1px solid var(--gp-border);
+        background: var(--gp-bg-glass);
+        color: var(--gp-fg);
+        font-family: var(--gp-font-sans);
+        font-size: 12px;
+        font-weight: 600;
+        letter-spacing: 0.01em;
+        padding: 0 12px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: var(--gp-shadow-sm);
+        transition: background 0.15s ease, transform 0.15s ease;
+      }
+      .btn-utility:hover {
+        background: var(--gp-bg-hover);
+        transform: translateY(-1px);
       }
       .btn-new {
         width: 40px;
@@ -783,7 +813,7 @@ export class PromptPicker {
         justify-content: center;
         cursor: pointer;
         pointer-events: auto;
-        box-shadow: 0 8px 18px -10px rgba(0, 0, 0, 0.42);
+        box-shadow: 0 10px 20px -12px rgba(27, 26, 24, 0.45);
         transition: transform 0.15s ease, filter 0.15s ease;
       }
       .btn-new:hover {
@@ -800,7 +830,7 @@ export class PromptPicker {
       .modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(15, 23, 42, 0.22);
+        background: rgba(27, 26, 24, 0.26);
         z-index: 2147483647;
         display: flex;
         align-items: center;
@@ -815,17 +845,17 @@ export class PromptPicker {
         width: min(860px, calc(100vw - 32px));
         height: min(66vh, 580px);
         min-height: min(410px, calc(100vh - 32px));
-        background: rgba(255, 255, 255, 0.98);
-        border: 1px solid rgba(15, 23, 42, 0.14);
+        background: rgba(245, 242, 234, 0.98);
+        border: 1px solid var(--gp-border);
         border-radius: 12px;
-        box-shadow: 0 12px 28px rgba(15, 23, 42, 0.16);
+        box-shadow: 0 12px 28px rgba(27, 26, 24, 0.2);
         overflow: hidden;
         display: flex;
         flex-direction: column;
       }
       :host([data-gp-theme="dark"]) .modal {
-        background: rgba(23, 23, 23, 0.98);
-        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(35, 33, 30, 0.98);
+        border-color: var(--gp-border);
         box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
       }
 
@@ -834,10 +864,10 @@ export class PromptPicker {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        border-bottom: 1px solid rgba(15, 23, 42, 0.08);
+        border-bottom: 1px solid var(--gp-border);
       }
       :host([data-gp-theme="dark"]) .modal-header {
-        border-bottom-color: rgba(255, 255, 255, 0.1);
+        border-bottom-color: var(--gp-border);
       }
       .modal-title {
         font-family: var(--gp-font-serif);
@@ -882,8 +912,8 @@ export class PromptPicker {
       }
 
       .form-input, .form-textarea {
-        background: rgba(255, 255, 255, 0.96);
-        border: 1px solid rgba(15, 23, 42, 0.12);
+        background: rgba(237, 233, 224, 0.88);
+        border: 1px solid var(--gp-border);
         border-radius: 8px;
         padding: 11px 14px;
         font-size: 16px;
@@ -904,19 +934,19 @@ export class PromptPicker {
         border-color: rgba(255, 255, 255, 0.15);
       }
       .form-input:focus, .form-textarea:focus {
-        border-color: rgba(15, 23, 42, 0.42);
+        border-color: rgba(217, 124, 93, 0.7);
         box-shadow: none;
         outline: none;
       }
       .form-input::placeholder, .form-textarea::placeholder {
         color: var(--gp-fg-tertiary);
-        font-style: italic;
+        font-style: normal;
       }
       .form-input {
-        border-color: rgba(15, 23, 42, 0.1);
+        border-color: rgba(91, 89, 84, 0.18);
       }
       .form-textarea {
-        border-color: rgba(15, 23, 42, 0.22);
+        border-color: rgba(91, 89, 84, 0.3);
       }
       .form-textarea {
         flex: 1;
@@ -945,7 +975,7 @@ export class PromptPicker {
 
       .modal-footer {
         padding: 8px 14px 10px;
-        border-top: 1px solid rgba(15, 23, 42, 0.08);
+        border-top: 1px solid var(--gp-border);
         display: flex;
         justify-content: space-between;
         align-items: center;
@@ -954,7 +984,7 @@ export class PromptPicker {
         background: transparent;
       }
       :host([data-gp-theme="dark"]) .modal-footer {
-        border-top-color: rgba(255, 255, 255, 0.1);
+        border-top-color: var(--gp-border);
       }
       .modal-footer-left,
       .modal-footer-right {
@@ -980,13 +1010,13 @@ export class PromptPicker {
         transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
       }
       .btn-cancel {
-        background: rgba(127, 127, 127, 0.06);
-        border: 1px solid rgba(15, 23, 42, 0.16);
+        background: rgba(91, 89, 84, 0.06);
+        border: 1px solid rgba(91, 89, 84, 0.28);
         color: var(--gp-fg);
       }
       .btn-cancel:hover {
-        background: rgba(127, 127, 127, 0.12);
-        border-color: rgba(15, 23, 42, 0.26);
+        background: rgba(91, 89, 84, 0.12);
+        border-color: rgba(91, 89, 84, 0.4);
       }
 
       .btn-delete {
@@ -1006,11 +1036,11 @@ export class PromptPicker {
       }
       
       .btn-save {
-        background: #111111;
-        color: #ffffff;
-        border: 1px solid #111111;
+        background: var(--gp-accent);
+        color: var(--gp-accent-fg);
+        border: 1px solid var(--gp-accent);
       }
-      .btn-save:hover { background: #1f1f1f; border-color: #1f1f1f; }
+      .btn-save:hover { filter: brightness(1.06); }
       .btn-save:disabled {
         opacity: 0.45;
         cursor: not-allowed;
@@ -1033,6 +1063,8 @@ export class PromptPicker {
         <div class="list" id="list-container"></div>
         <div class="footer-action">
           <div class="footer-buttons">
+            <button class="btn-utility" id="btn-backup" title="Backup to local file">Backup</button>
+            <button class="btn-utility" id="btn-restore" title="Restore from backup file">Restore</button>
             <button class="btn-new" id="btn-primary-action" title="New Prompt">
               ${ICONS.plus} <span>New Prompt</span>
             </button>
@@ -1057,7 +1089,45 @@ export class PromptPicker {
       this.showModal();
       this.updateList();
     });
+    this.shadow.getElementById('btn-backup')?.addEventListener('click', async () => {
+      try {
+        await exportAllData();
+      } catch (error) {
+        // eslint-disable-next-line no-console
+        console.error('[GP Prompts] Backup failed', error);
+        alert('Backup failed. Please try again.');
+      }
+    });
+    this.shadow.getElementById('btn-restore')?.addEventListener('click', () => {
+      triggerImport(async (result) => {
+        alert(result.message);
+        if (!result.success) return;
+
+        try {
+          await this.sendRuntimeMessage({ type: 'refreshStateCache' });
+        } catch {
+          // ignore and continue with page reload
+        }
+        window.location.reload();
+      });
+    });
     this.refreshPickerControls();
+  }
+
+  private sendRuntimeMessage<T>(message: T): Promise<void> {
+    return new Promise((resolve, reject) => {
+      chrome.runtime.sendMessage(message, (response) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+          return;
+        }
+        if (response && response.ok === false) {
+          reject(new Error(response.error || 'Runtime message failed'));
+          return;
+        }
+        resolve();
+      });
+    });
   }
 
   // ===================== Modal Methods =====================

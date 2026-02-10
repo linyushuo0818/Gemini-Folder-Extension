@@ -719,50 +719,57 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
     const style = document.createElement('style');
     style.dataset.gp = 'overlay';
     style.textContent = `
+      @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600;700;800;900&display=swap');
+
       :host {
         all: initial;
         font-family: inherit;
-        color: var(--gp-fg, #202124);
-        --gp-font: "Google Sans", "Google Sans Text", "Noto Sans", "Segoe UI", sans-serif;
-        --gp-fg: #202124;
-        --gp-muted: #5f6368;
-        --gp-border: rgba(60, 64, 67, 0.24);
-        --gp-hover: rgba(60, 64, 67, 0.08);
-        --gp-hover-strong: rgba(60, 64, 67, 0.12);
-        --gp-surface: #ffffff;
-        --gp-surface-2: #f1f3f4;
-        --gp-shadow: 0 18px 50px rgba(0, 0, 0, 0.22);
+        color: var(--gp-fg, #1b1a18);
+        --gp-font: "Manrope", "Styrene A", "Styrene B", "Inter", "Segoe UI", sans-serif;
+        --gp-font-serif: "Fraunces", "Times New Roman", serif;
+        --gp-fg: #1b1a18;
+        --gp-fg-muted: #5b5954;
+        --gp-muted: #838079;
+        --gp-border: rgba(91, 89, 84, 0.24);
+        --gp-hover: rgba(91, 89, 84, 0.08);
+        --gp-hover-strong: rgba(91, 89, 84, 0.14);
+        --gp-surface: #ede9e0;
+        --gp-surface-2: #f5f2ea;
+        --gp-shadow: 0 20px 48px -12px rgba(27, 26, 24, 0.35);
         --gp-radius-xs: 8px;
         --gp-radius-sm: 10px;
         --gp-radius: 12px;
         --gp-radius-lg: 16px;
         --gp-radius-xl: 20px;
         --gp-radius-pill: 999px;
-        --gp-accent: #1a73e8; // Consider #8ab4f8 for dark mode?
-        --gp-accent-hover: rgba(26, 115, 232, 0.06);
-        --gp-input-bg: transparent;
+        --gp-accent: #1b1a18;
+        --gp-on-accent: #ede9e0;
+        --gp-accent-hover: rgba(27, 26, 24, 0.08);
+        --gp-focus: #d97c5d;
+        --gp-input-bg: rgba(251, 250, 246, 0.76);
       }
       
       :host(.dark) {
-        --gp-fg: #e3e3e3;
-        --gp-fg-muted: #c4c7c5;
-        --gp-muted: #9aa0a6;
-        --gp-border: #444746; /* Stronger border (Gemini standard) */
-        --gp-hover: rgba(255, 255, 255, 0.1);
-        --gp-hover-strong: rgba(255, 255, 255, 0.16);
-        --gp-surface: #1e1e1e;
-        --gp-surface-2: #2c2c2e;
-        --gp-shadow: 0 18px 50px rgba(0, 0, 0, 0.7);
-        --gp-accent: #a8c7fa; /* Material 3 Blue 200 (Pastel) */
-        --gp-on-accent: #062e6f; /* Material 3 Blue 900 (Text on Accent) */
-        --gp-accent-hover: rgba(168, 199, 250, 0.12);
-        --gp-input-bg: transparent;
+        --gp-fg: #ede9e0;
+        --gp-fg-muted: #c9c5bc;
+        --gp-muted: #a4a19b;
+        --gp-border: rgba(237, 233, 224, 0.2);
+        --gp-hover: rgba(237, 233, 224, 0.1);
+        --gp-hover-strong: rgba(237, 233, 224, 0.16);
+        --gp-surface: #1b1a18;
+        --gp-surface-2: #23201d;
+        --gp-shadow: 0 22px 52px -14px rgba(0, 0, 0, 0.72);
+        --gp-accent: #ede9e0;
+        --gp-on-accent: #1b1a18;
+        --gp-accent-hover: rgba(237, 233, 224, 0.12);
+        --gp-focus: #d97c5d;
+        --gp-input-bg: rgba(35, 33, 30, 0.84);
       }
 
       .gp-modal-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(32, 33, 36, 0.45);
+        background: rgba(27, 26, 24, 0.34);
         display: none;
         align-items: center;
         justify-content: center;
@@ -774,7 +781,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 520px;
         max-width: calc(100vw - 32px);
         box-shadow: var(--gp-shadow);
-        border: 1px solid rgba(60, 64, 67, 0.12);
+        border: 1px solid var(--gp-border);
         padding: 20px;
         display: flex;
         flex-direction: column;
@@ -787,9 +794,20 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
-        font-size: 17px;
-        font-weight: 600;
+        font-size: 19px;
+        font-weight: 700;
+        font-family: var(--gp-font-serif);
+        letter-spacing: 0.01em;
         color: var(--gp-fg);
+      }
+      .gp-modal-header [data-gp-modal-title] {
+        font-family: "Fraunces", serif;
+        font-weight: 700;
+        font-style: normal;
+        font-variation-settings: normal;
+        letter-spacing: 0;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
       }
       .gp-modal-close {
         border: none;
@@ -815,12 +833,12 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border-radius: var(--gp-radius-lg);
         padding: 8px; /* Uniform padding for consistent margins */
         position: relative;
-        background: var(--gp-surface);
+        background: var(--gp-input-bg);
         transition: border-color 120ms ease, box-shadow 120ms ease;
       }
       .gp-namebox:focus-within {
-        border-color: var(--gp-border);
-        box-shadow: none;
+        border-color: var(--gp-focus);
+        box-shadow: 0 0 0 2px rgba(217, 124, 93, 0.22);
       }
       .gp-icon-button {
         width: 36px;
@@ -839,7 +857,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-icon-button svg { width: 18px; height: 18px; }
       .gp-icon-button:focus-visible {
         outline: none;
-        box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.28);
+        box-shadow: 0 0 0 2px rgba(217, 124, 93, 0.3);
       }
       .gp-name-input {
         flex: 1;
@@ -850,15 +868,15 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         color: var(--gp-fg);
         font-family: var(--gp-font);
       }
-      .gp-name-input::placeholder { color: #9aa0a6; }
+      .gp-name-input::placeholder { color: var(--gp-muted); }
       .gp-icon-popover {
         position: absolute;
         top: calc(100% + 10px);
         left: 0;
         background: var(--gp-surface);
         border-radius: 20px;
-        border: 1px solid rgba(60, 64, 67, 0.12);
-        box-shadow: 0 12px 40px rgba(0, 0, 0, 0.15), 0 4px 12px rgba(0, 0, 0, 0.08);
+        border: 1px solid var(--gp-border);
+        box-shadow: 0 14px 38px rgba(27, 26, 24, 0.24), 0 4px 12px rgba(27, 26, 24, 0.12);
         padding: 16px;
         display: none;
         z-index: 2147483647;
@@ -873,7 +891,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-icon-option {
         width: 40px;
         height: 40px;
-        border: 1.5px solid rgba(60, 64, 67, 0.15);
+        border: 1.5px solid var(--gp-border);
         border-radius: 12px;
         background: var(--gp-surface);
         display: inline-flex;
@@ -884,10 +902,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         color: var(--gp-fg);
       }
       .gp-icon-option:hover {
-        border-color: var(--gp-accent);
+        border-color: var(--gp-focus);
         background: var(--gp-accent-hover);
         transform: scale(1.05);
-        box-shadow: 0 2px 8px rgba(26, 115, 232, 0.15);
+        box-shadow: 0 2px 8px rgba(27, 26, 24, 0.18);
       }
       .gp-icon-option:active {
         transform: scale(0.95);
@@ -895,7 +913,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-icon-option svg { width: 18px; height: 18px; }
       .gp-icon-option:focus-visible {
         outline: none;
-        box-shadow: 0 0 0 3px rgba(26, 115, 232, 0.25);
+        box-shadow: 0 0 0 3px rgba(217, 124, 93, 0.35);
       }
       .gp-template-row {
         display: flex;
@@ -909,7 +927,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         gap: 6px;
         padding: 6px 12px;
         border-radius: var(--gp-radius-pill);
-        border: 1px solid rgba(60, 64, 67, 0.2);
+        border: 1px solid var(--gp-border);
         cursor: pointer;
         font-size: 13px;
         color: var(--gp-fg);
@@ -921,10 +939,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-template-chip:hover {
         background: var(--gp-hover);
-        border-color: rgba(60, 64, 67, 0.32);
+        border-color: rgba(91, 89, 84, 0.36);
       }
       .gp-template-chip svg { width: 16px; height: 16px; }
-      .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.25); }
+      .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(217, 124, 93, 0.28); }
       
       /* Color Picker Row */
       .gp-color-row {
@@ -978,29 +996,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: none;
       }
       
-      .gp-info {
-        display: flex;
-        align-items: center;
-        gap: 10px;
-        padding: 12px 14px;
-        background: var(--gp-surface-2);
-        border: 1px solid rgba(60, 64, 67, 0.1);
-        border-radius: var(--gp-radius);
-        color: #5f6368;
-        font-size: 13px;
-        font-weight: 500;
-        line-height: 1.5;
-        margin-top: 4px;
-      }
-      .gp-info-icon {
-        width: 16px;
-        height: 16px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        flex: 0 0 16px;
-        color: #9aa0a6;
-      }
       .gp-modal-actions {
         display: flex;
         justify-content: flex-end;
@@ -1013,14 +1008,15 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border-radius: 12px; /* Rounded rectangle instead of pill - cleaner edges */
         cursor: pointer;
         font-weight: 600;
-        box-shadow: 0 4px 12px rgba(26, 115, 232, 0.25);
+        box-shadow: 0 8px 18px -10px rgba(27, 26, 24, 0.55);
         transition: filter 120ms ease, transform 100ms ease;
         height: 40px;
         min-width: 140px;
       }
       .gp-primary:hover { filter: brightness(0.98); }
       .gp-primary:disabled {
-        background: rgba(26, 115, 232, 0.4);
+        background: var(--gp-hover-strong);
+        color: var(--gp-muted);
         cursor: not-allowed;
         box-shadow: none;
       }
@@ -1029,8 +1025,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-width: 220px;
         background: var(--gp-surface);
         border-radius: 16px; /* Outer */
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 12px 24px -4px rgba(0, 0, 0, 0.15);
-        border: 1px solid rgba(60, 64, 67, 0.08);
+        box-shadow: 0 8px 20px -10px rgba(27, 26, 24, 0.35), 0 2px 8px rgba(27, 26, 24, 0.16);
+        border: 1px solid var(--gp-border);
         padding: 6px; /* Padding: 6px */
         display: none;
         pointer-events: auto;
@@ -1053,10 +1049,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transition: all 120ms ease;
       }
       .gp-menu-item:hover {
-        background: rgba(60, 64, 67, 0.06);
-        transform: scale(1.02); /* Subtle pop */
+        background: var(--gp-hover);
+        transform: none;
       }
-      .gp-menu-item.danger { color: #d93025; }
+      .gp-menu-item.danger { color: #b85a3e; }
       
       /* Chat menu item with icons */
       .gp-chat-menu .gp-menu-item {
@@ -1086,8 +1082,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-width: 180px;
         background: var(--gp-surface);
         border-radius: 12px;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-        border: 1px solid rgba(60, 64, 67, 0.08);
+        box-shadow: 0 8px 20px -10px rgba(27, 26, 24, 0.35), 0 2px 8px rgba(27, 26, 24, 0.16);
+        border: 1px solid var(--gp-border);
         padding: 4px;
         display: none;
         z-index: 2147483647;
@@ -1108,8 +1104,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         position: fixed;
         bottom: 24px;
         right: 24px;
-        background: #202124;
-        color: #fff;
+        background: #1b1a18;
+        color: #ede9e0;
         padding: 10px 16px;
         border-radius: var(--gp-radius-pill);
         font-size: 13px;
@@ -1164,14 +1160,6 @@ function createModal(layer: HTMLElement) {
             </div>
           `
   ).join('')}
-      </div>
-      <div class="gp-info">
-        <span class="gp-info-icon" aria-hidden="true">
-          <svg viewBox="0 0 24 24" width="16" height="16">
-            <path d="M9 21h6M10 17h4m-1-3c2-1.2 3-2.9 3-5a5 5 0 1 0-10 0c0 2.1 1 3.8 3 5v2h4v-2z" stroke="currentColor" stroke-width="1.8" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </span>
-        <span class="gp-info-text">Projects help you organize and group related chats together for easy access.</span>
       </div>
       <div class="gp-modal-actions">
         <button class="gp-primary" data-gp-action="confirm" disabled>Create Project</button>
