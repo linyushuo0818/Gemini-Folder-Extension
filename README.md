@@ -66,6 +66,17 @@ Output path:
 - `release/store-upload-<timestamp>/unpacked` (for Load unpacked)
 - `release/store-upload-<timestamp>/gemini-project-extension-store.zip` (for Web Store upload)
 
+## Build Firefox Zip
+
+```bash
+npm run package:firefox
+```
+
+Output path:
+
+- `release/firefox-upload-<timestamp>/unpacked` (for temporary local test in Firefox)
+- `release/firefox-upload-<timestamp>/gemini-project-extension-firefox.zip` (for AMO upload/testing)
+
 ## Project Structure
 
 - `src/background.ts`: background service worker
@@ -73,6 +84,7 @@ Output path:
 - `src/shared/`: shared types and storage helpers
 - `public/manifest.json`: manifest template
 - `scripts/package-store.ps1`: one-command store packaging
+- `scripts/package-firefox.ps1`: one-command Firefox packaging
 
 ## Privacy
 
