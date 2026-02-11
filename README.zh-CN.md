@@ -1,6 +1,6 @@
 # Gemini Projects Extension
 
-面向 `https://gemini.google.com` 的浏览器扩展，提供本地 **Projects** 和 **Prompt Library** 工作流。
+面向 `https://gemini.google.com` 的浏览器扩展，提供本地 **Projects** 与 **Prompt Library** 工作流。
 
 [English](README.md) | 中文
 
@@ -55,9 +55,7 @@ npm run lint
 1. 打开 `chrome://extensions`
 2. 打开 `Developer mode`
 3. 点击 `Load unpacked`
-4. 二选一：
-5. 本地开发构建：选择 `dist/` 目录
-6. 从 Release 下载 ZIP：先解压，再选择解压后的目录（目录内应直接包含 `manifest.json`）
+4. 先解压到本地，再选择解压后的文件夹
 
 ## 打包（Chrome 商店/分享）
 

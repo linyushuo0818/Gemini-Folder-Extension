@@ -55,9 +55,7 @@ npm run lint
 1. Open `chrome://extensions`
 2. Enable `Developer mode`
 3. Click `Load unpacked`
-4. Choose one of the following:
-5. Local development build: select the `dist/` folder
-6. Downloaded release zip: unzip it first, then select the extracted folder (the folder containing `manifest.json`)
+4. Unzip to local disk, then select the extracted folder
 
 ## Build Release Zip
 
