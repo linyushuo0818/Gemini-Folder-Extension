@@ -13,42 +13,10 @@
 - 快速搜索、创建、编辑、删除、插入 prompts
 - 支持通过 JSON 备份/恢复本地数据
 
-## 技术栈
+## 支持浏览器
 
-- TypeScript
-- Vite
-- Chrome Extension Manifest V3
-
-## 环境要求
-
-- Node.js 18+
 - Chrome（或其他 Chromium 内核浏览器）
-
-## 开发命令
-
-安装依赖：
-
-```bash
-npm install
-```
-
-构建：
-
-```bash
-npm run build
-```
-
-监听构建：
-
-```bash
-npm run dev
-```
-
-类型检查：
-
-```bash
-npm run lint
-```
+- Firefox：开发中
 
 ## 本地加载扩展
 
@@ -56,28 +24,6 @@ npm run lint
 2. 打开 `Developer mode`
 3. 点击 `Load unpacked`
 4. 先解压到本地，再选择解压后的文件夹
-
-## 打包（Chrome 商店/分享）
-
-```bash
-npm run package:store
-```
-
-输出目录：
-
-- `release/store-upload-<timestamp>/unpacked`
-- `release/store-upload-<timestamp>/gemini-project-extension-store.zip`
-
-## Build Firefox Zip
-
-```bash
-npm run package:firefox
-```
-
-输出目录：
-
-- `release/firefox-upload-<timestamp>/unpacked`（Firefox 临时本地测试）
-- `release/firefox-upload-<timestamp>/gemini-project-extension-firefox.zip`（AMO 上传/测试）
 
 ## 隐私
 

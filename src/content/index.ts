@@ -1,4 +1,5 @@
-﻿import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
+import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
+import { runtimeSendMessage } from '../shared/webext';
 import {
   findSidebarRoot,
   findGemsSection,
@@ -50,9 +51,7 @@ function logProject(...args: unknown[]) {
   }
 }
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
-  return new Promise((resolve) => {
-    chrome.runtime.sendMessage(message, (response) => resolve(response as BackgroundResponse));
-  });
+  return runtimeSendMessage<BackgroundResponse>(message);
 }
 
 function normalizeChatTitleAndPinned(rawTitle: string, row?: Element | null): { title: string; pinnedFromDom: boolean } {
@@ -358,3 +357,4 @@ async function handleMoveChatToProject(conversationId: string, projectId: string
 }
 
 bootstrap().catch((error) => log('bootstrap failed', error));
+

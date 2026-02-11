@@ -1,5 +1,7 @@
-﻿
+
 // import { v4 as uuidv4 } from 'uuid';
+
+import { storageLocalGet, storageLocalSet, webext } from '../../shared/webext';
 
 function uuidv4() {
     return crypto.randomUUID();
@@ -127,7 +129,10 @@ class PromptStore {
     constructor() {
         this.refresh();
         // Listen for storage changes
-        chrome.storage.onChanged.addListener((changes, area) => {
+        webext.storage.onChanged.addListener((
+            changes: { [key: string]: chrome.storage.StorageChange },
+            area: string
+        ) => {
             if (area === 'local' && changes[STORAGE_KEY]) {
                 this.cache = changes[STORAGE_KEY].newValue;
                 this.notify();
@@ -136,82 +141,79 @@ class PromptStore {
     }
 
     private async loadFromStorage(): Promise<PromptsData> {
-        return new Promise((resolve) => {
-            chrome.storage.local.get([STORAGE_KEY], (result) => {
-                let data = result[STORAGE_KEY] as PromptsData;
-                if (!data) {
-                    data = this.seed(DEFAULT_DATA);
-                    this.saveToStorage(data);
-                } else {
-                    let hasDirtyData = false;
-                    if (!data.prompts || typeof data.prompts !== 'object') {
-                        data.prompts = {};
-                        hasDirtyData = true;
-                    }
-                    if (!data.tagMeta || typeof data.tagMeta !== 'object') {
-                        data.tagMeta = {};
-                        hasDirtyData = true;
-                    }
+        const result = await storageLocalGet<Record<string, unknown>>([STORAGE_KEY]);
+        let data = result[STORAGE_KEY] as PromptsData;
+        if (!data) {
+            data = this.seed(DEFAULT_DATA);
+            this.saveToStorage(data);
+        } else {
+            let hasDirtyData = false;
+            if (!data.prompts || typeof data.prompts !== 'object') {
+                data.prompts = {};
+                hasDirtyData = true;
+            }
+            if (!data.tagMeta || typeof data.tagMeta !== 'object') {
+                data.tagMeta = {};
+                hasDirtyData = true;
+            }
 
-                    Object.values(data.prompts).forEach((prompt) => {
-                        const currentTags = Array.isArray(prompt.tags) ? prompt.tags : [];
-                        const normalizedTags = normalizePromptTags(currentTags);
-                        if (!areStringArraysEqual(currentTags, normalizedTags)) {
-                            prompt.tags = normalizedTags;
-                            hasDirtyData = true;
-                        }
-                    });
-
-                    const nextTagMeta: Record<string, TagMeta> = {};
-                    Object.entries(data.tagMeta).forEach(([rawName, meta]) => {
-                        const normalizedName = normalizeTagName(rawName);
-                        if (!normalizedName) {
-                            hasDirtyData = true;
-                            return;
-                        }
-
-                        const metaColor =
-                            meta && typeof meta.color === 'string' && TAG_COLOR_NAMES.has(meta.color)
-                                ? meta.color
-                                : 'gray';
-
-                        const existing = nextTagMeta[normalizedName];
-                        if (!existing) {
-                            nextTagMeta[normalizedName] = { name: normalizedName, color: metaColor };
-                        } else if (existing.color === 'gray' && metaColor !== 'gray') {
-                            existing.color = metaColor;
-                            hasDirtyData = true;
-                        } else {
-                            hasDirtyData = true;
-                        }
-
-                        if (
-                            normalizedName !== rawName ||
-                            !meta ||
-                            meta.name !== normalizedName ||
-                            !(meta && typeof meta.color === 'string' && TAG_COLOR_NAMES.has(meta.color))
-                        ) {
-                            hasDirtyData = true;
-                        }
-                    });
-
-                    Object.values(data.prompts).forEach((prompt) => {
-                        prompt.tags.forEach((tag) => {
-                            if (!nextTagMeta[tag]) {
-                                nextTagMeta[tag] = { name: tag, color: 'gray' };
-                                hasDirtyData = true;
-                            }
-                        });
-                    });
-
-                    data.tagMeta = nextTagMeta;
-                    if (hasDirtyData) {
-                        this.saveToStorage(data);
-                    }
+            Object.values(data.prompts).forEach((prompt) => {
+                const currentTags = Array.isArray(prompt.tags) ? prompt.tags : [];
+                const normalizedTags = normalizePromptTags(currentTags);
+                if (!areStringArraysEqual(currentTags, normalizedTags)) {
+                    prompt.tags = normalizedTags;
+                    hasDirtyData = true;
                 }
-                resolve(data);
             });
-        });
+
+            const nextTagMeta: Record<string, TagMeta> = {};
+            Object.entries(data.tagMeta).forEach(([rawName, meta]) => {
+                const normalizedName = normalizeTagName(rawName);
+                if (!normalizedName) {
+                    hasDirtyData = true;
+                    return;
+                }
+
+                const metaColor =
+                    meta && typeof meta.color === 'string' && TAG_COLOR_NAMES.has(meta.color)
+                        ? meta.color
+                        : 'gray';
+
+                const existing = nextTagMeta[normalizedName];
+                if (!existing) {
+                    nextTagMeta[normalizedName] = { name: normalizedName, color: metaColor };
+                } else if (existing.color === 'gray' && metaColor !== 'gray') {
+                    existing.color = metaColor;
+                    hasDirtyData = true;
+                } else {
+                    hasDirtyData = true;
+                }
+
+                if (
+                    normalizedName !== rawName ||
+                    !meta ||
+                    meta.name !== normalizedName ||
+                    !(meta && typeof meta.color === 'string' && TAG_COLOR_NAMES.has(meta.color))
+                ) {
+                    hasDirtyData = true;
+                }
+            });
+
+            Object.values(data.prompts).forEach((prompt) => {
+                prompt.tags.forEach((tag) => {
+                    if (!nextTagMeta[tag]) {
+                        nextTagMeta[tag] = { name: tag, color: 'gray' };
+                        hasDirtyData = true;
+                    }
+                });
+            });
+
+            data.tagMeta = nextTagMeta;
+            if (hasDirtyData) {
+                this.saveToStorage(data);
+            }
+        }
+        return data;
     }
 
     private seed(data: PromptsData): PromptsData {
@@ -237,7 +239,7 @@ class PromptStore {
     }
 
     private saveToStorage(data: PromptsData) {
-        chrome.storage.local.set({ [STORAGE_KEY]: data });
+        void storageLocalSet({ [STORAGE_KEY]: data });
     }
 
     public async refresh() {
@@ -463,4 +465,5 @@ class PromptStore {
 }
 
 export const promptStore = new PromptStore();
+
 

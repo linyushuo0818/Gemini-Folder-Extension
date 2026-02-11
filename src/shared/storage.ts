@@ -1,4 +1,5 @@
-﻿import { ChatRef, StoredState } from './types';
+import { ChatRef, StoredState } from './types';
+import { storageLocalGet, storageLocalSet } from './webext';
 
 export const STORAGE_KEY = 'gemini_projects_v1';
 export const CURRENT_SCHEMA_VERSION = 1;
@@ -75,10 +76,11 @@ export function migrateState(raw: unknown): StoredState {
 }
 
 export async function loadState(): Promise<StoredState> {
-  const result = await chrome.storage.local.get(STORAGE_KEY);
+  const result = await storageLocalGet<Record<string, unknown>>(STORAGE_KEY);
   return migrateState(result[STORAGE_KEY]);
 }
 
 export async function saveState(state: StoredState): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: state });
+  await storageLocalSet({ [STORAGE_KEY]: state });
 }
+

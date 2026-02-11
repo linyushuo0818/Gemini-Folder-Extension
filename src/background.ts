@@ -1,5 +1,6 @@
-﻿import { BackgroundRequest, BackgroundResponse, ChatRef, Project, StoredState } from './shared/types';
+import { BackgroundRequest, BackgroundResponse, ChatRef, Project, StoredState } from './shared/types';
 import { createEmptyState, loadState, saveState } from './shared/storage';
+import { webext } from './shared/webext';
 
 let cachedState: StoredState | null = null;
 let loadPromise: Promise<StoredState> | null = null;
@@ -154,9 +155,14 @@ async function handleMessage(message: BackgroundRequest): Promise<BackgroundResp
   }
 }
 
-chrome.runtime.onMessage.addListener((message: BackgroundRequest, _sender, sendResponse) => {
+webext.runtime.onMessage.addListener((
+  message: BackgroundRequest,
+  _sender: chrome.runtime.MessageSender,
+  sendResponse: (response: BackgroundResponse) => void
+) => {
   handleMessage(message)
     .then((response) => sendResponse(response))
     .catch((error: Error) => sendResponse({ ok: false, error: error.message }));
   return true;
 });
+

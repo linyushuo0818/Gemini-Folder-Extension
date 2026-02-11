@@ -1,6 +1,7 @@
-﻿
+
 import { Prompt, promptStore } from './store';
 import { exportAllData, triggerImport } from '../../shared/backup';
+import { runtimeSendMessage } from '../../shared/webext';
 
 const PICKER_ID = 'gp-prompt-picker-root';
 
@@ -1114,20 +1115,11 @@ export class PromptPicker {
     this.refreshPickerControls();
   }
 
-  private sendRuntimeMessage<T>(message: T): Promise<void> {
-    return new Promise((resolve, reject) => {
-      chrome.runtime.sendMessage(message, (response) => {
-        if (chrome.runtime.lastError) {
-          reject(new Error(chrome.runtime.lastError.message));
-          return;
-        }
-        if (response && response.ok === false) {
-          reject(new Error(response.error || 'Runtime message failed'));
-          return;
-        }
-        resolve();
-      });
-    });
+  private async sendRuntimeMessage<T>(message: T): Promise<void> {
+    const response = await runtimeSendMessage<{ ok?: boolean; error?: string }>(message);
+    if (response && response.ok === false) {
+      throw new Error(response.error || 'Runtime message failed');
+    }
   }
 
   // ===================== Modal Methods =====================
@@ -1593,6 +1585,7 @@ export class PromptPicker {
     this.close();
   }
 }
+
 
 
 

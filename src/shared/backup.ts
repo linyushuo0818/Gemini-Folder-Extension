@@ -1,6 +1,5 @@
-// 扩展本地数据的备份/恢复工具。
-// 这里不依赖 shared/storage.ts，避免被打进共享 chunk，
-// 从而触发 content script 变成 ESM 导致在 Chrome 中失效。
+// 鎵╁睍鏈湴鏁版嵁鐨勫浠?鎭㈠宸ュ叿銆?// 杩欓噷涓嶄緷璧?shared/storage.ts锛岄伩鍏嶈鎵撹繘鍏变韩 chunk锛?// 浠庤€岃Е鍙?content script 鍙樻垚 ESM 瀵艰嚧鍦?Chrome 涓け鏁堛€?
+import { storageLocalGet, storageLocalSet } from './webext';
 
 const PROJECTS_KEY = 'gemini_projects_v1';
 const PROMPTS_KEY = 'gp_prompts_store';
@@ -22,7 +21,7 @@ function buildFilename(): string {
 }
 
 export async function exportAllData(): Promise<void> {
-  const result = await chrome.storage.local.get([PROJECTS_KEY, PROMPTS_KEY]);
+  const result = await storageLocalGet<Record<string, unknown>>([PROJECTS_KEY, PROMPTS_KEY]);
   const payload: BackupData = {
     version: BACKUP_VERSION,
     exportedAt: new Date().toISOString(),
@@ -69,7 +68,7 @@ export async function importData(file: File): Promise<{ success: boolean; messag
       return { success: false, message: 'No restorable data found in backup file.' };
     }
 
-    await chrome.storage.local.set(updates);
+    await storageLocalSet(updates);
     return {
       success: true,
       message: data.exportedAt
@@ -97,3 +96,4 @@ export function triggerImport(
   };
   input.click();
 }
+
