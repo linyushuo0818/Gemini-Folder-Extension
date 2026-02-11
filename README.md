@@ -2,6 +2,8 @@
 
 A Chrome extension for `https://gemini.google.com` that adds local **Projects** and **Prompt Library** workflows.
 
+English | [中文](README.zh-CN.md)
+
 ## Features
 
 - Organize chats into Projects in the left sidebar
