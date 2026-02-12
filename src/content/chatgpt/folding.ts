@@ -1,6 +1,27 @@
 export function initFolding() {
   const style = document.createElement('style');
   style.textContent = `
+    :root {
+      --gp-folding-btn-bg: rgba(245, 242, 234, 0.95);
+      --gp-folding-btn-bg-hover: rgba(251, 250, 246, 0.98);
+      --gp-folding-btn-border: rgba(91, 89, 84, 0.16);
+      --gp-folding-btn-fg: rgba(27, 26, 24, 0.92);
+      --gp-folding-btn-shadow: 0 2px 6px rgba(27, 26, 24, 0.16);
+      --gp-folding-btn-shadow-hover: 0 4px 10px rgba(27, 26, 24, 0.22);
+      --gp-folding-transition: .18s ease;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --gp-folding-btn-bg: rgba(35, 33, 30, 0.95);
+        --gp-folding-btn-bg-hover: rgba(46, 43, 40, 0.98);
+        --gp-folding-btn-border: rgba(237, 233, 224, 0.18);
+        --gp-folding-btn-fg: rgba(237, 233, 224, 0.92);
+        --gp-folding-btn-shadow: 0 2px 6px rgba(0, 0, 0, 0.42);
+        --gp-folding-btn-shadow-hover: 0 4px 10px rgba(0, 0, 0, 0.5);
+      }
+    }
+
     .gemini-project-folded {
       max-height: 150px;
       overflow: hidden;
@@ -18,34 +39,21 @@ export function initFolding() {
       width: 28px;
       height: 28px;
       border-radius: 50%;
-      border: 1px solid rgba(0,0,0,0.15);
-      background: rgba(255,255,255,0.95);
+      border: 1px solid var(--gp-folding-btn-border);
+      background: var(--gp-folding-btn-bg);
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      color: #333;
-      transition: all 0.2s ease;
+      color: var(--gp-folding-btn-fg);
+      transition: background var(--gp-folding-transition), box-shadow var(--gp-folding-transition), transform var(--gp-folding-transition);
       z-index: 100;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+      box-shadow: var(--gp-folding-btn-shadow);
     }
     .gemini-project-toggle-btn:hover {
-      background: #fff;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-      transform: scale(1.1);
-    }
-    
-    @media (prefers-color-scheme: dark) {
-      .gemini-project-toggle-btn {
-        background: rgba(70,70,75,0.95);
-        border-color: rgba(255,255,255,0.2);
-        color: #fff;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.4);
-      }
-      .gemini-project-toggle-btn:hover {
-        background: rgba(90,90,95,1);
-        box-shadow: 0 4px 10px rgba(0,0,0,0.5);
-      }
+      background: var(--gp-folding-btn-bg-hover);
+      box-shadow: var(--gp-folding-btn-shadow-hover);
+      transform: translateY(-1px);
     }
   `;
   document.head.appendChild(style);

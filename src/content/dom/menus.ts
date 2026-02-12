@@ -32,27 +32,27 @@ const DEFAULT_MENU_THEME: MenuTheme = {
   fontFamily: '"Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif',
   fontSize: '14px',
   fontWeight: '500',
-  color: '#1f1f1f', // Match sidebar #1f1f1f
+  color: '#1b1a18',
   lineHeight: '20px',
-  background: '#ffffff',
-  borderRadius: '16px', // Outer radius
+  background: '#fbfaf6',
+  borderRadius: '20px',
   boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 12px 24px -4px rgba(0, 0, 0, 0.15)',
-  border: '1px solid rgba(60, 64, 67, 0.08)',
+  border: '1px solid rgba(91, 89, 84, 0.08)',
   hover: 'rgba(68, 71, 70, 0.08)',
-  divider: 'rgba(60, 64, 67, 0.08)',
-  itemRadius: '10px', // Inner radius (16px outer - 6px padding = 10px)
+  divider: 'rgba(91, 89, 84, 0.08)',
+  itemRadius: '14px',
   itemPadding: '4px 12px',
   itemHeight: 'auto'
 };
 
 const DARK_MENU_THEME: MenuTheme = {
   ...DEFAULT_MENU_THEME,
-  background: '#1e1e1e',
-  color: '#e3e3e3',
-  border: '1px solid #444746',
+  background: '#1b1a18',
+  color: '#ede9e0',
+  border: '1px solid rgba(237, 233, 224, 0.16)',
   boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 12px 24px -4px rgba(0, 0, 0, 0.5)',
-  hover: 'rgba(255, 255, 255, 0.1)',
-  divider: 'rgba(255, 255, 255, 0.12)'
+  hover: 'rgba(237, 233, 224, 0.08)',
+  divider: 'rgba(237, 233, 224, 0.16)'
 };
 
 let currentMenuTheme: MenuTheme = { ...DEFAULT_MENU_THEME };
@@ -465,7 +465,7 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
   item.style.setProperty('margin', '2px 0', 'important');
   item.style.setProperty('box-sizing', 'border-box', 'important');
   item.style.setProperty('cursor', 'pointer', 'important');
-  item.style.setProperty('border-radius', '4px', 'important');
+  item.style.setProperty('border-radius', '8px', 'important');
   item.style.setProperty('background', 'transparent', 'important');
   // Use inherit to match native menu text color (Auto Dark Mode)
   item.style.setProperty('color', 'inherit', 'important');
@@ -511,7 +511,7 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
 
   item.addEventListener('mouseenter', () => {
     const isDark = document.body.classList.contains('dark') || document.body.classList.contains('dark-theme');
-    item.style.background = isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(68, 71, 70, 0.08)';
+    item.style.background = (isDark ? DARK_MENU_THEME : DEFAULT_MENU_THEME).hover;
     keepMoveMenuOpenHandler?.();
     openMoveMenuHandler?.(item.getBoundingClientRect(), conversationId, item);
   });
@@ -712,7 +712,7 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
 
     // Animation for open
     menu.style.transformOrigin = 'top left';
-    menu.style.animation = 'gp-scale-in 0.15s cubic-bezier(0.2, 0, 0.13, 1.5)';
+    menu.style.animation = 'gp-scale-in 0.18s cubic-bezier(0.2, 0, 0.13, 1.5)';
 
     if (!document.getElementById('gp-submenu-styles')) {
       const style = document.createElement('style');
@@ -732,11 +732,11 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
     const currentProjectId = options.getChatProjectId(conversationId);
 
     const items = [
-      `<div class="gp-move-item secondary" data-gp-move="new">${renderIconSvg('default', '#444746')}<span>New Project</span></div>`,
+      `<div class="gp-move-item secondary" data-gp-move="new">${renderIconSvg('default', '#5b5954')}<span>New Project</span></div>`,
       '<div class="gp-move-divider"></div>',
       ...projects.map(
         (project) =>
-          `<div class="gp-move-item" data-gp-move="${project.id}">${renderIconSvg(project.icon, project.color || '#444746')}<span>${escapeHtml(project.name)}</span></div>`
+          `<div class="gp-move-item" data-gp-move="${project.id}">${renderIconSvg(project.icon, project.color || '#5b5954')}<span>${escapeHtml(project.name)}</span></div>`
       )
     ];
 
@@ -752,17 +752,17 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
       item.style.display = 'flex';
       item.style.alignItems = 'center';
       item.style.gap = '12px';
-      item.style.padding = DEFAULT_MENU_THEME.itemPadding;
+      item.style.padding = currentMenuTheme.itemPadding;
       // item.style.height = DEFAULT_MENU_THEME.itemHeight; // Removed fixed height
       item.style.minHeight = '32px'; // Compact
-      item.style.borderRadius = DEFAULT_MENU_THEME.itemRadius;
+      item.style.borderRadius = currentMenuTheme.itemRadius;
       item.style.cursor = 'pointer';
-      item.style.fontSize = DEFAULT_MENU_THEME.fontSize;
+      item.style.fontSize = currentMenuTheme.fontSize;
       item.style.fontWeight = currentMenuTheme.fontWeight;
       item.style.color = currentMenuTheme.color;
-      item.style.lineHeight = DEFAULT_MENU_THEME.lineHeight;
-      item.style.fontFamily = DEFAULT_MENU_THEME.fontFamily;
-      item.style.transition = 'all 0.15s ease';
+      item.style.lineHeight = currentMenuTheme.lineHeight;
+      item.style.fontFamily = currentMenuTheme.fontFamily;
+      item.style.transition = 'all 0.18s ease';
       item.addEventListener('mouseenter', () => {
         item.style.background = currentMenuTheme.hover;
         // item.style.transform = 'scale(1.02)'; // Removed pop effect to fix radius alignment

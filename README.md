@@ -46,3 +46,16 @@ To create a release package locally:
 
 - `npm run package:store`
 - `npm run package:firefox`
+
+## Recent UI Updates
+
+- `0.1.52` (2026-02-12)
+- Create Project modal title switched to bold sans-serif style.
+- Template chips now share the same hover feedback language as icon options.
+- Primary Create button changed to warm orange and pill radius.
+
+- `0.1.50` (2026-02-12)
+- Prompt picker radius tokens aligned to `20 / 14 / 8 / 999`.
+- Unified core interaction transitions to `.18s ease`.
+- Picker and modal open/close animations switched from scale-based to `opacity + translateY`.
+- Folding toggle button styles now use CSS variables for light/dark themes, reducing hard-coded colors.

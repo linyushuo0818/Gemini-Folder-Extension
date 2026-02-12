@@ -360,7 +360,7 @@ export class PromptPicker {
         --gp-fg: var(--gp-ink);
         --gp-fg-secondary: var(--gp-slate);
         --gp-fg-tertiary: var(--gp-muted);
-        --gp-border: rgba(91, 89, 84, 0.24);
+        --gp-border: rgba(91, 89, 84, 0.08);
         --gp-bg-hover: rgba(91, 89, 84, 0.08);
         --gp-bg-active: rgba(91, 89, 84, 0.14);
         --gp-shadow-sm: 0 4px 12px rgba(27, 26, 24, 0.08);
@@ -369,9 +369,12 @@ export class PromptPicker {
         --gp-accent: var(--gp-ink);
         --gp-accent-fg: var(--gp-surface);
         --gp-focus: var(--gp-coral);
-        --gp-radius-lg: 16px;
-        --gp-radius-md: 10px;
-        --gp-radius-sm: 6px;
+        --gp-radius-lg: 20px;
+        --gp-radius-md: 14px;
+        --gp-radius-sm: 8px;
+        --gp-radius-pill: 999px;
+        /* 统一动效节奏，避免页面内部动画割裂 */
+        --gp-transition: .18s ease;
       }
 
       /* Dark Mode - Explicit Data Attribute Strategy */
@@ -413,15 +416,14 @@ export class PromptPicker {
         
         /* Animation States */
         opacity: 0;
-        transform: translateY(12px) scale(0.96);
-        transition: opacity 0.25s cubic-bezier(0.16, 1, 0.3, 1), 
-                    transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+        transform: translateY(8px);
+        transition: opacity var(--gp-transition), transform var(--gp-transition);
         pointer-events: none;
       }
 
       .picker.open {
         opacity: 1;
-        transform: translateY(0) scale(1);
+        transform: translateY(0);
         pointer-events: auto;
       }
 
@@ -434,8 +436,8 @@ export class PromptPicker {
       .search-row {
         position: relative;
         background: rgba(91, 89, 84, 0.09);
-        border-radius: 99px;
-        transition: box-shadow 0.2s, background 0.2s;
+        border-radius: var(--gp-radius-pill);
+        transition: box-shadow var(--gp-transition), background var(--gp-transition);
         border: 1px solid transparent;
       }
       .search-row:focus-within {
@@ -488,9 +490,9 @@ export class PromptPicker {
         background: var(--gp-bg-hover);
         color: var(--gp-fg-secondary);
         padding: 4px 10px;
-        border-radius: 99px;
+        border-radius: var(--gp-radius-pill);
         border: 1px solid transparent; /* Prepare for border transition */
-        transition: all 0.15s ease;
+        transition: all var(--gp-transition);
       }
       .tag:hover {
         background: var(--gp-bg-active);
@@ -515,7 +517,7 @@ export class PromptPicker {
       }
       .list::-webkit-scrollbar-thumb {
         background: rgba(131, 128, 121, 0.7);
-        border-radius: 999px;
+        border-radius: var(--gp-radius-pill);
       }
       
       .empty-box {
@@ -539,12 +541,12 @@ export class PromptPicker {
       /* === LIST ITEM === */
       .item {
         position: relative;
-        padding: 14px 16px;
+        padding: 12px 16px;
         margin-bottom: 4px;
         border-radius: var(--gp-radius-md);
         cursor: pointer;
         border: 1px solid transparent;
-        transition: transform 0.16s cubic-bezier(0.16, 1, 0.3, 1), background 0.16s ease, border-color 0.16s ease;
+        transition: transform var(--gp-transition), background var(--gp-transition), border-color var(--gp-transition);
       }
       .item::before {
         content: '';
@@ -558,7 +560,7 @@ export class PromptPicker {
         opacity: 0;
         transform: scaleY(0.65);
         transform-origin: center;
-        transition: opacity 0.16s ease, transform 0.16s ease;
+        transition: opacity var(--gp-transition), transform var(--gp-transition);
       }
       .item:hover {
         background: transparent;
@@ -624,7 +626,7 @@ export class PromptPicker {
         gap: 4px;
         opacity: 0;
         transform: translateX(10px);
-        transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+        transition: opacity var(--gp-transition), transform var(--gp-transition);
         z-index: 10;
         /* No background! */
       }
@@ -642,14 +644,14 @@ export class PromptPicker {
         display: flex;
         align-items: center;
         justify-content: center;
-        border-radius: 8px;
+        border-radius: var(--gp-radius-sm);
         border: none;
         background: var(--gp-surface-elevated);
         backdrop-filter: blur(4px);
         box-shadow: 0 2px 8px rgba(27, 26, 24, 0.12);
         color: var(--gp-fg-secondary);
         cursor: pointer;
-        transition: all 0.15s;
+        transition: all var(--gp-transition);
         padding: 0;
       }
       .item-action-btn:hover {
@@ -669,16 +671,16 @@ export class PromptPicker {
         align-items: center;
         background: rgba(131, 128, 121, 0.18);
         padding: 4px 6px;
-        border-radius: 10px;
+        border-radius: var(--gp-radius-sm);
         box-shadow: var(--gp-shadow-sm);
-        animation: slideIn 0.14s ease-out forwards;
+        animation: slideIn 0.18s ease-out forwards;
       }
       @keyframes slideIn { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: translateX(0); } }
 
       .delete-inline-btn {
         height: 28px;
         padding: 0 12px;
-        border-radius: 6px;
+        border-radius: var(--gp-radius-sm);
         border: none;
         font-family: var(--gp-font-sans);
         font-size: 12px;
@@ -692,7 +694,7 @@ export class PromptPicker {
       }
       .delete-inline-btn.confirm {
         background: var(--gp-danger);
-        color: white;
+        color: var(--gp-surface);
         box-shadow: 0 2px 4px rgba(217, 48, 37, 0.3);
       }
       .delete-inline-btn.confirm:hover { box-shadow: 0 3px 8px rgba(217, 48, 37, 0.4); transform: translateY(-1px); }
@@ -723,7 +725,7 @@ export class PromptPicker {
       .inline-editor-textarea {
         width: 100%;
         border: 1px solid var(--gp-border);
-        border-radius: 10px;
+        border-radius: var(--gp-radius-sm);
         background: var(--gp-bg-hover);
         color: var(--gp-fg);
         font-family: var(--gp-font-sans);
@@ -748,7 +750,7 @@ export class PromptPicker {
       }
       .inline-editor-btn {
         height: 32px;
-        border-radius: 999px;
+        border-radius: var(--gp-radius-pill);
         border: 1px solid var(--gp-border);
         background: transparent;
         color: var(--gp-fg);
@@ -782,7 +784,7 @@ export class PromptPicker {
       }
       .btn-utility {
         height: 36px;
-        border-radius: 999px;
+        border-radius: var(--gp-radius-pill);
         border: 1px solid var(--gp-border);
         background: var(--gp-bg-glass);
         color: var(--gp-fg);
@@ -796,7 +798,7 @@ export class PromptPicker {
         justify-content: center;
         cursor: pointer;
         box-shadow: var(--gp-shadow-sm);
-        transition: background 0.15s ease, transform 0.15s ease;
+        transition: background var(--gp-transition), transform var(--gp-transition);
       }
       .btn-utility:hover {
         background: var(--gp-bg-hover);
@@ -815,7 +817,7 @@ export class PromptPicker {
         cursor: pointer;
         pointer-events: auto;
         box-shadow: 0 10px 20px -12px rgba(27, 26, 24, 0.45);
-        transition: transform 0.15s ease, filter 0.15s ease;
+        transition: transform var(--gp-transition), filter var(--gp-transition);
       }
       .btn-new:hover {
         transform: translateY(-1px);
@@ -839,16 +841,16 @@ export class PromptPicker {
         padding: 16px;
         backdrop-filter: blur(6px);
         -webkit-backdrop-filter: blur(6px);
-        animation: modalFadeIn 0.25s ease-out;
+        animation: modalFadeIn 0.18s ease-out;
       }
-      @keyframes modalFadeIn { from { opacity: 0; transform: scale(0.98); } to { opacity: 1; transform: scale(1); } }
+      @keyframes modalFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       .modal {
         width: min(860px, calc(100vw - 32px));
         height: min(66vh, 580px);
         min-height: min(410px, calc(100vh - 32px));
         background: rgba(245, 242, 234, 0.98);
         border: 1px solid var(--gp-border);
-        border-radius: 12px;
+        border-radius: var(--gp-radius-lg);
         box-shadow: 0 12px 28px rgba(27, 26, 24, 0.2);
         overflow: hidden;
         display: flex;
@@ -882,8 +884,8 @@ export class PromptPicker {
         color: var(--gp-fg-secondary);
         cursor: pointer;
         padding: 4px;
-        border-radius: 6px;
-        transition: background 0.15s ease;
+        border-radius: var(--gp-radius-sm);
+        transition: background var(--gp-transition);
         display: flex;
         align-items: center;
         justify-content: center;
@@ -915,12 +917,12 @@ export class PromptPicker {
       .form-input, .form-textarea {
         background: rgba(237, 233, 224, 0.88);
         border: 1px solid var(--gp-border);
-        border-radius: 8px;
+        border-radius: var(--gp-radius-md);
         padding: 11px 14px;
         font-size: 16px;
         color: var(--gp-fg);
         width: 100%;
-        transition: border-color 0.15s ease, box-shadow 0.15s ease;
+        transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .form-input {
         font-family: var(--gp-font-serif);
@@ -1000,7 +1002,7 @@ export class PromptPicker {
       .btn {
         height: 36px;
         padding: 0 14px;
-        border-radius: 6px;
+        border-radius: var(--gp-radius-sm);
         font-family: var(--gp-font-sans);
         font-size: 13px;
         font-weight: 600;
@@ -1008,7 +1010,7 @@ export class PromptPicker {
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+        transition: background var(--gp-transition), border-color var(--gp-transition), color var(--gp-transition);
       }
       .btn-cancel {
         background: rgba(91, 89, 84, 0.06);
@@ -1032,7 +1034,7 @@ export class PromptPicker {
       }
       .btn-delete.confirming {
         background: rgba(217, 48, 37, 0.1);
-        color: #b42318;
+        color: var(--gp-danger);
         border-color: rgba(217, 48, 37, 0.4);
       }
       

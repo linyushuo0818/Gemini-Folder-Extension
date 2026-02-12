@@ -730,18 +730,19 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-fg: #1b1a18;
         --gp-fg-muted: #5b5954;
         --gp-muted: #838079;
-        --gp-border: rgba(91, 89, 84, 0.24);
+        --gp-border: rgba(91, 89, 84, 0.08);
         --gp-hover: rgba(91, 89, 84, 0.08);
         --gp-hover-strong: rgba(91, 89, 84, 0.14);
         --gp-surface: #ede9e0;
         --gp-surface-2: #f5f2ea;
         --gp-shadow: 0 20px 48px -12px rgba(27, 26, 24, 0.35);
         --gp-radius-xs: 8px;
-        --gp-radius-sm: 10px;
-        --gp-radius: 12px;
-        --gp-radius-lg: 16px;
+        --gp-radius-sm: 8px;
+        --gp-radius: 14px;
+        --gp-radius-lg: 14px;
         --gp-radius-xl: 20px;
         --gp-radius-pill: 999px;
+        --gp-transition: .18s ease;
         --gp-accent: #1b1a18;
         --gp-on-accent: #ede9e0;
         --gp-accent-hover: rgba(27, 26, 24, 0.08);
@@ -753,7 +754,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-fg: #ede9e0;
         --gp-fg-muted: #c9c5bc;
         --gp-muted: #a4a19b;
-        --gp-border: rgba(237, 233, 224, 0.2);
+        --gp-border: rgba(237, 233, 224, 0.16);
         --gp-hover: rgba(237, 233, 224, 0.1);
         --gp-hover-strong: rgba(237, 233, 224, 0.16);
         --gp-surface: #1b1a18;
@@ -795,16 +796,15 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         align-items: center;
         justify-content: space-between;
         font-size: 19px;
-        font-weight: 700;
-        font-family: var(--gp-font-serif);
+        font-weight: 800;
+        font-family: var(--gp-font);
         letter-spacing: 0.01em;
         color: var(--gp-fg);
       }
       .gp-modal-header [data-gp-modal-title] {
-        font-family: "Fraunces", serif;
-        font-weight: 700;
+        font-family: var(--gp-font);
+        font-weight: 800;
         font-style: normal;
-        font-variation-settings: normal;
         letter-spacing: 0;
         text-rendering: optimizeLegibility;
         -webkit-font-smoothing: antialiased;
@@ -821,7 +821,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        transition: background 120ms ease;
+        transition: background var(--gp-transition);
       }
       .gp-modal-close svg { width: 18px; height: 18px; }
       .gp-modal-close:hover { background: var(--gp-hover); }
@@ -834,7 +834,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         padding: 8px; /* Uniform padding for consistent margins */
         position: relative;
         background: var(--gp-input-bg);
-        transition: border-color 120ms ease, box-shadow 120ms ease;
+        transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .gp-namebox:focus-within {
         border-color: var(--gp-focus);
@@ -850,7 +850,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        transition: box-shadow 120ms ease, background 120ms ease;
+        transition: box-shadow var(--gp-transition), background var(--gp-transition);
         color: var(--gp-fg);
       }
       .gp-icon-button:hover { background: var(--gp-hover); }
@@ -874,7 +874,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         top: calc(100% + 10px);
         left: 0;
         background: var(--gp-surface);
-        border-radius: 20px;
+        border-radius: var(--gp-radius-xl);
         border: 1px solid var(--gp-border);
         box-shadow: 0 14px 38px rgba(27, 26, 24, 0.24), 0 4px 12px rgba(27, 26, 24, 0.12);
         padding: 16px;
@@ -892,23 +892,23 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 40px;
         height: 40px;
         border: 1.5px solid var(--gp-border);
-        border-radius: 12px;
+        border-radius: var(--gp-radius);
         background: var(--gp-surface);
         display: inline-flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        transition: all 150ms cubic-bezier(0.4, 0, 0.2, 1);
+        transition: border-color var(--gp-transition), background var(--gp-transition), transform var(--gp-transition), box-shadow var(--gp-transition);
         color: var(--gp-fg);
       }
       .gp-icon-option:hover {
         border-color: var(--gp-focus);
         background: var(--gp-accent-hover);
-        transform: scale(1.05);
+        transform: translateY(-1px);
         box-shadow: 0 2px 8px rgba(27, 26, 24, 0.18);
       }
       .gp-icon-option:active {
-        transform: scale(0.95);
+        transform: translateY(0);
       }
       .gp-icon-option svg { width: 18px; height: 18px; }
       .gp-icon-option:focus-visible {
@@ -932,15 +932,18 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         font-size: 13px;
         color: var(--gp-fg);
         background: var(--gp-surface);
-        transition: background 120ms ease, border-color 120ms ease, box-shadow 120ms ease;
+        transition: background var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition), transform var(--gp-transition);
         line-height: 1;
         height: 32px;
         font-weight: 500;
       }
       .gp-template-chip:hover {
-        background: var(--gp-hover);
-        border-color: rgba(91, 89, 84, 0.36);
+        border-color: var(--gp-focus);
+        background: var(--gp-accent-hover);
+        transform: translateY(-1px);
+        box-shadow: 0 2px 8px rgba(27, 26, 24, 0.18);
       }
+      .gp-template-chip:active { transform: translateY(0); }
       .gp-template-chip svg { width: 16px; height: 16px; }
       .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(217, 124, 93, 0.28); }
       
@@ -957,14 +960,14 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border-radius: 50%;
         border: 2px solid transparent;
         cursor: pointer;
-        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        transition: transform var(--gp-transition), box-shadow var(--gp-transition);
         padding: 0;
         position: relative;
         /* 立体磨砂效果基础 */
         overflow: hidden;
       }
       .gp-color-dot:hover {
-        transform: scale(1.12);
+        transform: translateY(-1px);
       }
       .gp-color-dot.selected {
         box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px currentColor;
@@ -1001,19 +1004,20 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         justify-content: flex-end;
       }
       .gp-primary {
-        background: var(--gp-accent);
-        color: var(--gp-on-accent, #fff);
-        border: none;
+        background: var(--gp-focus);
+        color: #1b1a18;
+        border: 1px solid var(--gp-focus);
         padding: 8px 20px;
-        border-radius: 12px; /* Rounded rectangle instead of pill - cleaner edges */
+        border-radius: var(--gp-radius-pill);
         cursor: pointer;
-        font-weight: 600;
-        box-shadow: 0 8px 18px -10px rgba(27, 26, 24, 0.55);
-        transition: filter 120ms ease, transform 100ms ease;
+        font-weight: 700;
+        box-shadow: 0 8px 18px -10px rgba(217, 124, 93, 0.55);
+        transition: filter var(--gp-transition), transform var(--gp-transition);
         height: 40px;
         min-width: 140px;
+        overflow: hidden;
       }
-      .gp-primary:hover { filter: brightness(0.98); }
+      .gp-primary:hover { filter: brightness(1.03); transform: translateY(-1px); }
       .gp-primary:disabled {
         background: var(--gp-hover-strong);
         color: var(--gp-muted);
@@ -1024,7 +1028,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         position: fixed;
         min-width: 220px;
         background: var(--gp-surface);
-        border-radius: 16px; /* Outer */
+        border-radius: var(--gp-radius-xl);
         box-shadow: 0 8px 20px -10px rgba(27, 26, 24, 0.35), 0 2px 8px rgba(27, 26, 24, 0.16);
         border: 1px solid var(--gp-border);
         padding: 6px; /* Padding: 6px */
@@ -1040,13 +1044,13 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         justify-content: space-between;
         gap: 12px;
         padding: 6px 12px; /* Tighter padding */
-        border-radius: 10px; /* Inner: 16 - 6 = 10 */
+        border-radius: var(--gp-radius); /* Inner: 20 - 6 ~= 14 */
         cursor: pointer;
         font-size: 14px;
         font-weight: 500;
         color: var(--gp-fg);
         line-height: 20px;
-        transition: all 120ms ease;
+        transition: background var(--gp-transition), color var(--gp-transition);
       }
       .gp-menu-item:hover {
         background: var(--gp-hover);
@@ -1081,7 +1085,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         position: fixed;
         min-width: 180px;
         background: var(--gp-surface);
-        border-radius: 12px;
+        border-radius: var(--gp-radius-lg);
         box-shadow: 0 8px 20px -10px rgba(27, 26, 24, 0.35), 0 2px 8px rgba(27, 26, 24, 0.16);
         border: 1px solid var(--gp-border);
         padding: 4px;
@@ -1094,7 +1098,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         gap: 8px;
         padding: 6px 10px;
         font-size: 13px;
-        border-radius: 8px;
+        border-radius: var(--gp-radius-sm);
       }
       .gp-submenu .gp-menu-item svg {
         width: 16px;
