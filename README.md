@@ -20,7 +20,7 @@ English | [中文](README.zh-CN.md)
 ## Supported Browsers
 
 - Chrome (or other Chromium-based browsers)
-- Firefox: in development
+- Firefox
 
 ## Load Extension Locally
 
@@ -34,3 +34,15 @@ English | [中文](README.zh-CN.md)
 - Data is stored locally in `chrome.storage`
 - Core features do not require an external backend
 - Prompts and projects are not proactively uploaded by this extension
+
+## Release Assets
+
+Each GitHub Release publishes both packages:
+
+- `gemini-project-extension-store.zip` (Chrome/Chromium store upload)
+- `gemini-project-extension-firefox.zip` (Firefox AMO upload)
+
+To create a release package locally:
+
+- `npm run package:store`
+- `npm run package:firefox`

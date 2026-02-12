@@ -34,7 +34,10 @@ if ($manifest.background -and $manifest.background.type) {
 $manifest | Add-Member -NotePropertyName browser_specific_settings -NotePropertyValue @{
   gecko = @{
     id = "gemini-projects@linyushuo0818.github"
-    strict_min_version = "121.0"
+    strict_min_version = "142.0"
+    data_collection_permissions = @{
+      required = @("none")
+    }
   }
 } -Force
 

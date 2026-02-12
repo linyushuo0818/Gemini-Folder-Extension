@@ -19,7 +19,6 @@ CHANGELOG.md
 *.7z
 *.tar
 *.gz
-!firefox/gemini-project-extension-firefox.zip
 
 # OS / editor
 .DS_Store
