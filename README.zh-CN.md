@@ -16,7 +16,7 @@
 ## 支持浏览器
 
 - Chrome（或其他 Chromium 内核浏览器）
-- Firefox：开发中
+- Firefox（已支持）
 
 ## 本地加载扩展
 
