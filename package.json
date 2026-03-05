@@ -1,7 +1,7 @@
 {
   "name": "gemini-project-extension",
   "private": true,
-  "version": "0.1.52",
+  "version": "0.1.53",
   "type": "module",
   "scripts": {
     "build": "vite build",
@@ -16,3 +16,4 @@
     "vite": "^5.0.0"
   }
 }
+

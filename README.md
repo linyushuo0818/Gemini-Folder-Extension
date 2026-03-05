@@ -49,6 +49,9 @@ To create a release package locally:
 
 ## Recent UI Updates
 
+- `0.1.53` (2026-02-12)
+- Added per-message time labels under user prompts in both Gemini and ChatGPT views.
+
 - `0.1.52` (2026-02-12)
 - Create Project modal title switched to bold sans-serif style.
 - Template chips now share the same hover feedback language as icon options.

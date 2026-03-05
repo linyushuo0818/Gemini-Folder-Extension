@@ -1,5 +1,10 @@
 ﻿import { Project } from '../../shared/types';
-import { getConversationIdFromChatRow } from './anchors';
+import {
+  findChatsListContainer,
+  findChatsSection,
+  findSidebarRoot,
+  getConversationIdFromChatRow
+} from './anchors';
 import { renderIconSvg } from '../ui/icons';
 
 const DEBUG = true;
@@ -9,6 +14,9 @@ const MENU_ITEM_ATTR = 'data-gp-item';
 const MENU_DIVIDER_ATTR = 'data-gp-divider';
 const MENU_OBSERVER_ATTR = 'data-gp-menu-observer';
 const MENU_TOKENS = ['share conversation', 'share', 'pin', 'rename', 'delete', '分享', '置顶', '重命名', '删除'];
+const PIN_ACTION_TOKENS = ['pin', '置顶', '置頂', '固定'];
+const RENAME_ACTION_TOKENS = ['rename', '重命名', '重新命名'];
+const DELETE_ACTION_TOKENS = ['delete', '删除', '刪除'];
 
 interface MenuTheme {
   fontFamily: string;
@@ -94,6 +102,36 @@ function describeEl(el: HTMLElement | null): string {
 function menuRectInfo(el: HTMLElement): string {
   const rect = el.getBoundingClientRect();
   return `${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)}`;
+}
+
+function hasMenuToken(container: HTMLElement, tokens: string[]): boolean {
+  const nodes = container.querySelectorAll<HTMLElement>('div, button, [role="menuitem"]');
+  for (const node of Array.from(nodes)) {
+    const text = (node.textContent || '').toLowerCase();
+    if (tokens.some((token) => text.includes(token))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function hasRequiredChatActions(container: HTMLElement): boolean {
+  return (
+    hasMenuToken(container, PIN_ACTION_TOKENS) &&
+    hasMenuToken(container, RENAME_ACTION_TOKENS) &&
+    hasMenuToken(container, DELETE_ACTION_TOKENS)
+  );
+}
+
+function isRowInChatsList(row: HTMLElement | null): boolean {
+  if (!row) return false;
+  const sidebarRoot = findSidebarRoot();
+  if (!sidebarRoot) return false;
+  const chatsHeader = findChatsSection(sidebarRoot);
+  if (!chatsHeader) return false;
+  const chatsList = findChatsListContainer(chatsHeader);
+  if (!chatsList) return false;
+  return chatsList.contains(row);
 }
 
 function clearActiveRow() {
@@ -205,6 +243,13 @@ export function isChatKebabButton(el: HTMLElement): boolean {
   const button = el.closest('button,[role="button"],div,[aria-label]') as HTMLElement | null;
   if (!button) return false;
   const row = findChatRowFromTarget(button);
+  if (!isRowInChatsList(row)) {
+    return false;
+  }
+  const conversationId = getConversationIdFromChatRow(row);
+  if (!conversationId) {
+    return false;
+  }
   const labelRaw = button.getAttribute('aria-label') || button.getAttribute('title') || '';
   const label = labelRaw.toLowerCase();
   const hasMenuAttr = button.getAttribute('aria-haspopup') === 'menu' || button.getAttribute('aria-expanded') === 'true';
@@ -219,12 +264,12 @@ export function isChatKebabButton(el: HTMLElement): boolean {
     'open menu for conversation actions',
     '更多',
     '菜单',
-    '选项'
+    '选项',
+    '菜單',
+    '選單',
+    '選項'
   ].some((token) => label.includes(token));
-  const hasAnchor = !!row?.querySelector?.('a[href]');
-  const inSidebar = !!button.closest('nav, aside, [role="navigation"], [role="complementary"]');
-  if (labelHit && inSidebar) return true;
-  return (hasMenuAttr || hasDots || labelHit) && (hasAnchor || inSidebar);
+  return hasMenuAttr || hasDots || labelHit;
 }
 
 export function waitForMenuRoot(targetEl?: HTMLElement): Promise<HTMLElement | null> {
@@ -314,7 +359,7 @@ function findBestMenuRoot(targetEl?: HTMLElement): HTMLElement | null {
     candidates.push(...Array.from(root.querySelectorAll<HTMLElement>('[role="menu"], [role="listbox"]')));
   });
 
-  const visibleCandidates = candidates.filter((menu) => isMenuRootVisible(menu));
+  const visibleCandidates = candidates.filter((menu) => isMenuRootVisible(menu) && isGeminiChatMenu(menu));
   if (!visibleCandidates.length) return null;
 
   const byHits = visibleCandidates
@@ -348,7 +393,7 @@ function findMenuFromPoint(targetEl: HTMLElement): HTMLElement | null {
   const el = document.elementFromPoint(x, y) as HTMLElement | null;
   if (!el) return null;
   const menu = el.closest<HTMLElement>('[role="menu"], [role="listbox"]');
-  if (menu && isMenuRootVisible(menu)) {
+  if (menu && isMenuRootVisible(menu) && isGeminiChatMenu(menu)) {
     return menu;
   }
   return null;
@@ -391,10 +436,11 @@ function getZIndex(element: HTMLElement): number {
 }
 
 export function isGeminiChatMenu(root: HTMLElement): boolean {
-  const hits = countMenuTokens(root, MENU_TOKENS);
-  if (hits >= 2) return true;
+  if (hasRequiredChatActions(root)) {
+    return true;
+  }
   const items = root.querySelectorAll('[role="menuitem"], button, div');
-  return (root.getAttribute('role') === 'menu' || root.getAttribute('role') === 'listbox') && items.length >= 3 && items.length <= 12;
+  return false;
 }
 
 export function getConversationIdFromActiveRow(targetEl: HTMLElement): string | null {
@@ -412,7 +458,7 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
 
   let menuRoot = findMenuContainer(root);
   menuRoot = findActualMenuRoot(menuRoot);
-  if (menuRoot === document.body || menuRoot === document.documentElement) {
+  if (menuRoot === document.body || menuRoot === document.documentElement || !isGeminiChatMenu(menuRoot)) {
     return false;
   }
   currentMenuRoot = menuRoot;
@@ -627,7 +673,7 @@ function isMenuRootVisible(element: HTMLElement): boolean {
 }
 
 function findMenuContainer(root: HTMLElement): HTMLElement {
-  if (isMenuRootVisible(root) && countMenuTokens(root, MENU_TOKENS) >= 2) {
+  if (isMenuRootVisible(root) && isGeminiChatMenu(root)) {
     return root;
   }
   const candidates = Array.from(root.querySelectorAll<HTMLElement>('div, button, [role="menuitem"]'));
@@ -638,7 +684,7 @@ function findMenuContainer(root: HTMLElement): HTMLElement {
     }
     let current: HTMLElement | null = node.parentElement;
     while (current && current !== document.body) {
-      if (countMenuTokens(current, MENU_TOKENS) >= 2 && isMenuRootVisible(current)) {
+      if (isGeminiChatMenu(current) && isMenuRootVisible(current)) {
         return current;
       }
       current = current.parentElement;
@@ -987,12 +1033,12 @@ function pickMenuItemForStyle(container: HTMLElement): HTMLElement | null {
 
 function findActualMenuRoot(root: HTMLElement): HTMLElement {
   if (root.getAttribute('role') === 'menu' || root.getAttribute('role') === 'listbox') {
-    if (countMenuTokens(root, MENU_TOKENS) >= 2) {
+    if (isGeminiChatMenu(root)) {
       return root;
     }
   }
   const candidates = Array.from(root.querySelectorAll<HTMLElement>('[role="menu"], [role="listbox"]'));
-  const visible = candidates.filter((menu) => isMenuRootVisible(menu));
+  const visible = candidates.filter((menu) => isMenuRootVisible(menu) && isGeminiChatMenu(menu));
   if (!visible.length) return root;
 
   const best = visible

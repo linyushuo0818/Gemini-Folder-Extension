@@ -142,6 +142,7 @@ function ensureOverlayHost(): { host: HTMLElement; shadow: ShadowRoot } {
         .gp-layer {
           position: absolute;
           inset: 0;
+          pointer-events: none;
         }
       </style>
       <div class="gp-overlay">

@@ -12,6 +12,7 @@ import {
 import { attachChatMenuEnhancer } from './dom/menus';
 import { createProjectsPanel } from './ui/projectsPanel';
 import * as prompts from './prompts';
+import { initGeminiResponseFolding } from './gemini/responseFolding';
 
 import { initChatGPT } from './chatgpt';
 
@@ -108,18 +109,48 @@ async function bootstrap() {
     return;
   }
 
-  const response = await sendMessage({ type: 'getState' });
-  if (response.ok && response.state) {
-    state.projects = response.state.projects;
-    state.chatIndex = new Map(Object.entries(response.state.chatIndex));
-    state.uiPrefs = response.state.uiPrefs || { projectsCollapsed: false };
+  try {
+    const response = await withTimeout(sendMessage({ type: 'getState' }), 1500);
+    if (response?.ok && response.state) {
+      state.projects = response.state.projects;
+      state.chatIndex = new Map(Object.entries(response.state.chatIndex));
+      state.uiPrefs = response.state.uiPrefs || { projectsCollapsed: false };
+    }
+  } catch (error) {
+    // Do not block UI features when background messaging fails temporarily.
+    // eslint-disable-next-line no-console
+    console.warn('[gemini-projects] getState failed, continue bootstrap with defaults', error);
   }
 
-  observeSidebar();
-  attachChatClickTracker();
+  runStage('observeSidebar', () => observeSidebar());
+  runStage('attachChatClickTracker', () => attachChatClickTracker());
+  runStage('initGeminiResponseFolding', () => initGeminiResponseFolding());
+  runStage('prompts.bootstrap', () => prompts.bootstrap());
+}
 
-  // Initialize Prompts Feature
-  prompts.bootstrap();
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: number | null = null;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = window.setTimeout(() => {
+      reject(new Error(`timeout(${timeoutMs}ms)`));
+    }, timeoutMs);
+  });
+
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== null) {
+      window.clearTimeout(timer);
+    }
+  });
+}
+
+function runStage(name: string, fn: () => void): void {
+  try {
+    fn();
+  } catch (error) {
+    // Stage-level isolation: one feature failure must not block others.
+    // eslint-disable-next-line no-console
+    console.error(`[gemini-projects] bootstrap stage failed: ${name}`, error);
+  }
 }
 
 function observeSidebar() {
@@ -356,5 +387,9 @@ async function handleMoveChatToProject(conversationId: string, projectId: string
   await handleMoveChat(conversationId, projectId);
 }
 
-bootstrap().catch((error) => log('bootstrap failed', error));
+bootstrap().catch((error) => {
+  // eslint-disable-next-line no-console
+  console.error('[gemini-projects] bootstrap failed', error);
+  log('bootstrap failed', error);
+});
 

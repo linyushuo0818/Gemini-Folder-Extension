@@ -786,7 +786,9 @@ export class PromptPicker {
         height: 36px;
         border-radius: var(--gp-radius-pill);
         border: 1px solid var(--gp-border);
-        background: var(--gp-bg-glass);
+        background: rgba(237, 233, 224, 0.82);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         color: var(--gp-fg);
         font-family: var(--gp-font-sans);
         font-size: 12px;
@@ -798,11 +800,12 @@ export class PromptPicker {
         justify-content: center;
         cursor: pointer;
         box-shadow: var(--gp-shadow-sm);
-        transition: background var(--gp-transition), transform var(--gp-transition);
+        transition: background var(--gp-transition), transform var(--gp-transition), box-shadow var(--gp-transition);
       }
       .btn-utility:hover {
-        background: var(--gp-bg-hover);
+        background: rgba(237, 233, 224, 0.95);
         transform: translateY(-1px);
+        box-shadow: 0 3px 10px rgba(27, 26, 24, 0.12);
       }
       .btn-new {
         width: 40px;
