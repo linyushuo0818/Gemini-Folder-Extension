@@ -20,7 +20,6 @@ English | [中文](README.zh-CN.md)
 ## Supported Browsers
 
 - Chrome (or other Chromium-based browsers)
-- Firefox
 
 ## Load Extension Locally
 
@@ -37,28 +36,27 @@ English | [中文](README.zh-CN.md)
 
 ## Release Assets
 
-Each GitHub Release publishes both packages:
+Each GitHub Release publishes:
 
 - `gemini-project-extension-store.zip` (Chrome/Chromium store upload)
-- `gemini-project-extension-firefox.zip` (Firefox AMO upload)
 
 To create a release package locally:
 
 - `npm run package:store`
-- `npm run package:firefox`
 
 ## Recent UI Updates
 
+- `0.1.55` (2026-05-25)
+  - New two-pass build pipeline (`build.mjs`): content script → IIFE, background → ES module.
+  - Merged `gemini-response-fold-lite.js` into the main content bundle.
+  - Added projects interaction bridge for shadow DOM hover/click handling.
+  - Improved prompt picker layout and injector anchor detection.
+  - Refined message timestamps and context-menu enhancer.
+
 - `0.1.53` (2026-02-12)
-- Added per-message time labels under user prompts in both Gemini and ChatGPT views.
+  - Added per-message time labels under user prompts in both Gemini and ChatGPT views.
 
 - `0.1.52` (2026-02-12)
-- Create Project modal title switched to bold sans-serif style.
-- Template chips now share the same hover feedback language as icon options.
-- Primary Create button changed to warm orange and pill radius.
-
-- `0.1.50` (2026-02-12)
-- Prompt picker radius tokens aligned to `20 / 14 / 8 / 999`.
-- Unified core interaction transitions to `.18s ease`.
-- Picker and modal open/close animations switched from scale-based to `opacity + translateY`.
-- Folding toggle button styles now use CSS variables for light/dark themes, reducing hard-coded colors.
+  - Create Project modal title switched to bold sans-serif style.
+  - Template chips now share the same hover feedback language as icon options.
+  - Primary Create button changed to warm orange and pill radius.
