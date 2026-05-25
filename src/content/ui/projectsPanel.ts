@@ -325,7 +325,7 @@ export function renderProjectsSection(
                           <a class="gp-chat-link" href="${escapeHtml(chat.lastUrl || `/app/${chat.conversationId}`)}">
                             <span class="gp-chat-title">${escapeHtml(chat.title || 'Untitled chat')}</span>
                           </a>
-                          <button class="gp-chat-kebab" data-gp-action="chat-menu" aria-label="Chat menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><circle cx="12" cy="4" r="2.5"/><circle cx="12" cy="12" r="2.5"/><circle cx="12" cy="20" r="2.5"/></svg></button>
+                          <button class="gp-chat-kebab" data-gp-action="chat-menu" aria-label="Chat menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
                         </div>
                       `
             )
@@ -341,7 +341,7 @@ export function renderProjectsSection(
           <div class="gp-row gp-project-row ${isExpanded ? 'active' : ''}" data-gp-action="toggle-project">
             <span class="gp-icon">${renderIconSvg(project.icon, project.color)}</span>
             <span class="gp-label">${escapeHtml(project.name)}</span>
-            <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><circle cx="12" cy="5" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="12" cy="19" r="2"/></svg></button>
+            <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
           </div>
           ${chatRows}
         </div>
@@ -370,20 +370,26 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         /* Native Fonts & Colors (Gemini) */
         --gp-font: "Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif;
         --gp-fg: #1f1f1f;
-        --gp-fg-muted: #444746;
-        --gp-bg-hover: rgba(68, 71, 70, 0.08); 
-        --gp-bg-active: rgba(68, 71, 70, 0.12);
+        --gp-fg-muted: #5f6368;
+        --gp-section: rgba(0, 0, 0, 0.54);
+        --gp-bg-hover: rgba(31, 31, 31, 0.06); 
+        --gp-bg-active: #f1f3f4;
         
         --gp-radius: 24px;
         --gp-spacing-row: 0px;
         
         display: block;
-        padding-top: 12px;
+        width: 100%;
+        pointer-events: auto;
+        position: relative;
+        isolation: isolate;
+        padding-top: 8px;
       }
       
       :host(.dark) {
         --gp-fg: #e3e3e3;
-        --gp-fg-muted: #c4c7c5;
+        --gp-fg-muted: #bdc1c6;
+        --gp-section: rgba(255, 255, 255, 0.62);
         --gp-bg-hover: rgba(255, 255, 255, 0.08); 
         --gp-bg-active: rgba(255, 255, 255, 0.12);
       }
@@ -398,98 +404,92 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         gap: var(--gp-spacing-row);
         background: transparent;
         padding: 0;
+        pointer-events: auto;
       }
 
-      /* GPT-Style Header (Projects v) */
       .gp-title {
         display: flex;
         align-items: center;
         justify-content: flex-start;
-        gap: 2px; /* Close gap */
-        
+        gap: 6px;
         margin: 0;
-        /* Reverted to 12px as 16px was "Too Right" */
-        padding: 0 12px; 
-        
-        height: 44px;
-        color: var(--gp-fg); 
+        padding: 0 14px; 
+        height: 32px;
+        color: var(--gp-section); 
         font-family: var(--gp-font);
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 20px;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 17px;
         cursor: pointer;
         user-select: none;
-        border-radius: var(--gp-radius);
+        border-radius: 0;
         transition: background 0.1s ease;
       }
       
       .gp-title:hover {
-        background: var(--gp-bg-hover);
+        background: transparent;
+        color: var(--gp-fg-muted);
       }
 
       .gp-chevron {
-        width: 20px;
-        height: 20px;
+        width: 18px;
+        height: 18px;
         display: flex;
         align-items: center;
         justify-content: center;
         transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
         color: var(--gp-fg-muted);
-        opacity: 0.6;
+        opacity: 0.75;
       }
       
       .gp-chevron svg {
-        width: 18px; 
-        height: 18px;
-        /* Rounded Stroke Style */
+        width: 16px; 
+        height: 16px;
         fill: none;
       }
 
-      /* When collapsed, arrow points right (like text flow) 
-         or logic: Collapsed = Arrow Right ( > ), Expanded = Arrow Down ( v )
-         Currently: Expanded by default.
-         If default Markup has arrow pointing down:
-      */
       .gp-title.collapsed .gp-chevron {
-        transform: rotate(-90deg); /* Points Right */
+        transform: rotate(-90deg);
       }
 
       .gp-list-container {
         display: flex;
         flex-direction: column;
-        gap: 0; /* Tightest packing */
+        gap: 0;
         overflow: hidden;
-        padding-top: 2px; /* Space between header and list */
+        padding-top: 0;
       }
       
       .gp-list-container.hidden {
         display: none;
       }
 
-      /* Standard Row (Floating Pill style) */
       .gp-row {
         display: flex;
         align-items: center;
-        gap: 12px;
-        
-        /* Removed margin to align text with Gems */
-        margin: 0;
-        padding: 0 16px; /* Text/Icon starts at 16+12=28px from screen edge */
-        
-        height: 48px;
+        gap: 8px;
+        margin: 0 0 0 6px;
+        padding: 0 8px;
+        width: calc(100% - 6px);
+        height: 32px;
         border-radius: var(--gp-radius);
         text-decoration: none;
         color: var(--gp-fg);
         cursor: pointer;
         font-family: var(--gp-font);
-        font-size: 14px;
-        font-weight: 500;
-        line-height: 20px;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 17px;
         position: relative;
         transition: background 0.1s ease;
+        pointer-events: auto;
       }
 
       .gp-row:hover {
+        background: var(--gp-bg-hover);
+      }
+
+      .gp-row.gp-force-hover {
         background: var(--gp-bg-hover);
       }
       
@@ -505,10 +505,13 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 17px;
       }
 
       .gp-new .gp-icon {
-        color: var(--gp-fg);
+        color: #3c4043;
       }
 
       .gp-icon {
@@ -519,9 +522,15 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         justify-content: center;
         flex-shrink: 0;
         color: var(--gp-fg-muted);
+        line-height: 0;
       }
       
-      .gp-icon svg { width: 18px; height: 18px; }
+      .gp-icon svg {
+        width: 20px;
+        height: 20px;
+        display: block;
+        flex: 0 0 20px;
+      }
 
       .gp-kebab {
         width: 32px;
@@ -546,29 +555,28 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       }
       
       .gp-row:hover .gp-kebab, 
+      .gp-row.gp-force-hover .gp-kebab,
       .gp-kebab:focus {
         opacity: 1;
       }
       
       .gp-kebab:hover {
-        background: rgba(68, 71, 70, 0.12);
+        background: var(--gp-bg-active);
         color: var(--gp-fg);
       }
 
       .gp-project-chats {
         display: flex;
         flex-direction: column;
-        gap: 2px;
+        gap: 0;
         position: relative;
-        /* Tree connector line - vertical bar on left side */
-        margin-left: 28px; /* Aligns with icon center: 16px padding + 12px (half of 24px icon) */
-        padding-left: 24px; /* Space for the line */
-        border-left: 1.5px solid rgba(68, 71, 70, 0.15); /* Subtle connector line */
+        margin-left: 30px;
+        padding-left: 20px;
+        border-left: 1px solid rgba(60, 64, 67, 0.18);
       }
 
       .gp-chat-row {
-        height: 36px;
-        /* Scaled padding (16px * 0.75 = 12px) to match project row proportions */
+        height: 32px;
         padding: 0 12px 0 12px;
         margin: 0;
         display: flex;
@@ -577,17 +585,26 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         color: var(--gp-fg-muted);
         font-family: var(--gp-font);
         font-size: 13px;
-        font-weight: 500;
+        font-weight: 400;
         line-height: 20px;
         border-radius: var(--gp-radius);
         transition: background 0.1s;
+        pointer-events: auto;
       }
       
       .gp-chat-row:hover {
         background: var(--gp-bg-hover);
       }
+
+      .gp-chat-row.gp-force-hover {
+        background: var(--gp-bg-hover);
+      }
       
       .gp-chat-row:hover .gp-chat-link {
+        color: var(--gp-fg);
+      }
+
+      .gp-chat-row.gp-force-hover .gp-chat-link {
         color: var(--gp-fg);
       }
 
@@ -599,6 +616,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         height: 100%;
         text-decoration: none;
         color: inherit;
+        pointer-events: auto;
       }
 
       .gp-chat-title {
@@ -629,12 +647,13 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         height: 18px;
       }
       
-      .gp-chat-row:hover .gp-chat-kebab {
+      .gp-chat-row:hover .gp-chat-kebab,
+      .gp-chat-row.gp-force-hover .gp-chat-kebab {
         opacity: 1;
       }
       
       .gp-chat-kebab:hover {
-        background: rgba(68, 71, 70, 0.12);
+        background: var(--gp-bg-active);
         color: var(--gp-fg);
       }
       
@@ -642,7 +661,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         padding: 8px 16px 8px 52px;
         margin: 0;
         font-size: 12px;
-        color: #8e918f;
+        color: var(--gp-section);
         font-style: italic;
       }
     `;
@@ -670,7 +689,7 @@ function buildPanelMarkup(state: RuntimeState): string {
       <!-- Collapsible Container -->
       <div class="gp-list-container ${collapsed ? 'hidden' : ''}">
         <div class="gp-row gp-new" data-gp-action="new-project">
-          <span class="gp-icon"><svg viewBox="0 0 24 24" width="18" height="18" style="color: #444746;"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+          <span class="gp-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
           <span class="gp-label">New Project</span>
         </div>
         ${renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds)}
@@ -719,23 +738,21 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
     const style = document.createElement('style');
     style.dataset.gp = 'overlay';
     style.textContent = `
-      @import url('https://fonts.googleapis.com/css2?family=Fraunces:wght@400;500;600;700;800;900&display=swap');
-
       :host {
         all: initial;
         font-family: inherit;
-        color: var(--gp-fg, #1b1a18);
-        --gp-font: "Manrope", "Styrene A", "Styrene B", "Inter", "Segoe UI", sans-serif;
-        --gp-font-serif: "Fraunces", "Times New Roman", serif;
-        --gp-fg: #1b1a18;
-        --gp-fg-muted: #5b5954;
-        --gp-muted: #838079;
-        --gp-border: rgba(91, 89, 84, 0.08);
-        --gp-hover: rgba(91, 89, 84, 0.08);
-        --gp-hover-strong: rgba(91, 89, 84, 0.14);
-        --gp-surface: #ede9e0;
-        --gp-surface-2: #f5f2ea;
-        --gp-shadow: 0 20px 48px -12px rgba(27, 26, 24, 0.35);
+        color: var(--gp-fg, #1f1f1f);
+        --gp-font: "Google Sans Flex", "Google Sans", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+        --gp-font-serif: var(--gp-font);
+        --gp-fg: #1f1f1f;
+        --gp-fg-muted: #5f6368;
+        --gp-muted: #747775;
+        --gp-border: rgba(60, 64, 67, 0.12);
+        --gp-hover: #f1f3f4;
+        --gp-hover-strong: rgba(26, 115, 232, 0.12);
+        --gp-surface: #ffffff;
+        --gp-surface-2: #f8fafd;
+        --gp-shadow: 0 16px 40px rgba(60, 64, 67, 0.18), 0 1px 3px rgba(60, 64, 67, 0.16);
         --gp-radius-xs: 8px;
         --gp-radius-sm: 8px;
         --gp-radius: 14px;
@@ -743,34 +760,36 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-radius-xl: 20px;
         --gp-radius-pill: 999px;
         --gp-transition: .18s ease;
-        --gp-accent: #1b1a18;
-        --gp-on-accent: #ede9e0;
-        --gp-accent-hover: rgba(27, 26, 24, 0.08);
-        --gp-focus: #d97c5d;
-        --gp-input-bg: rgba(251, 250, 246, 0.76);
+        --gp-accent: #1a73e8;
+        --gp-on-accent: #ffffff;
+        --gp-accent-hover: rgba(26, 115, 232, 0.10);
+        --gp-focus: #1a73e8;
+        --gp-focus-ring: rgba(26, 115, 232, 0.16);
+        --gp-input-bg: #f8fafd;
       }
       
       :host(.dark) {
-        --gp-fg: #ede9e0;
-        --gp-fg-muted: #c9c5bc;
-        --gp-muted: #a4a19b;
-        --gp-border: rgba(237, 233, 224, 0.16);
-        --gp-hover: rgba(237, 233, 224, 0.1);
-        --gp-hover-strong: rgba(237, 233, 224, 0.16);
-        --gp-surface: #1b1a18;
-        --gp-surface-2: #23201d;
-        --gp-shadow: 0 22px 52px -14px rgba(0, 0, 0, 0.72);
-        --gp-accent: #ede9e0;
-        --gp-on-accent: #1b1a18;
-        --gp-accent-hover: rgba(237, 233, 224, 0.12);
-        --gp-focus: #d97c5d;
-        --gp-input-bg: rgba(35, 33, 30, 0.84);
+        --gp-fg: #e8eaed;
+        --gp-fg-muted: #bdc1c6;
+        --gp-muted: #9aa0a6;
+        --gp-border: rgba(232, 234, 237, 0.16);
+        --gp-hover: rgba(255, 255, 255, 0.08);
+        --gp-hover-strong: rgba(138, 180, 248, 0.18);
+        --gp-surface: #202124;
+        --gp-surface-2: #292a2d;
+        --gp-shadow: 0 24px 52px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.36);
+        --gp-accent: #8ab4f8;
+        --gp-on-accent: #202124;
+        --gp-accent-hover: rgba(138, 180, 248, 0.18);
+        --gp-focus: #8ab4f8;
+        --gp-focus-ring: rgba(138, 180, 248, 0.22);
+        --gp-input-bg: rgba(41, 42, 45, 0.92);
       }
 
       .gp-modal-backdrop {
         position: fixed;
         inset: 0;
-        background: rgba(27, 26, 24, 0.34);
+        background: rgba(32, 33, 36, 0.24);
         display: none;
         align-items: center;
         justify-content: center;
@@ -838,7 +857,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-namebox:focus-within {
         border-color: var(--gp-focus);
-        box-shadow: 0 0 0 2px rgba(217, 124, 93, 0.22);
+        box-shadow: 0 0 0 3px var(--gp-focus-ring);
       }
       .gp-icon-button {
         width: 36px;
@@ -857,7 +876,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-icon-button svg { width: 18px; height: 18px; }
       .gp-icon-button:focus-visible {
         outline: none;
-        box-shadow: 0 0 0 2px rgba(217, 124, 93, 0.3);
+        box-shadow: 0 0 0 3px var(--gp-focus-ring);
       }
       .gp-name-input {
         flex: 1;
@@ -876,7 +895,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         background: var(--gp-surface);
         border-radius: var(--gp-radius-xl);
         border: 1px solid var(--gp-border);
-        box-shadow: 0 14px 38px rgba(27, 26, 24, 0.24), 0 4px 12px rgba(27, 26, 24, 0.12);
+        box-shadow: 0 16px 36px rgba(60, 64, 67, 0.22);
         padding: 16px;
         display: none;
         z-index: 2147483647;
@@ -905,7 +924,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border-color: var(--gp-focus);
         background: var(--gp-accent-hover);
         transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(27, 26, 24, 0.18);
+        box-shadow: 0 2px 8px rgba(60, 64, 67, 0.14);
       }
       .gp-icon-option:active {
         transform: translateY(0);
@@ -913,7 +932,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-icon-option svg { width: 18px; height: 18px; }
       .gp-icon-option:focus-visible {
         outline: none;
-        box-shadow: 0 0 0 3px rgba(217, 124, 93, 0.35);
+        box-shadow: 0 0 0 3px var(--gp-focus-ring);
       }
       .gp-template-row {
         display: flex;
@@ -941,11 +960,11 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border-color: var(--gp-focus);
         background: var(--gp-accent-hover);
         transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(27, 26, 24, 0.18);
+        box-shadow: 0 2px 8px rgba(60, 64, 67, 0.14);
       }
       .gp-template-chip:active { transform: translateY(0); }
       .gp-template-chip svg { width: 16px; height: 16px; }
-      .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(217, 124, 93, 0.28); }
+      .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gp-focus-ring); }
       
       /* Color Picker Row */
       .gp-color-row {
@@ -1005,13 +1024,13 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-primary {
         background: var(--gp-focus);
-        color: #1b1a18;
+        color: var(--gp-on-accent);
         border: 1px solid var(--gp-focus);
         padding: 8px 20px;
         border-radius: var(--gp-radius-pill);
         cursor: pointer;
-        font-weight: 700;
-        box-shadow: 0 8px 18px -10px rgba(217, 124, 93, 0.55);
+        font-weight: 500;
+        box-shadow: 0 6px 16px rgba(60, 64, 67, 0.18);
         transition: filter var(--gp-transition), transform var(--gp-transition);
         height: 40px;
         min-width: 140px;
@@ -1029,7 +1048,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-width: 220px;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-xl);
-        box-shadow: 0 8px 20px -10px rgba(27, 26, 24, 0.35), 0 2px 8px rgba(27, 26, 24, 0.16);
+        box-shadow: 0 8px 20px rgba(60, 64, 67, 0.18);
         border: 1px solid var(--gp-border);
         padding: 6px; /* Padding: 6px */
         display: none;
@@ -1056,7 +1075,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         background: var(--gp-hover);
         transform: none;
       }
-      .gp-menu-item.danger { color: #b85a3e; }
+      .gp-menu-item.danger { color: #b3261e; }
       
       /* Chat menu item with icons */
       .gp-chat-menu .gp-menu-item {
@@ -1086,7 +1105,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-width: 180px;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-lg);
-        box-shadow: 0 8px 20px -10px rgba(27, 26, 24, 0.35), 0 2px 8px rgba(27, 26, 24, 0.16);
+        box-shadow: 0 8px 20px rgba(60, 64, 67, 0.18);
         border: 1px solid var(--gp-border);
         padding: 4px;
         display: none;
@@ -1108,8 +1127,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         position: fixed;
         bottom: 24px;
         right: 24px;
-        background: #1b1a18;
-        color: #ede9e0;
+        background: #202124;
+        color: #ffffff;
         padding: 10px 16px;
         border-radius: var(--gp-radius-pill);
         font-size: 13px;

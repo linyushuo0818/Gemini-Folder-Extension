@@ -12,11 +12,13 @@ const UPLOAD_HINTS = [
 ];
 const MIC_HINTS = ['mic', 'microphone', '\u9ea6\u514b\u98ce'];
 const SPEED_HINTS = ['fast', 'quick', '\u5feb\u901f'];
+const THINKING_HINTS = ['thinking', 'reasoning', '\u601d\u8003', '\u63a8\u7406'];
 
-// Google Material Icons Round - filled (sticky_note_2)
 const PROMPT_ICON_SVG = `
-<svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor" aria-hidden="true">
-  <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.89 2 1.99 2H15l6-6V5c0-1.1-.9-2-2-2ZM8 8h8c.55 0 1 .45 1 1s-.45 1-1 1H8c-.55 0-1-.45-1-1s.45-1 1-1Zm3 6H8c-.55 0-1-.45-1-1s.45-1 1-1h3c.55 0 1 .45 1 1s-.45 1-1 1Zm4 5.5V15h4.5L15 19.5Z"/>
+<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>
+  <path d="M8 8h8"/>
+  <path d="M8 12h5"/>
 </svg>
 `;
 
@@ -86,10 +88,31 @@ function isIgnoredControl(el: HTMLElement): boolean {
     const tag = normalize(el.tagName);
     if (containsAnyHint(label, MIC_HINTS) || containsAnyHint(text, MIC_HINTS)) return true;
     if (containsAnyHint(label, SPEED_HINTS) || containsAnyHint(text, SPEED_HINTS)) return true;
+    if (containsAnyHint(label, THINKING_HINTS) || containsAnyHint(text, THINKING_HINTS)) return true;
     if (nodeType.includes('speech_dictation_mic')) return true;
     if (tag === 'speech-dictation-mic-button') return true;
     if (el.closest('speech-dictation-mic-button')) return true;
     return false;
+}
+
+function collectNearComposerControls(composer: HTMLElement, root: ParentNode = document): HTMLElement[] {
+    const selectors = 'button, [role="button"], [mat-icon-button], [mat-button]';
+    const raw = Array.from(root.querySelectorAll<HTMLElement>(selectors));
+    const normalized = raw
+        .map((el) => {
+            const interactive = el.closest<HTMLElement>('button, [role="button"], [mat-icon-button], [mat-button]');
+            return interactive || el;
+        })
+        .filter(
+            (el) =>
+                isVisibleElement(el) &&
+                !isOversizedAnchor(el) &&
+                !isInSidebar(el) &&
+                isNearComposer(el, composer) &&
+                isLikelyComposerToolbarButton(el, composer) &&
+                !isIgnoredControl(el)
+        );
+    return uniqueElements(normalized);
 }
 
 function uniqueElements(elements: HTMLElement[]): HTMLElement[] {
@@ -179,19 +202,47 @@ function collectComposerControls(composer: HTMLElement): HTMLElement[] {
 }
 
 function findToolsAnchorByText(composer: HTMLElement): HTMLElement | undefined {
-    const root = findComposerRoot(composer);
-    const candidates = Array.from(root.querySelectorAll<HTMLElement>('button, [role="button"]'))
+    const globalTools = Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'))
         .map((el) => el.closest<HTMLElement>('button, [role="button"]') || el)
         .filter(
             (el) =>
-                isButtonLikeElement(el) &&
                 isVisibleElement(el) &&
                 !isOversizedAnchor(el) &&
                 !isInSidebar(el) &&
                 isNearComposer(el, composer) &&
-                isLikelyComposerToolbarButton(el, composer) &&
                 !isIgnoredControl(el)
-        );
+        )
+        .filter((el) => {
+            const label = normalize(el.getAttribute('aria-label'));
+            const text = elementVisibleText(el);
+            const className = normalize(el.className);
+            const hasExactToolSignal =
+                label === 'tools' ||
+                label === '\u5de5\u5177' ||
+                className.includes('toolbox-drawer-button');
+            const hasLooseToolSignal = text === 'tools' || text === '\u5de5\u5177' || /\btools\b/.test(text) || text.includes('\u5de5\u5177');
+            return hasExactToolSignal || hasLooseToolSignal;
+        });
+    if (globalTools.length) {
+        const cr = composer.getBoundingClientRect();
+        return [...uniqueElements(globalTools)].sort((a, b) => {
+            const ar = a.getBoundingClientRect();
+            const br = b.getBoundingClientRect();
+            const ay = Math.abs((ar.top + ar.height / 2) - (cr.bottom - 22));
+            const by = Math.abs((br.top + br.height / 2) - (cr.bottom - 22));
+            const ax = Math.abs(ar.left - cr.left);
+            const bx = Math.abs(br.left - cr.left);
+            const aScore = ay * 2 + ax;
+            const bScore = by * 2 + bx;
+            return aScore - bScore;
+        })[0];
+    }
+
+    const root = findComposerRoot(composer);
+    const candidates = uniqueElements([
+        ...collectNearComposerControls(composer, root),
+        ...collectNearComposerControls(composer, document)
+    ]).filter((el) => isButtonLikeElement(el));
     const tools = uniqueElements(candidates).filter((el) => {
         const label = normalize(el.getAttribute('aria-label'));
         const text = elementVisibleText(el);
@@ -255,43 +306,62 @@ function pickLeftSideFallbackAnchor(candidates: HTMLElement[], composer: HTMLEle
         const centerX = ar.left + ar.width / 2;
         return centerX <= midX + 16;
     });
-    const pool = leftSide.length ? leftSide : candidates;
-    return [...pool].sort((a, b) => {
+    if (!leftSide.length) return undefined;
+    return [...leftSide].sort((a, b) => {
         const ar = a.getBoundingClientRect();
         const br = b.getBoundingClientRect();
         const aCenterX = ar.left + ar.width / 2;
         const bCenterX = br.left + br.width / 2;
-        if (leftSide.length) {
-            // In left cluster, prefer the right-most one so inserted button sits near Tools area.
-            return bCenterX - aCenterX;
-        }
-        // If no left-side candidate exists, pick the left-most overall.
-        return aCenterX - bCenterX;
+        // In left cluster, prefer the right-most one so inserted button sits near Tools area.
+        return bCenterX - aCenterX;
     })[0];
 }
 
-function findAnchorNearComposer(composer: HTMLElement): HTMLElement | undefined {
-    const hintedCandidates: HTMLElement[] = [];
-    const allCandidates: HTMLElement[] = [];
-    let parent: HTMLElement | null = composer.parentElement;
-    for (let i = 0; i < 6 && parent; i += 1) {
-        const rowButtons = Array.from(parent.querySelectorAll<HTMLElement>('button, div[role="button"]'))
-            .filter(
-                (el) =>
-                    isVisibleElement(el) &&
-                    !isOversizedAnchor(el) &&
-                    !isInSidebar(el) &&
-                    isNearComposer(el, composer) &&
-                    isLikelyComposerToolbarButton(el, composer) &&
-                    !isIgnoredControl(el)
-            );
-        allCandidates.push(...rowButtons);
-        hintedCandidates.push(...rowButtons.filter((el) => hasToolHint(el) || hasUploadHint(el)));
-        parent = parent.parentElement;
+function isToolsAnchor(el: HTMLElement): boolean {
+    const label = normalize(el.getAttribute('aria-label'));
+    const text = elementVisibleText(el);
+    const className = normalize(el.className);
+    return (
+        label === 'tools' ||
+        label === '\u5de5\u5177' ||
+        text === 'tools' ||
+        text === '\u5de5\u5177' ||
+        /\btools\b/.test(text) ||
+        text.includes('\u5de5\u5177') ||
+        className.includes('toolbox-drawer-button')
+    );
+}
+
+function resolveInsertionTarget(
+    composer: HTMLElement,
+    anchorButton: HTMLElement
+): { container: HTMLElement | null; sibling: HTMLElement } {
+    if (isToolsAnchor(anchorButton) || hasToolHint(anchorButton) || hasUploadHint(anchorButton)) {
+        const wrapper =
+            anchorButton.closest<HTMLElement>('simplified-input-menu') ||
+            anchorButton.closest<HTMLElement>('.toolbox-drawer-container, .toolbox-drawer-button-container') ||
+            anchorButton.closest<HTMLElement>('gem-icon-button') ||
+            anchorButton;
+        const container =
+            wrapper.parentElement ||
+            anchorButton.closest<HTMLElement>('.leading-actions-wrapper') ||
+            findComposerRoot(composer);
+        return { container, sibling: wrapper };
     }
 
-    const uniq = Array.from(new Set(allCandidates));
-    const uniqHinted = Array.from(new Set(hintedCandidates));
+    return {
+        container: anchorButton.parentElement as HTMLElement | null,
+        sibling: anchorButton
+    };
+}
+
+function findAnchorNearComposer(composer: HTMLElement): HTMLElement | undefined {
+    const root = findComposerRoot(composer);
+    const uniq = uniqueElements([
+        ...collectNearComposerControls(composer, root),
+        ...collectNearComposerControls(composer, document)
+    ]);
+    const uniqHinted = uniq.filter((el) => hasToolHint(el) || hasUploadHint(el));
     return pickBestAnchor(uniqHinted, composer) || pickLeftSideFallbackAnchor(uniq, composer);
 }
 
@@ -342,17 +412,27 @@ function tryInject() {
         return;
     }
 
-    const anchorButton = findToolsAnchorByText(composer);
+    const anchorButton = findToolsAnchorByText(composer) || findAnchorNearComposer(composer);
     if (!anchorButton) {
         return;
     }
 
-    const targetContainer = anchorButton.parentElement as HTMLElement;
+    const composerRect = composer.getBoundingClientRect();
+    const anchorRect = anchorButton.getBoundingClientRect();
+    const anchorCenterX = anchorRect.left + anchorRect.width / 2;
+    const composerMidX = composerRect.left + composerRect.width / 2;
+    if (anchorCenterX > composerMidX + 16) {
+        log('Skip right-side anchor for prompt button:', anchorButton);
+        return;
+    }
+
+    const insertion = resolveInsertionTarget(composer, anchorButton);
+    const targetContainer = insertion.container || findComposerRoot(composer);
     if (!targetContainer) return;
 
     log('Found anchor:', anchorButton, 'Container:', targetContainer);
 
-    createAndInjectButton(targetContainer, anchorButton);
+    createAndInjectButton(targetContainer, insertion.sibling);
 }
 
 function createAndInjectButton(container: HTMLElement, sibling: Element) {
@@ -439,8 +519,8 @@ function createAndInjectButton(container: HTMLElement, sibling: Element) {
 
     btn.style.opacity = '1';
 
-    const hoverBg = isDarkTheme() ? 'rgba(255, 255, 255, 0.12)' : 'rgba(68, 71, 70, 0.08)';
-    const pressBg = isDarkTheme() ? 'rgba(255, 255, 255, 0.16)' : 'rgba(68, 71, 70, 0.14)';
+    const hoverBg = isDarkTheme() ? 'rgba(255, 255, 255, 0.10)' : 'rgba(31, 31, 31, 0.06)';
+    const pressBg = isDarkTheme() ? 'rgba(255, 255, 255, 0.14)' : '#f1f3f4';
 
     btn.addEventListener('mouseenter', () => {
         btn.style.setProperty('background-color', hoverBg, 'important');
@@ -462,7 +542,6 @@ function createAndInjectButton(container: HTMLElement, sibling: Element) {
         onClickHandler?.();
     };
 
-    // Inject
     sibling.insertAdjacentElement('afterend', btn);
     if (!container.contains(btn)) {
         container.appendChild(btn);

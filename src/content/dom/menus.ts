@@ -40,14 +40,14 @@ const DEFAULT_MENU_THEME: MenuTheme = {
   fontFamily: '"Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif',
   fontSize: '14px',
   fontWeight: '500',
-  color: '#1b1a18',
+  color: '#1f1f1f',
   lineHeight: '20px',
-  background: '#fbfaf6',
+  background: '#ffffff',
   borderRadius: '20px',
-  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06), 0 12px 24px -4px rgba(0, 0, 0, 0.15)',
-  border: '1px solid rgba(91, 89, 84, 0.08)',
-  hover: 'rgba(68, 71, 70, 0.08)',
-  divider: 'rgba(91, 89, 84, 0.08)',
+  boxShadow: '0 8px 20px rgba(60, 64, 67, 0.18), 0 1px 3px rgba(60, 64, 67, 0.16)',
+  border: '1px solid rgba(60, 64, 67, 0.12)',
+  hover: '#f1f3f4',
+  divider: 'rgba(60, 64, 67, 0.12)',
   itemRadius: '14px',
   itemPadding: '4px 12px',
   itemHeight: 'auto'
@@ -55,12 +55,12 @@ const DEFAULT_MENU_THEME: MenuTheme = {
 
 const DARK_MENU_THEME: MenuTheme = {
   ...DEFAULT_MENU_THEME,
-  background: '#1b1a18',
-  color: '#ede9e0',
-  border: '1px solid rgba(237, 233, 224, 0.16)',
-  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.4), 0 12px 24px -4px rgba(0, 0, 0, 0.5)',
-  hover: 'rgba(237, 233, 224, 0.08)',
-  divider: 'rgba(237, 233, 224, 0.16)'
+  background: '#202124',
+  color: '#e8eaed',
+  border: '1px solid rgba(232, 234, 237, 0.16)',
+  boxShadow: '0 24px 52px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.36)',
+  hover: 'rgba(255, 255, 255, 0.08)',
+  divider: 'rgba(232, 234, 237, 0.16)'
 };
 
 let currentMenuTheme: MenuTheme = { ...DEFAULT_MENU_THEME };
@@ -121,6 +121,23 @@ function hasRequiredChatActions(container: HTMLElement): boolean {
     hasMenuToken(container, RENAME_ACTION_TOKENS) &&
     hasMenuToken(container, DELETE_ACTION_TOKENS)
   );
+}
+
+function summarizeChatMenu(container: HTMLElement): {
+  pin: boolean;
+  rename: boolean;
+  delete: boolean;
+  recognizedActionCount: number;
+} {
+  const pin = hasMenuToken(container, PIN_ACTION_TOKENS);
+  const rename = hasMenuToken(container, RENAME_ACTION_TOKENS);
+  const deleteAction = hasMenuToken(container, DELETE_ACTION_TOKENS);
+  return {
+    pin,
+    rename,
+    delete: deleteAction,
+    recognizedActionCount: [pin, rename, deleteAction].filter(Boolean).length
+  };
 }
 
 function isRowInChatsList(row: HTMLElement | null): boolean {
@@ -439,8 +456,8 @@ export function isGeminiChatMenu(root: HTMLElement): boolean {
   if (hasRequiredChatActions(root)) {
     return true;
   }
-  const items = root.querySelectorAll('[role="menuitem"], button, div');
-  return false;
+  const summary = summarizeChatMenu(root);
+  return summary.recognizedActionCount >= 2 && (summary.pin || summary.rename || summary.delete);
 }
 
 export function getConversationIdFromActiveRow(targetEl: HTMLElement): string | null {
@@ -778,11 +795,11 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
     const currentProjectId = options.getChatProjectId(conversationId);
 
     const items = [
-      `<div class="gp-move-item secondary" data-gp-move="new">${renderIconSvg('default', '#5b5954')}<span>New Project</span></div>`,
+      `<div class="gp-move-item secondary" data-gp-move="new">${renderIconSvg('default', '#5f6368')}<span>New Project</span></div>`,
       '<div class="gp-move-divider"></div>',
       ...projects.map(
         (project) =>
-          `<div class="gp-move-item" data-gp-move="${project.id}">${renderIconSvg(project.icon, project.color || '#5b5954')}<span>${escapeHtml(project.name)}</span></div>`
+          `<div class="gp-move-item" data-gp-move="${project.id}">${renderIconSvg(project.icon, project.color || '#5f6368')}<span>${escapeHtml(project.name)}</span></div>`
       )
     ];
 

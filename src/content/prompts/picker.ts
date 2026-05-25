@@ -7,16 +7,16 @@ const PICKER_ID = 'gp-prompt-picker-root';
 
 // Icons
 const ICONS = {
-  search: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path fill-rule="evenodd" d="M10.5 3a7.5 7.5 0 0 1 5.92 12.1l4.24 4.24-1.42 1.42-4.24-4.24A7.5 7.5 0 1 1 10.5 3Zm0 2a5.5 5.5 0 1 0 0 11 5.5 5.5 0 0 0 0-11Z" clip-rule="evenodd"/></svg>`,
-  plus: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>`,
-  close: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="m6.34 4.93-1.41 1.41L10.59 12l-5.66 5.66 1.41 1.41L12 13.41l5.66 5.66 1.41-1.41L13.41 12l5.66-5.66-1.41-1.41L12 10.59 6.34 4.93Z"/></svg>`,
-  edit: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M3 17.25V21h3.75l11.06-11.06-3.75-3.75L3 17.25Zm2.92 2.33H5v-1.17l8.06-8.06 1.17 1.17-8.31 8.06ZM20.71 7.04a1 1 0 0 0 0-1.41L18.37 3.29a1 1 0 0 0-1.41 0L15.13 5.12l3.75 3.75 1.83-1.83Z"/></svg>`,
-  trash: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M9 3.8A2.2 2.2 0 0 0 6.8 6H4.5a1 1 0 1 0 0 2h.7l.8 10.8A2.2 2.2 0 0 0 8.2 21h7.6a2.2 2.2 0 0 0 2.2-2.2L18.8 8h.7a1 1 0 1 0 0-2h-2.3A2.2 2.2 0 0 0 15 3.8H9Zm6.2 2.2H8.8V6a.2.2 0 0 1 .2-.2h6a.2.2 0 0 1 .2.2V6Z"/></svg>`,
-  tag: `<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M3 11.2V4a1 1 0 0 1 1-1h7.2a1 1 0 0 1 .7.29l8.81 8.81a1 1 0 0 1 0 1.41l-7.01 7.01a1 1 0 0 1-1.41 0L3.29 11.9A1 1 0 0 1 3 11.2ZM7 6a1.5 1.5 0 1 0 0 3 1.5 1.5 0 0 0 0-3Z"/></svg>`,
-  back: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M11.67 4.6 4.27 12l7.4 7.4 1.42-1.42L8.11 13H20v-2H8.1l4.99-4.99-1.42-1.42Z"/></svg>`,
-  library: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M6 3.5A2.5 2.5 0 0 1 8.5 1H20v20H8.5A3.5 3.5 0 0 0 6 22V3.5Zm2.5-.5A1.5 1.5 0 0 0 7 4.5v14.8c.44-.2.93-.3 1.5-.3H18V3H8.5Z"/></svg>`,
-  filter: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M4 6.5A1.5 1.5 0 0 1 5.5 5h13A1.5 1.5 0 0 1 20 6.5v.2a1.5 1.5 0 0 1-.44 1.06L14 13.35V18a1 1 0 0 1-.45.83l-2 1.3A1 1 0 0 1 10 19.3v-5.95L4.44 7.78A1.5 1.5 0 0 1 4 6.72v-.22Z"/></svg>`,
-  check: `<svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="m9.1 16.2-4.3-4.3 1.4-1.4 2.9 2.9 8.7-8.7 1.4 1.4-10.1 10.1Z"/></svg>`,
+  search: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>`,
+  close: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
+  edit: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`,
+  trash: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4h8v2"/><path d="m19 6-1 14H6L5 6"/><path d="M10 11v5"/><path d="M14 11v5"/></svg>`,
+  tag: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8Z"/><circle cx="7.5" cy="7.5" r="1"/></svg>`,
+  back: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>`,
+  library: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 4h12v16H8a2 2 0 0 1-2-2Z"/><path d="M8 4v14"/><path d="M10 8h5"/></svg>`,
+  filter: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"/><path d="M7 12h10"/><path d="M10 19h4"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4 4L19 6"/></svg>`,
   settings: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`
 };
 
@@ -317,61 +317,34 @@ export class PromptPicker {
 
   private getStyles(): string {
     return `
-      @import url('https://fonts.googleapis.com/css2?family=Source+Serif+4:opsz,wght@8..60,400;500;600&family=Noto+Serif+SC:wght@400;500;600;700&display=swap');
-      @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap');
-      @font-face {
-        font-family: 'GP Styrene';
-        src: local('Styrene A'), local('Styrene B'), local('Styrene A Web'), local('Styrene B Web'), local('Styrene');
-        font-weight: 100 900;
-        font-style: normal;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: 'GP Tiempos';
-        src: local('Tiempos Text'), local('Tiempos Headline'), local('Tiempos');
-        font-weight: 100 900;
-        font-style: normal;
-        font-display: swap;
-      }
-      @font-face {
-        font-family: 'Anthropic Serif Web Text';
-        src: local('Anthropic Serif Web Text'), local('Anthropic Serif Text'), local('Anthropic Serif');
-        font-weight: 100 900;
-        font-style: normal;
-        font-display: swap;
-      }
-
       :host {
-        /* Core Palette - Strictly defined, no OS overrides */
-        --gp-font-sans: 'GP Styrene', 'Styrene A', 'Styrene B', 'Styrene', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-        --gp-font-serif: 'GP Tiempos', 'Tiempos Text', 'Tiempos Headline', 'Tiempos', 'Anthropic Serif Web Text', 'Anthropic Serif Text', 'Anthropic Serif', 'Source Serif 4', 'Noto Serif SC', 'Songti SC', 'SimSun', 'Georgia', serif; 
-        
-        /* Anthropic-inspired palette */
-        --gp-surface: #ede9e0;
-        --gp-surface-elevated: #f5f2ea;
-        --gp-ink: #1b1a18;
-        --gp-stone: #a4a19b;
-        --gp-slate: #5b5954;
-        --gp-muted: #838079;
-        --gp-coral: #d97c5d;
-
-        /* Light Mode Defaults */
-        --gp-bg-glass: rgba(237, 233, 224, 0.94);
+        --gp-font-sans: "Google Sans Flex", "Google Sans", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
+        --gp-font-serif: var(--gp-font-sans);
+        --gp-surface: #ffffff;
+        --gp-surface-elevated: #f8fafd;
+        --gp-ink: #1f1f1f;
+        --gp-stone: #dadce0;
+        --gp-slate: #5f6368;
+        --gp-muted: #747775;
+        --gp-blue: #1a73e8;
+        --gp-blue-soft: #d3e3fd;
+        --gp-bg-glass: rgba(255, 255, 255, 0.94);
         --gp-fg: var(--gp-ink);
         --gp-fg-secondary: var(--gp-slate);
         --gp-fg-tertiary: var(--gp-muted);
-        --gp-border: rgba(91, 89, 84, 0.08);
-        --gp-bg-hover: rgba(91, 89, 84, 0.08);
-        --gp-bg-active: rgba(91, 89, 84, 0.14);
-        --gp-shadow-sm: 0 4px 12px rgba(27, 26, 24, 0.08);
-        --gp-shadow-lg: 0 24px 48px -14px rgba(27, 26, 24, 0.22), 0 0 1px rgba(27, 26, 24, 0.18);
-        --gp-danger: #b85a3e;
-        --gp-accent: var(--gp-ink);
-        --gp-accent-fg: var(--gp-surface);
-        --gp-focus: var(--gp-coral);
-        --gp-radius-lg: 20px;
+        --gp-border: rgba(60, 64, 67, 0.12);
+        --gp-bg-hover: #f1f3f4;
+        --gp-bg-active: #f1f3f4;
+        --gp-shadow-sm: 0 2px 6px rgba(60, 64, 67, 0.14);
+        --gp-shadow-lg: 0 16px 40px rgba(60, 64, 67, 0.18), 0 1px 3px rgba(60, 64, 67, 0.16);
+        --gp-danger: #b3261e;
+        --gp-accent: #1f1f1f;
+        --gp-accent-fg: #ffffff;
+        --gp-focus: var(--gp-blue);
+        --gp-focus-ring: rgba(26, 115, 232, 0.10);
+        --gp-radius-lg: 24px;
         --gp-radius-md: 14px;
-        --gp-radius-sm: 8px;
+        --gp-radius-sm: 10px;
         --gp-radius-pill: 999px;
         /* 统一动效节奏，避免页面内部动画割裂 */
         --gp-transition: .18s ease;
@@ -379,19 +352,22 @@ export class PromptPicker {
 
       /* Dark Mode - Explicit Data Attribute Strategy */
       :host([data-gp-theme="dark"]) {
-        --gp-bg-glass: rgba(27, 26, 24, 0.94);
-        --gp-fg: #ede9e0;
-        --gp-fg-secondary: #c9c5bc;
-        --gp-fg-tertiary: #a4a19b;
-        --gp-border: rgba(237, 233, 224, 0.16);
-        --gp-bg-hover: rgba(237, 233, 224, 0.08);
-        --gp-bg-active: rgba(237, 233, 224, 0.14);
+        --gp-bg-glass: rgba(32, 33, 36, 0.94);
+        --gp-surface: #202124;
+        --gp-surface-elevated: #292a2d;
+        --gp-fg: #e8eaed;
+        --gp-fg-secondary: #bdc1c6;
+        --gp-fg-tertiary: #9aa0a6;
+        --gp-border: rgba(232, 234, 237, 0.16);
+        --gp-bg-hover: rgba(255, 255, 255, 0.08);
+        --gp-bg-active: rgba(255, 255, 255, 0.08);
         --gp-shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.32);
-        --gp-shadow-lg: 0 26px 52px -12px rgba(0, 0, 0, 0.52), 0 0 1px rgba(237, 233, 224, 0.2);
-        --gp-danger: #ff8b67;
-        --gp-accent: #ede9e0;
-        --gp-accent-fg: #1b1a18;
-        --gp-focus: #d97c5d;
+        --gp-shadow-lg: 0 24px 52px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.36);
+        --gp-danger: #f28b82;
+        --gp-accent: #e8eaed;
+        --gp-accent-fg: #202124;
+        --gp-focus: #8ab4f8;
+        --gp-focus-ring: rgba(138, 180, 248, 0.14);
       }
 
       * { box-sizing: border-box; outline: none; }
@@ -399,11 +375,11 @@ export class PromptPicker {
       /* === MAIN CONTAINER === */
       .picker {
         position: relative;
-        width: 400px; /* Slightly wider for breathing room */
+        width: 400px;
         max-height: 600px;
         background: var(--gp-bg-glass);
-        backdrop-filter: blur(24px) saturate(180%);
-        -webkit-backdrop-filter: blur(24px) saturate(180%);
+        backdrop-filter: blur(18px) saturate(160%);
+        -webkit-backdrop-filter: blur(18px) saturate(160%);
         border: 1px solid var(--gp-border);
         border-radius: var(--gp-radius-lg);
         box-shadow: var(--gp-shadow-lg);
@@ -414,7 +390,6 @@ export class PromptPicker {
         color: var(--gp-fg);
         z-index: 99999;
         
-        /* Animation States */
         opacity: 0;
         transform: translateY(8px);
         transition: opacity var(--gp-transition), transform var(--gp-transition);
@@ -429,20 +404,21 @@ export class PromptPicker {
 
       /* === HEADER === */
       .header {
-        padding: 16px 16px 8px; /* Breathing room */
+        padding: 16px 16px 8px;
         flex-shrink: 0;
       }
 
       .search-row {
         position: relative;
-        background: rgba(91, 89, 84, 0.09);
+        background: var(--gp-bg-hover);
         border-radius: var(--gp-radius-pill);
-        transition: box-shadow var(--gp-transition), background var(--gp-transition);
+        transition: box-shadow var(--gp-transition), background var(--gp-transition), border-color var(--gp-transition);
         border: 1px solid transparent;
       }
       .search-row:focus-within {
-        background: var(--gp-surface-elevated);
-        box-shadow: 0 0 0 2px var(--gp-focus);
+        background: var(--gp-surface);
+        border-color: var(--gp-blue-soft);
+        box-shadow: 0 0 0 2px var(--gp-focus-ring);
       }
 
       .search-box {
@@ -466,7 +442,7 @@ export class PromptPicker {
         color: var(--gp-fg);
         font-family: var(--gp-font-sans); /* Use Sans for inputs */
         font-size: 14px;
-        font-weight: 500;
+        font-weight: 400;
         padding: 0;
       }
       .search-input::placeholder {
@@ -484,9 +460,9 @@ export class PromptPicker {
       }
       .tag {
         font-family: var(--gp-font-sans);
-        font-size: 11px;
-        font-weight: 600;
-        letter-spacing: 0.01em;
+        font-size: 12px;
+        font-weight: 500;
+        letter-spacing: 0;
         background: var(--gp-bg-hover);
         color: var(--gp-fg-secondary);
         padding: 4px 10px;
@@ -496,13 +472,16 @@ export class PromptPicker {
       }
       .tag:hover {
         background: var(--gp-bg-active);
-        transform: translateY(-1px);
         color: var(--gp-fg);
       }
       .tag.active {
-        background: var(--gp-accent);
-        color: var(--gp-accent-fg);
-        box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        background: var(--gp-bg-active);
+        color: var(--gp-fg);
+        box-shadow: none;
+      }
+      :host([data-gp-theme="dark"]) .tag.active {
+        background: var(--gp-bg-active);
+        color: var(--gp-fg);
       }
 
       /* === LIST === */
@@ -516,7 +495,7 @@ export class PromptPicker {
         width: 8px;
       }
       .list::-webkit-scrollbar-thumb {
-        background: rgba(131, 128, 121, 0.7);
+        background: rgba(95, 99, 104, 0.5);
         border-radius: var(--gp-radius-pill);
       }
       
@@ -532,7 +511,7 @@ export class PromptPicker {
       }
       .empty-box::before {
         content: 'No prompts';
-        font-family: var(--gp-font-serif);
+        font-family: var(--gp-font-sans);
         font-size: 20px;
         font-weight: 500;
         color: var(--gp-fg-secondary);
@@ -546,36 +525,22 @@ export class PromptPicker {
         border-radius: var(--gp-radius-md);
         cursor: pointer;
         border: 1px solid transparent;
-        transition: transform var(--gp-transition), background var(--gp-transition), border-color var(--gp-transition);
+        transition: background var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .item::before {
-        content: '';
-        position: absolute;
-        left: 0;
-        top: 10px;
-        bottom: 10px;
-        width: 3px;
-        border-radius: 0 4px 4px 0;
-        background: var(--gp-accent);
-        opacity: 0;
-        transform: scaleY(0.65);
-        transform-origin: center;
-        transition: opacity var(--gp-transition), transform var(--gp-transition);
+        display: none;
       }
       .item:hover {
-        background: transparent;
+        background: var(--gp-bg-hover);
         border-color: transparent;
-        transform: translateX(3px);
       }
       .item.selected {
-        background: transparent;
-        border-color: transparent;
-        transform: translateX(2px);
+        background: var(--gp-bg-active);
+        border-color: rgba(60, 64, 67, 0.10);
       }
       .item:hover::before,
       .item.selected::before {
-        opacity: 1;
-        transform: scaleY(1);
+        display: none;
       }
       .item-header {
         display: flex;
@@ -586,11 +551,11 @@ export class PromptPicker {
       }
 
       .item-title {
-        font-family: var(--gp-font-serif);
-        font-size: 16px;
-        font-weight: 600;
+        font-family: var(--gp-font-sans);
+        font-size: 14px;
+        font-weight: 500;
         color: var(--gp-fg);
-        line-height: 1.4;
+        line-height: 20px;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -600,7 +565,7 @@ export class PromptPicker {
         font-family: var(--gp-font-sans);
         font-size: 13px;
         color: var(--gp-fg-secondary);
-        line-height: 1.5;
+        line-height: 20px;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
@@ -646,19 +611,17 @@ export class PromptPicker {
         justify-content: center;
         border-radius: var(--gp-radius-sm);
         border: none;
-        background: var(--gp-surface-elevated);
-        backdrop-filter: blur(4px);
-        box-shadow: 0 2px 8px rgba(27, 26, 24, 0.12);
+        background: var(--gp-surface);
+        box-shadow: 0 1px 3px rgba(60, 64, 67, 0.16);
         color: var(--gp-fg-secondary);
         cursor: pointer;
         transition: all var(--gp-transition);
         padding: 0;
       }
       .item-action-btn:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(27, 26, 24, 0.18);
+        box-shadow: 0 2px 6px rgba(60, 64, 67, 0.18);
         color: var(--gp-fg);
-        background: var(--gp-surface);
+        background: var(--gp-bg-hover);
       }
       .item-action-btn.danger:hover {
         color: var(--gp-danger);
@@ -669,7 +632,7 @@ export class PromptPicker {
         display: flex;
         gap: 8px;
         align-items: center;
-        background: rgba(131, 128, 121, 0.18);
+        background: var(--gp-bg-hover);
         padding: 4px 6px;
         border-radius: var(--gp-radius-sm);
         box-shadow: var(--gp-shadow-sm);
@@ -684,7 +647,7 @@ export class PromptPicker {
         border: none;
         font-family: var(--gp-font-sans);
         font-size: 12px;
-        font-weight: 600;
+        font-weight: 500;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -694,7 +657,7 @@ export class PromptPicker {
       }
       .delete-inline-btn.confirm {
         background: var(--gp-danger);
-        color: var(--gp-surface);
+        color: #ffffff;
         box-shadow: 0 2px 4px rgba(217, 48, 37, 0.3);
       }
       .delete-inline-btn.confirm:hover { box-shadow: 0 3px 8px rgba(217, 48, 37, 0.4); transform: translateY(-1px); }
@@ -716,9 +679,9 @@ export class PromptPicker {
       .inline-editor-label {
         font-family: var(--gp-font-sans);
         font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
+        font-weight: 500;
+        letter-spacing: 0;
+        text-transform: none;
         color: var(--gp-fg-secondary);
       }
       .inline-editor-input,
@@ -734,8 +697,9 @@ export class PromptPicker {
       }
       .inline-editor-input:focus,
       .inline-editor-textarea:focus {
-        border-color: rgba(217, 124, 93, 0.7);
-        background: rgba(237, 233, 224, 0.78);
+        border-color: var(--gp-focus);
+        background: var(--gp-surface);
+        box-shadow: 0 0 0 2px var(--gp-focus-ring);
       }
       .inline-editor-textarea {
         min-height: 108px;
@@ -786,14 +750,14 @@ export class PromptPicker {
         height: 36px;
         border-radius: var(--gp-radius-pill);
         border: 1px solid var(--gp-border);
-        background: rgba(237, 233, 224, 0.82);
+        background: rgba(255, 255, 255, 0.92);
         backdrop-filter: blur(12px);
         -webkit-backdrop-filter: blur(12px);
         color: var(--gp-fg);
         font-family: var(--gp-font-sans);
         font-size: 12px;
-        font-weight: 600;
-        letter-spacing: 0.01em;
+        font-weight: 500;
+        letter-spacing: 0;
         padding: 0 12px;
         display: inline-flex;
         align-items: center;
@@ -803,9 +767,8 @@ export class PromptPicker {
         transition: background var(--gp-transition), transform var(--gp-transition), box-shadow var(--gp-transition);
       }
       .btn-utility:hover {
-        background: rgba(237, 233, 224, 0.95);
-        transform: translateY(-1px);
-        box-shadow: 0 3px 10px rgba(27, 26, 24, 0.12);
+        background: var(--gp-bg-hover);
+        box-shadow: 0 3px 10px rgba(60, 64, 67, 0.12);
       }
       .btn-new {
         width: 40px;
@@ -819,7 +782,7 @@ export class PromptPicker {
         justify-content: center;
         cursor: pointer;
         pointer-events: auto;
-        box-shadow: 0 10px 20px -12px rgba(27, 26, 24, 0.45);
+        box-shadow: 0 6px 16px rgba(60, 64, 67, 0.20);
         transition: transform var(--gp-transition), filter var(--gp-transition);
       }
       .btn-new:hover {
@@ -836,7 +799,7 @@ export class PromptPicker {
       .modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(27, 26, 24, 0.26);
+        background: rgba(32, 33, 36, 0.24);
         z-index: 2147483647;
         display: flex;
         align-items: center;
@@ -851,16 +814,16 @@ export class PromptPicker {
         width: min(860px, calc(100vw - 32px));
         height: min(66vh, 580px);
         min-height: min(410px, calc(100vh - 32px));
-        background: rgba(245, 242, 234, 0.98);
+        background: rgba(255, 255, 255, 0.98);
         border: 1px solid var(--gp-border);
         border-radius: var(--gp-radius-lg);
-        box-shadow: 0 12px 28px rgba(27, 26, 24, 0.2);
+        box-shadow: 0 16px 36px rgba(60, 64, 67, 0.22);
         overflow: hidden;
         display: flex;
         flex-direction: column;
       }
       :host([data-gp-theme="dark"]) .modal {
-        background: rgba(35, 33, 30, 0.98);
+        background: rgba(32, 33, 36, 0.98);
         border-color: var(--gp-border);
         box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
       }
@@ -876,9 +839,9 @@ export class PromptPicker {
         border-bottom-color: var(--gp-border);
       }
       .modal-title {
-        font-family: var(--gp-font-serif);
+        font-family: var(--gp-font-sans);
         font-size: 16px;
-        font-weight: 600;
+        font-weight: 500;
         color: var(--gp-fg);
       }
       .modal-close {
@@ -910,29 +873,29 @@ export class PromptPicker {
       .form-group.content-group { flex: 1; min-height: 150px; }
       .form-label {
         font-size: 12px;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.045em;
+        font-weight: 500;
+        text-transform: none;
+        letter-spacing: 0;
         color: var(--gp-fg-secondary);
         font-family: var(--gp-font-sans);
       }
 
       .form-input, .form-textarea {
-        background: rgba(237, 233, 224, 0.88);
+        background: var(--gp-surface);
         border: 1px solid var(--gp-border);
         border-radius: var(--gp-radius-md);
         padding: 11px 14px;
         font-size: 16px;
         color: var(--gp-fg);
+        font-family: var(--gp-font-sans);
         width: 100%;
         transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .form-input {
-        font-family: var(--gp-font-serif);
         font-weight: 500;
       }
       .form-textarea {
-        font-family: var(--gp-font-serif);
+        font-weight: 400;
       }
       :host([data-gp-theme="dark"]) .form-input,
       :host([data-gp-theme="dark"]) .form-textarea {
@@ -940,8 +903,8 @@ export class PromptPicker {
         border-color: rgba(255, 255, 255, 0.15);
       }
       .form-input:focus, .form-textarea:focus {
-        border-color: rgba(217, 124, 93, 0.7);
-        box-shadow: none;
+        border-color: var(--gp-focus);
+        box-shadow: 0 0 0 2px var(--gp-focus-ring);
         outline: none;
       }
       .form-input::placeholder, .form-textarea::placeholder {
@@ -949,10 +912,10 @@ export class PromptPicker {
         font-style: normal;
       }
       .form-input {
-        border-color: rgba(91, 89, 84, 0.18);
+        border-color: var(--gp-border);
       }
       .form-textarea {
-        border-color: rgba(91, 89, 84, 0.3);
+        border-color: var(--gp-border);
       }
       .form-textarea {
         flex: 1;
@@ -1008,7 +971,7 @@ export class PromptPicker {
         border-radius: var(--gp-radius-sm);
         font-family: var(--gp-font-sans);
         font-size: 13px;
-        font-weight: 600;
+        font-weight: 500;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -1016,13 +979,13 @@ export class PromptPicker {
         transition: background var(--gp-transition), border-color var(--gp-transition), color var(--gp-transition);
       }
       .btn-cancel {
-        background: rgba(91, 89, 84, 0.06);
-        border: 1px solid rgba(91, 89, 84, 0.28);
+        background: transparent;
+        border: 1px solid var(--gp-border);
         color: var(--gp-fg);
       }
       .btn-cancel:hover {
-        background: rgba(91, 89, 84, 0.12);
-        border-color: rgba(91, 89, 84, 0.4);
+        background: var(--gp-bg-hover);
+        border-color: rgba(60, 64, 67, 0.24);
       }
 
       .btn-delete {

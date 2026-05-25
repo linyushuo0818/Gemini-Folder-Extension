@@ -18,6 +18,8 @@ import { initChatGPT } from './chatgpt';
 
 const DEBUG_LOG = false;
 const DEBUG_PROJECT = true;
+const BUILD_MARKER = '2026-05-25-new-gemini-ui';
+const FORCE_HOVER_CLASS = 'gp-force-hover';
 
 const state: RuntimeState = {
   projects: [],
@@ -37,6 +39,8 @@ let chatsHeader: HTMLElement | null = null;
 let chatsList: HTMLElement | null = null;
 let chatsObserver: MutationObserver | null = null;
 let menuEnhancerCleanup: (() => void) | null = null;
+let projectsBridgeInitialized = false;
+let activeForcedHoverNode: HTMLElement | null = null;
 
 function log(...args: unknown[]) {
   if (DEBUG_LOG) {
@@ -51,6 +55,11 @@ function logProject(...args: unknown[]) {
     console.log('[gp-project]', ...args);
   }
 }
+
+function stampBuildMarker(): void {
+  document.documentElement.setAttribute('data-gp-build', BUILD_MARKER);
+}
+
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
   return runtimeSendMessage<BackgroundResponse>(message);
 }
@@ -104,6 +113,8 @@ export function renderUnassignedChatsSection(chatIndex: Map<string, ChatRef>) {
 }
 
 async function bootstrap() {
+  stampBuildMarker();
+
   if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('openai.com')) {
     initChatGPT();
     return;
@@ -123,6 +134,7 @@ async function bootstrap() {
   }
 
   runStage('observeSidebar', () => observeSidebar());
+  runStage('initProjectsInteractionBridge', () => initProjectsInteractionBridge());
   runStage('attachChatClickTracker', () => attachChatClickTracker());
   runStage('initGeminiResponseFolding', () => initGeminiResponseFolding());
   runStage('prompts.bootstrap', () => prompts.bootstrap());
@@ -174,6 +186,135 @@ function observeSidebar() {
   tryInject();
 }
 
+function getProjectsHost(): HTMLElement | null {
+  const host = document.getElementById('gemini-projects-host');
+  return host instanceof HTMLElement && host.shadowRoot ? host : null;
+}
+
+function isInsideProjectsShadow(host: HTMLElement, node: Node | null): boolean {
+  return !!(host.shadowRoot && node && host.shadowRoot.contains(node));
+}
+
+function getProjectsInteractiveTargetAtPoint(host: HTMLElement, x: number, y: number): HTMLElement | null {
+  if (!host.shadowRoot) return null;
+
+  const selectors = [
+    '[data-gp-action="project-menu"]',
+    '[data-gp-action="chat-menu"]',
+    '.gp-chat-link',
+    '[data-gp-action="new-project"]',
+    '[data-gp-action="toggle-project"]',
+    '[data-gp-action="toggle-section"]',
+    '.gp-chat-row',
+    '.gp-row',
+    '.gp-title'
+  ];
+
+  const candidates: Array<{ node: HTMLElement; priority: number; area: number }> = [];
+  selectors.forEach((selector) => {
+    host.shadowRoot!.querySelectorAll<HTMLElement>(selector).forEach((node) => {
+      const style = window.getComputedStyle(node);
+      if (style.display === 'none' || style.visibility === 'hidden') return;
+      const rect = node.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
+
+      let priority = 9;
+      if (node.matches('[data-gp-action="project-menu"], [data-gp-action="chat-menu"]')) priority = 0;
+      else if (node.matches('.gp-chat-link')) priority = 1;
+      else if (node.matches('[data-gp-action="new-project"], [data-gp-action="toggle-project"], [data-gp-action="toggle-section"]')) priority = 2;
+      else if (node.matches('.gp-chat-row, .gp-row, .gp-title')) priority = 3;
+
+      candidates.push({ node, priority, area: rect.width * rect.height });
+    });
+  });
+
+  candidates.sort((a, b) => {
+    if (a.priority !== b.priority) return a.priority - b.priority;
+    return a.area - b.area;
+  });
+
+  return candidates[0]?.node ?? null;
+}
+
+function getProjectsHoverNode(target: HTMLElement | null): HTMLElement | null {
+  if (!target) return null;
+  return target.closest('.gp-chat-row, .gp-row, .gp-title') as HTMLElement | null;
+}
+
+function clearProjectsForcedHover(): void {
+  if (activeForcedHoverNode) {
+    activeForcedHoverNode.classList.remove(FORCE_HOVER_CLASS);
+    activeForcedHoverNode = null;
+  }
+}
+
+function updateProjectsForcedHover(x: number, y: number): void {
+  const host = getProjectsHost();
+  if (!host) {
+    clearProjectsForcedHover();
+    return;
+  }
+
+  const topNode = document.elementFromPoint(x, y);
+  if (isInsideProjectsShadow(host, topNode)) {
+    clearProjectsForcedHover();
+    return;
+  }
+
+  const target = getProjectsInteractiveTargetAtPoint(host, x, y);
+  const hoverNode = getProjectsHoverNode(target);
+  if (!hoverNode) {
+    clearProjectsForcedHover();
+    return;
+  }
+
+  if (activeForcedHoverNode === hoverNode) {
+    return;
+  }
+
+  clearProjectsForcedHover();
+  activeForcedHoverNode = hoverNode;
+  activeForcedHoverNode.classList.add(FORCE_HOVER_CLASS);
+}
+
+function bridgeProjectsClick(event: MouseEvent): void {
+  const host = getProjectsHost();
+  if (!host) return;
+
+  const topNode = document.elementFromPoint(event.clientX, event.clientY);
+  if (isInsideProjectsShadow(host, topNode)) {
+    return;
+  }
+
+  const target = getProjectsInteractiveTargetAtPoint(host, event.clientX, event.clientY);
+  if (!target) return;
+
+  event.preventDefault();
+  event.stopPropagation();
+  event.stopImmediatePropagation();
+  target.click();
+}
+
+function initProjectsInteractionBridge(): void {
+  if (projectsBridgeInitialized) return;
+  projectsBridgeInitialized = true;
+
+  document.addEventListener('pointermove', (event) => {
+    updateProjectsForcedHover(event.clientX, event.clientY);
+  }, true);
+
+  document.addEventListener('click', (event) => {
+    const target = event.target as HTMLElement | null;
+    if (target?.closest('#gp-overlay-layer, #gemini-projects-overlay')) {
+      return;
+    }
+    bridgeProjectsClick(event);
+  }, true);
+
+  window.addEventListener('blur', () => clearProjectsForcedHover());
+}
+
 function attachSidebarObserver() {
   if (!sidebarRoot) return;
 
@@ -189,7 +330,7 @@ function ensurePanel() {
   if (!sidebarRoot) return;
   const gems = findGemsSection(sidebarRoot);
   const chats = findChatsSection(sidebarRoot);
-  if (!gems || !chats) {
+  if (!chats) {
     return;
   }
 

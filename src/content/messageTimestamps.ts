@@ -3,6 +3,7 @@ type MessagePlatform = 'gemini' | 'chatgpt';
 const MESSAGE_TIME_STYLE_ID = 'gp-message-time-style';
 const MESSAGE_TIME_CLASS = 'gp-message-time';
 const MESSAGE_TIME_ATTR = 'data-gp-time-processed';
+const MESSAGE_TIME_ATTR_CANDIDATES = ['datetime', 'data-timestamp', 'data-time', 'timestamp'];
 
 const initializedPlatforms = new Set<MessagePlatform>();
 
@@ -27,11 +28,10 @@ export function initMessageTimestamps(platform: MessagePlatform) {
 
   ensureMessageTimeStyle();
 
-  // 监听对话区增量渲染，确保新消息出现后能自动补时间
   const process = () => renderMessageTimestamps(platform);
   const observer = new MutationObserver((mutations) => {
     for (const mutation of mutations) {
-      if (mutation.type === 'childList') {
+      if (mutation.type === 'childList' || mutation.type === 'attributes') {
         process();
         return;
       }
@@ -39,7 +39,12 @@ export function initMessageTimestamps(platform: MessagePlatform) {
   });
 
   const root = document.querySelector('main') || document.body;
-  observer.observe(root, { childList: true, subtree: true });
+  observer.observe(root, {
+    childList: true,
+    subtree: true,
+    attributes: true,
+    attributeFilter: MESSAGE_TIME_ATTR_CANDIDATES
+  });
   process();
 }
 
@@ -49,24 +54,29 @@ function renderMessageTimestamps(platform: MessagePlatform) {
     if (!isValidUserMessageNode(messageNode)) {
       return;
     }
-    if (messageNode.getAttribute(MESSAGE_TIME_ATTR) === 'true') {
+
+    const extracted = extractMessageTime(messageNode);
+    const formatted = extracted ? formatMessageTime(extracted) : null;
+    const existingLabel = messageNode.querySelector<HTMLElement>(`.${MESSAGE_TIME_CLASS}`);
+
+    if (!formatted) {
+      existingLabel?.remove();
+      messageNode.removeAttribute(MESSAGE_TIME_ATTR);
       return;
     }
 
-    if (messageNode.querySelector(`.${MESSAGE_TIME_CLASS}`)) {
-      messageNode.setAttribute(MESSAGE_TIME_ATTR, 'true');
+    if (messageNode.getAttribute(MESSAGE_TIME_ATTR) === 'true' && existingLabel?.textContent === formatted) {
       return;
     }
 
-    // 优先把时间插在消息正文后面，避免破坏外层布局
     const anchor = findMessageContentAnchor(messageNode);
-    const label = document.createElement('div');
+    const label = existingLabel || document.createElement('div');
     label.className = MESSAGE_TIME_CLASS;
-    label.textContent = formatMessageTime(extractMessageTime(messageNode));
+    label.textContent = formatted;
 
-    if (anchor && anchor !== messageNode && anchor.parentElement && messageNode.contains(anchor)) {
+    if (!existingLabel && anchor && anchor !== messageNode && anchor.parentElement && messageNode.contains(anchor)) {
       anchor.insertAdjacentElement('afterend', label);
-    } else {
+    } else if (!existingLabel) {
       messageNode.appendChild(label);
     }
 
@@ -125,8 +135,7 @@ function findMessageContentAnchor(messageNode: HTMLElement): HTMLElement | null 
   return null;
 }
 
-function extractMessageTime(messageNode: HTMLElement): Date {
-  // 如果页面里已有可解析时间，优先使用；否则回落到本地当前时间
+function extractMessageTime(messageNode: HTMLElement): Date | null {
   const timeElement = messageNode.querySelector<HTMLTimeElement>('time[datetime], time');
   if (timeElement) {
     const datetime = timeElement.getAttribute('datetime') || timeElement.textContent || '';
@@ -142,7 +151,7 @@ function extractMessageTime(messageNode: HTMLElement): Date {
     if (!raw) continue;
     const numeric = Number(raw);
     if (!Number.isNaN(numeric) && numeric > 0) {
-      return new Date(numeric);
+      return new Date(numeric < 1e12 ? numeric * 1000 : numeric);
     }
     const parsed = Date.parse(raw);
     if (!Number.isNaN(parsed)) {
@@ -150,7 +159,7 @@ function extractMessageTime(messageNode: HTMLElement): Date {
     }
   }
 
-  return new Date();
+  return null;
 }
 
 function formatMessageTime(time: Date): string {

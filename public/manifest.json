@@ -23,8 +23,7 @@
                 "https://chat.openai.com/*"
             ],
             "js": [
-                "content.js",
-                "gemini-response-fold-lite.js"
+                "content.js"
             ],
             "run_at": "document_idle"
         }

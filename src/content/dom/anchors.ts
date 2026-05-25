@@ -1,9 +1,9 @@
 ﻿const PROJECTS_HOST_ID = 'gemini-projects-host';
 const OVERLAY_HOST_ID = 'gemini-projects-overlay';
 const GEMS_SECTION_LABELS_EN = ['Gem', 'Gems'];
-const CHATS_SECTION_LABELS_EN = ['Chat', 'Chats'];
+const CHATS_SECTION_LABELS_EN = ['Chat', 'Chats', 'Recents', 'Recent chats'];
 const GEMS_SECTION_LABELS_ZH = ['\u5b9d\u77f3', '\u6211\u7684 Gem', '\u6211\u7684 Gems'];
-const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929', '\u804a\u5929\u8bb0\u5f55', '\u5bf9\u8bdd'];
+const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929', '\u804a\u5929\u8bb0\u5f55', '\u5bf9\u8bdd', '\u6700\u8fd1', '\u6700\u8fd1\u804a\u5929', '\u6700\u8fd1\u5bf9\u8bdd'];
 
 function normalizeText(value: string | null): string {
   return (value || '').trim().toLowerCase();
@@ -67,17 +67,41 @@ function mergeLabels(primary: string[], fallback: string[]): string[] {
   return merged;
 }
 
+function isVisibleElement(element: HTMLElement): boolean {
+  const rect = element.getBoundingClientRect();
+  const style = window.getComputedStyle(element);
+  return rect.width > 0 && rect.height > 0 && style.display !== 'none' && style.visibility !== 'hidden';
+}
+
+function isGeminiSidebarRoot(element: HTMLElement): boolean {
+  const tag = element.tagName.toLowerCase();
+  const ariaLabel = normalizeText(element.getAttribute('aria-label'));
+  return tag === 'bard-sidenav' || ariaLabel === 'side navigation';
+}
+
+function hasConversationLinks(root: ParentNode): boolean {
+  return Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href]')).some((link) =>
+    Boolean(getConversationId(link.href))
+  );
+}
+
 export function findSidebarRoot(): HTMLElement | null {
   const candidates = Array.from(
-    document.querySelectorAll<HTMLElement>('nav, aside, [role="navigation"], [role="complementary"]')
-  );
+    document.querySelectorAll<HTMLElement>('bard-sidenav, nav, aside, [role="navigation"], [role="complementary"]')
+  ).filter(isVisibleElement);
+
+  const explicitSidebar = candidates.find(isGeminiSidebarRoot);
+  if (explicitSidebar) {
+    return explicitSidebar;
+  }
+
   const labels = getSectionLabelGroups();
   const gemLabels = mergeLabels(labels.gemsPrimary, labels.gemsFallback);
   const chatLabels = mergeLabels(labels.chatsPrimary, labels.chatsFallback);
 
   for (const candidate of candidates) {
     const text = candidate.textContent || '';
-    if (includesAnyLabel(text, gemLabels) && includesAnyLabel(text, chatLabels)) {
+    if ((includesAnyLabel(text, gemLabels) && includesAnyLabel(text, chatLabels)) || hasConversationLinks(candidate)) {
       return candidate;
     }
   }
@@ -87,7 +111,7 @@ export function findSidebarRoot(): HTMLElement | null {
 
 function findSectionByTexts(root: HTMLElement, labels: string[]): HTMLElement | null {
   const targets = labels.map((label) => normalizeText(label));
-  const elements = root.querySelectorAll<HTMLElement>('div, span, h2, h3, h4, button, p');
+  const elements = root.querySelectorAll<HTMLElement>('a, div, span, h1, h2, h3, h4, button, p');
   for (const element of elements) {
     const normalized = normalizeText(element.textContent);
     if (targets.includes(normalized)) {
@@ -104,21 +128,85 @@ export function findGemsSection(root: HTMLElement): HTMLElement | null {
 
 export function findChatsSection(root: HTMLElement): HTMLElement | null {
   const labels = getSectionLabelGroups();
-  return findSectionByTexts(root, labels.chatsPrimary) || findSectionByTexts(root, labels.chatsFallback);
+  const byText = findSectionByTexts(root, labels.chatsPrimary) || findSectionByTexts(root, labels.chatsFallback);
+  if (byText) {
+    return byText;
+  }
+
+  const toggles = Array.from(root.querySelectorAll<HTMLElement>('[data-test-id="expandable-section-toggle"], button[aria-label]'));
+  const chatLabels = mergeLabels(labels.chatsPrimary, labels.chatsFallback);
+  for (const toggle of toggles) {
+    const label = toggle.getAttribute('aria-label') || '';
+    const text = toggle.textContent || '';
+    if (includesAnyLabel(label, chatLabels) || includesAnyLabel(text, chatLabels)) {
+      return toggle;
+    }
+  }
+
+  return findFirstConversationList(root);
 }
 
 export function findChatsListContainer(chatsHeader: HTMLElement | null): HTMLElement | null {
   if (!chatsHeader) {
     return null;
   }
+  if (hasConversationLinks(chatsHeader)) {
+    return chatsHeader;
+  }
+
   let sibling = chatsHeader.nextElementSibling as HTMLElement | null;
   while (sibling) {
-    if (sibling.querySelector('a[href]')) {
+    if (hasConversationLinks(sibling)) {
       return sibling;
     }
     sibling = sibling.nextElementSibling as HTMLElement | null;
   }
-  return chatsHeader.parentElement;
+
+  let parent = chatsHeader.parentElement;
+  for (let depth = 0; parent && depth < 5; depth += 1) {
+    const children = Array.from(parent.children) as HTMLElement[];
+    const headerIndex = children.indexOf(chatsHeader);
+    const afterHeader = headerIndex >= 0 ? children.slice(headerIndex + 1) : children;
+    const siblingList = afterHeader.find((child) => hasConversationLinks(child));
+    if (siblingList) {
+      return siblingList;
+    }
+    if (hasConversationLinks(parent) && parent !== document.body) {
+      return parent;
+    }
+    parent = parent.parentElement;
+  }
+
+  return findFirstConversationList(findSidebarRoot() || document.body);
+}
+
+function findFirstConversationList(root: ParentNode): HTMLElement | null {
+  const links = Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((link) =>
+    Boolean(getConversationId(link.href))
+  );
+  if (!links.length) {
+    return null;
+  }
+
+  let current: HTMLElement | null = links[0].parentElement;
+  while (current && current !== document.body) {
+    const parent = current.parentElement;
+    if (!parent) {
+      break;
+    }
+    const currentCount = Array.from(current.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((link) =>
+      Boolean(getConversationId(link.href))
+    ).length;
+    const parentCount = Array.from(parent.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((link) =>
+      Boolean(getConversationId(link.href))
+    ).length;
+    if (parentCount !== currentCount || isGeminiSidebarRoot(parent)) {
+      return current;
+    }
+    current = parent;
+  }
+
+  return links[0].parentElement;
 }
 
 function ensureOverlayHost(): { host: HTMLElement; shadow: ShadowRoot } {
@@ -174,7 +262,7 @@ export function injectProjectsSection(
   if (!shadow.innerHTML) {
     shadow.innerHTML = `
       <style>
-        :host { all: initial; }
+        :host { all: initial; display: block; width: 100%; pointer-events: auto; position: relative; isolation: isolate; }
         .gp-panel { font-family: inherit; }
       </style>
       <div class="gp-panel" id="gp-panel-root"></div>
