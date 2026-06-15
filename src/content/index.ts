@@ -26,6 +26,8 @@ const state: RuntimeState = {
   projects: [],
   chatIndex: new Map(),
   expandedProjectIds: new Set(),
+  nativeConversationIds: new Set(),
+  nativeChatsReady: false,
   ui: {
     createModalOpen: false,
     contextMenuOpen: false,
@@ -97,6 +99,8 @@ function rescanSidebar() {
   if (!nextSidebar) return;
 
   if (!isExpandedSidebar(nextSidebar)) {
+    state.nativeConversationIds = new Set();
+    state.nativeChatsReady = false;
     cleanupInjectedProjects();
     return;
   }
@@ -110,7 +114,7 @@ function rescanSidebar() {
     chatsList = null;
   }
 
-  ensurePanel();
+  if (!ensurePanel()) return;
   ensureChatsList();
   syncNativeChatsFromDom();
   applyNativeChatVisibility();
@@ -118,10 +122,18 @@ function rescanSidebar() {
 }
 
 function ensurePanel() {
-  if (!sidebarRoot) return;
-  if (!isExpandedSidebar(sidebarRoot)) return;
+  if (!sidebarRoot) return false;
+  if (!isExpandedSidebar(sidebarRoot)) return false;
   const chats = findChatsSection(sidebarRoot);
-  if (!chats) return;
+  if (!chats) {
+    cleanupInjectedProjects();
+    return false;
+  }
+  const nativeChatsList = findChatsListContainer(chats);
+  if (!nativeChatsList) {
+    cleanupInjectedProjects();
+    return false;
+  }
   const gems = findGemsSection(sidebarRoot);
   const { shadow, overlayShadow } = injectProjectsSection(sidebarRoot, gems, chats);
 
@@ -152,6 +164,7 @@ function ensurePanel() {
     });
     chatMenuAttached = true;
   }
+  return true;
 }
 
 function ensureChatsList() {
@@ -174,13 +187,19 @@ function ensureChatsList() {
 }
 
 function syncNativeChatsFromDom() {
-  if (!chatsList) return;
+  if (!chatsList) {
+    state.nativeConversationIds = new Set();
+    state.nativeChatsReady = false;
+    return;
+  }
 
   const updates: ChatRef[] = [];
+  const nativeConversationIds = new Set<string>();
   for (const link of collectNativeChatLinks(chatsList)) {
     const row = findChatRowElement(link, chatsList) || link;
     const conversationId = getConversationId(link.href) || getConversationIdFromChatRow(row);
     if (!conversationId) continue;
+    nativeConversationIds.add(conversationId);
 
     const existing = state.chatIndex.get(conversationId);
     const title = normalizeTitle(link.textContent || row.textContent || existing?.title || '');
@@ -196,6 +215,8 @@ function syncNativeChatsFromDom() {
       lastUrl
     });
   }
+  state.nativeConversationIds = nativeConversationIds;
+  state.nativeChatsReady = nativeConversationIds.size > 0;
 
   if (!updates.length) return;
 
@@ -388,6 +409,8 @@ function isExpandedSidebar(sidebar: HTMLElement): boolean {
 function cleanupInjectedProjects() {
   panel = null;
   chatsList = null;
+  state.nativeConversationIds = new Set();
+  state.nativeChatsReady = false;
   lastRenderKey = '';
   document.getElementById('gemini-projects-host')?.remove();
   document.getElementById('gemini-projects-overlay')?.remove();
@@ -423,7 +446,10 @@ function getRenderKey(): string {
     .join('|');
   const chats = Array.from(state.chatIndex.values())
     .filter((chat) => chat.projectId)
-    .map((chat) => `${chat.conversationId}:${chat.title}:${chat.projectId}:${chat.lastUrl || ''}:${chat.updatedAt}`)
+    .map((chat) => {
+      const missing = state.nativeChatsReady && !state.nativeConversationIds.has(chat.conversationId);
+      return `${chat.conversationId}:${chat.title}:${chat.projectId}:${chat.lastUrl || ''}:${chat.updatedAt}:${missing}`;
+    })
     .sort()
     .join('|');
   return `${state.uiPrefs.projectsCollapsed}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;

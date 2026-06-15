@@ -1,10 +1,11 @@
 ﻿const PROJECTS_HOST_ID = 'gemini-projects-host';
 const OVERLAY_HOST_ID = 'gemini-projects-overlay';
+const PROJECTS_REVEAL_DELAY_MS = 220;
 const GEMS_SECTION_LABELS_EN = ['Gem', 'Gems'];
-const CHATS_SECTION_LABELS_EN = ['Chat', 'Chats', 'Recents', 'Recent chats'];
+const CHATS_SECTION_LABELS_EN = ['Chats', 'Recent', 'Recents', 'Recent chats'];
 const SIDEBAR_LANDMARK_LABELS_EN = ['New chat', 'Search chats', 'Gems', 'Notebooks', 'Recents'];
 const GEMS_SECTION_LABELS_ZH = ['\u5b9d\u77f3', '\u6211\u7684 Gem', '\u6211\u7684 Gems'];
-const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929', '\u804a\u5929\u8bb0\u5f55', '\u5bf9\u8bdd', '\u6700\u8fd1', '\u6700\u8fd1\u804a\u5929', '\u6700\u8fd1\u5bf9\u8bdd'];
+const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929\u8bb0\u5f55', '\u6700\u8fd1', '\u6700\u8fd1\u804a\u5929', '\u6700\u8fd1\u5bf9\u8bdd'];
 const SIDEBAR_LANDMARK_LABELS_ZH = ['\u65b0\u5bf9\u8bdd', '\u641c\u7d22\u804a\u5929', '\u641c\u7d22\u5bf9\u8bdd', '\u6211\u7684 Gem', '\u7b14\u8bb0\u672c', '\u6700\u8fd1'];
 
 function normalizeText(value: string | null): string {
@@ -93,6 +94,33 @@ function countConversationLinks(root: ParentNode): number {
   ).length;
 }
 
+function getElementPath(element: Element): string {
+  const parts: string[] = [];
+  let current: Element | null = element;
+  while (current && current !== document.documentElement) {
+    const parent: HTMLElement | null = current.parentElement;
+    const index = parent ? Array.from(parent.children).indexOf(current) + 1 : 1;
+    parts.unshift(`${current.tagName.toLowerCase()}:nth-of-type(${index})`);
+    current = parent;
+  }
+  return parts.join(' > ');
+}
+
+let projectsRevealTimer: number | null = null;
+let projectsRevealKey = '';
+
+function scheduleProjectsReveal(host: HTMLElement, placementKey: string) {
+  projectsRevealKey = placementKey;
+  if (projectsRevealTimer !== null) {
+    window.clearTimeout(projectsRevealTimer);
+  }
+  projectsRevealTimer = window.setTimeout(() => {
+    if (projectsRevealKey !== placementKey) return;
+    if (!document.getElementById(PROJECTS_HOST_ID)) return;
+    host.style.visibility = 'visible';
+  }, PROJECTS_REVEAL_DELAY_MS);
+}
+
 export function findSidebarRoot(): HTMLElement | null {
   const candidates = Array.from(
     document.querySelectorAll<HTMLElement>(
@@ -125,17 +153,44 @@ function findSectionByTexts(root: HTMLElement, labels: string[]): HTMLElement | 
   const visibleElements = Array.from(elements).filter(isVisibleElement);
   for (const element of visibleElements) {
     const normalized = normalizeText(element.textContent);
+    if (isPrimaryNavAction(normalized)) continue;
     if (targets.includes(normalized)) {
       return element;
     }
   }
   for (const element of visibleElements) {
     const normalized = normalizeText(element.textContent);
+    if (isPrimaryNavAction(normalized)) continue;
     if (normalized.length <= 48 && targets.some((target) => normalized.includes(target))) {
       return element;
     }
   }
   return null;
+}
+
+function isPrimaryNavAction(normalizedText: string): boolean {
+  if (!normalizedText) return false;
+  const labels = [
+    'new chat',
+    'search chat',
+    'search chats',
+    'images',
+    'videos',
+    'library',
+    'gems',
+    'notebooks',
+    '\u65b0\u5bf9\u8bdd',
+    '\u641c\u7d22\u804a\u5929',
+    '\u641c\u7d22\u5bf9\u8bdd',
+    '\u56fe\u50cf',
+    '\u89c6\u9891',
+    '\u5a92\u4f53\u5e93',
+    '\u8d44\u6599\u5e93',
+    '\u6211\u7684 gem',
+    '\u6211\u7684 gems',
+    '\u7b14\u8bb0\u672c'
+  ];
+  return labels.some((label) => normalizedText === label || normalizedText.startsWith(`${label} `));
 }
 
 function findSidebarByLandmarks(): HTMLElement | null {
@@ -184,7 +239,35 @@ export function findChatsSection(root: HTMLElement): HTMLElement | null {
     }
   }
 
-  return findFirstConversationList(root);
+  const conversationList = findFirstConversationList(root);
+  if (!conversationList) {
+    return null;
+  }
+
+  return findConversationSectionHeader(conversationList, root) || conversationList;
+}
+
+function findConversationSectionHeader(conversationList: HTMLElement, root: HTMLElement): HTMLElement | null {
+  const labels = getSectionLabelGroups();
+  const chatLabels = mergeLabels(labels.chatsPrimary, labels.chatsFallback);
+  const listRect = conversationList.getBoundingClientRect();
+  const candidates = Array.from(root.querySelectorAll<HTMLElement>('a, div, span, h1, h2, h3, h4, button, p'))
+    .filter(isVisibleElement)
+    .filter((element) => {
+      if (element.contains(conversationList)) return false;
+      if (conversationList.contains(element)) return false;
+      const normalized = normalizeText(element.textContent);
+      if (isPrimaryNavAction(normalized)) return false;
+      if (!chatLabels.some((label) => normalizeText(label) === normalized)) return false;
+
+      const rect = element.getBoundingClientRect();
+      if (rect.top > listRect.top) return false;
+      if (listRect.top - rect.bottom > 96) return false;
+      if (Math.abs(rect.left - listRect.left) > 80) return false;
+      return true;
+    });
+
+  return candidates[0] || null;
 }
 
 export function findChatsListContainer(chatsHeader: HTMLElement | null): HTMLElement | null {
@@ -290,6 +373,8 @@ export function injectProjectsSection(
 ): { host: HTMLElement; shadow: ShadowRoot; overlayShadow: ShadowRoot } {
   let host = document.getElementById(PROJECTS_HOST_ID) as HTMLElement | null;
   const { parent, insertBefore } = getStableProjectsInsertion(root, chatsSection);
+  const placementKey = `${getElementPath(parent)}|${insertBefore ? getElementPath(insertBefore) : 'end'}`;
+  let placementChanged = !host || host.dataset.gpPlacementKey !== placementKey;
   if (!host) {
     host = document.createElement('div');
     host.id = PROJECTS_HOST_ID;
@@ -299,15 +384,19 @@ export function injectProjectsSection(
     host.style.pointerEvents = 'auto';
     host.style.position = 'relative';
     host.style.zIndex = '1';
+    host.style.visibility = 'hidden';
     parent.insertBefore(host, insertBefore);
-  } else if (host.parentElement !== parent || (insertBefore && host.nextElementSibling !== insertBefore)) {
+  } else if (host.parentElement !== parent || host.nextElementSibling !== insertBefore) {
     host.style.display = 'block';
     host.style.width = '100%';
     host.style.pointerEvents = 'auto';
     host.style.position = 'relative';
     host.style.zIndex = '1';
+    host.style.visibility = 'hidden';
+    placementChanged = true;
     parent.insertBefore(host, insertBefore);
   }
+  host.dataset.gpPlacementKey = placementKey;
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
   if (!shadow.innerHTML) {
     shadow.innerHTML = `
@@ -319,6 +408,9 @@ export function injectProjectsSection(
     `;
   }
 
+  if (placementChanged || host.style.visibility === 'hidden') {
+    scheduleProjectsReveal(host, placementKey);
+  }
   const overlay = ensureOverlayHost();
   return { host, shadow, overlayShadow: overlay.shadow };
 }

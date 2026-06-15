@@ -85,6 +85,13 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         if (mouseEvent.button !== 0 || mouseEvent.metaKey || mouseEvent.ctrlKey || mouseEvent.shiftKey || mouseEvent.altKey) {
           return;
         }
+        if (chatRow.classList.contains('missing')) {
+          event.preventDefault();
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          showToast('This chat is no longer in Gemini history. It may have been deleted on another device.');
+          return;
+        }
         const chatId = chatRow.dataset.gpChatId as string;
         const chatLink = chatRow.querySelector<HTMLAnchorElement>('.gp-chat-link');
         event.preventDefault();
@@ -423,7 +430,9 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 export function renderProjectsSection(
   projects: Project[],
   chatIndex: Map<string, ChatRef>,
-  expandedProjectIds: Set<string>
+  expandedProjectIds: Set<string>,
+  nativeConversationIds: Set<string> = new Set(),
+  nativeChatsReady = false
 ): string {
   const sorted = [...projects].sort((a, b) => a.sortIndex - b.sortIndex);
   if (!sorted.length) {
@@ -444,15 +453,19 @@ export function renderProjectsSection(
             ${chats.length
           ? chats
             .map(
-              (chat) => `
-                        <div class="gp-chat-row" data-gp-chat-id="${chat.conversationId}" data-gp-project-id="${project.id}">
+              (chat) => {
+                const isMissing = nativeChatsReady && !nativeConversationIds.has(chat.conversationId);
+                return `
+                        <div class="gp-chat-row ${isMissing ? 'missing' : ''}" data-gp-chat-id="${chat.conversationId}" data-gp-project-id="${project.id}">
                           <a class="gp-chat-link" href="${escapeHtml(chat.lastUrl || `/app/${chat.conversationId}`)}">
                             <span class="gp-chat-color" aria-hidden="true"></span>
                             <span class="gp-chat-title">${escapeHtml(chat.title || 'Untitled chat')}</span>
+                            ${isMissing ? '<span class="gp-chat-missing">Missing</span>' : ''}
                           </a>
                           <button class="gp-chat-kebab" data-gp-action="chat-menu" aria-label="Chat menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
                         </div>
                       `
+              }
             )
             .join('')
           : '<div class="gp-chat-empty">No chats yet</div>'
@@ -702,7 +715,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
 
       .gp-chat-row {
         height: 32px;
-        padding: 0 12px 0 12px;
+        padding: 0 8px 0 12px;
         margin: 0;
         display: flex;
         align-items: center;
@@ -721,16 +734,20 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         background: var(--gp-bg-hover);
       }
 
-      .gp-chat-row:has(.gp-chat-link:hover) {
+      .gp-chat-row.gp-force-hover {
         background: var(--gp-bg-hover);
       }
 
-      .gp-chat-row.gp-force-hover {
-        background: var(--gp-bg-hover);
+      .gp-chat-row.missing {
+        color: var(--gp-section);
       }
       
       .gp-chat-row:hover .gp-chat-link {
         color: var(--gp-fg);
+      }
+
+      .gp-chat-row.missing:hover .gp-chat-link {
+        color: var(--gp-fg-muted);
       }
 
       .gp-chat-row.gp-force-hover .gp-chat-link {
@@ -749,11 +766,6 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         pointer-events: auto;
       }
 
-      .gp-chat-link:hover {
-        background: var(--gp-bg-hover);
-        border-radius: var(--gp-radius);
-      }
-
       .gp-chat-color {
         width: 6px;
         height: 6px;
@@ -764,9 +776,31 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       }
 
       .gp-chat-title {
+        flex: 1;
+        min-width: 0;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
+      }
+
+      .gp-chat-missing {
+        flex: 0 0 auto;
+        margin-left: 4px;
+        padding: 0 6px;
+        border-radius: 999px;
+        border: 1px solid rgba(95, 99, 104, 0.22);
+        color: var(--gp-fg-muted);
+        background: rgba(95, 99, 104, 0.06);
+        font-size: 10px;
+        font-weight: 600;
+        line-height: 16px;
+        text-transform: uppercase;
+        letter-spacing: 0;
+      }
+
+      :host(.dark) .gp-chat-missing {
+        border-color: rgba(189, 193, 198, 0.22);
+        background: rgba(189, 193, 198, 0.1);
       }
       
       .gp-chat-kebab {
@@ -836,7 +870,13 @@ function buildPanelMarkup(state: RuntimeState): string {
           <span class="gp-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
           <span class="gp-label">New Project</span>
         </div>
-        ${renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds)}
+        ${renderProjectsSection(
+    state.projects,
+    state.chatIndex,
+    state.expandedProjectIds,
+    state.nativeConversationIds,
+    state.nativeChatsReady
+  )}
       </div>
     </div>
   `;

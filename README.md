@@ -15,6 +15,7 @@ It also includes a local Prompt Library for saving and reusing prompts from the 
 - Create local projects for Gemini chats
 - Add existing chats to a project from the sidebar
 - Remove chats from a project without deleting the chat itself
+- Mark project chats as `Missing` when they were deleted from Gemini history on another device
 - Choose project icons and colors
 - Edit, delete, back up, and restore project data
 - Save reusable prompts in a local Prompt Library
@@ -25,9 +26,9 @@ It also includes a local Prompt Library for saving and reusing prompts from the 
 
 The latest packaged extension is available from the [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases) page.
 
-For v0.1.67, download:
+For v0.1.68, download:
 
-- `Gemini-Projects-0.1.67-webstore-20260615-142156.zip`
+- `Gemini-Projects-0.1.68-webstore-20260615-*.zip`
 
 ## Install Manually
 
@@ -79,6 +80,13 @@ Build output is written to `dist/`. Release packages are written under `release/
 - Gemini itself still runs on Google's website, so Gemini's own account and service behavior are governed by Google's policies.
 
 ## Current Version
+
+### v0.1.68
+
+- Handles chats deleted on another device without breaking local project organization.
+- Marks project chat references as `Missing` when the chat is no longer visible in the current Gemini sidebar.
+- Prevents navigation to stale Gemini chat URLs while keeping the chat menu available for manual cleanup.
+- Tightens Gemini sidebar anchor detection so Projects does not overlap the logo area when the native history list disappears.
 
 ### v0.1.67
 

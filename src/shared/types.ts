@@ -70,6 +70,8 @@ export interface RuntimeState {
   projects: Project[];
   chatIndex: Map<string, ChatRef>;
   expandedProjectIds: Set<string>;
+  nativeConversationIds: Set<string>;
+  nativeChatsReady: boolean;
   ui: UiState;
   uiPrefs: UiPrefs;
 }
