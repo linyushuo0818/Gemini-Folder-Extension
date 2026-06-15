@@ -2,8 +2,10 @@
 const OVERLAY_HOST_ID = 'gemini-projects-overlay';
 const GEMS_SECTION_LABELS_EN = ['Gem', 'Gems'];
 const CHATS_SECTION_LABELS_EN = ['Chat', 'Chats', 'Recents', 'Recent chats'];
+const SIDEBAR_LANDMARK_LABELS_EN = ['New chat', 'Search chats', 'Gems', 'Notebooks', 'Recents'];
 const GEMS_SECTION_LABELS_ZH = ['\u5b9d\u77f3', '\u6211\u7684 Gem', '\u6211\u7684 Gems'];
 const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929', '\u804a\u5929\u8bb0\u5f55', '\u5bf9\u8bdd', '\u6700\u8fd1', '\u6700\u8fd1\u804a\u5929', '\u6700\u8fd1\u5bf9\u8bdd'];
+const SIDEBAR_LANDMARK_LABELS_ZH = ['\u65b0\u5bf9\u8bdd', '\u641c\u7d22\u804a\u5929', '\u641c\u7d22\u5bf9\u8bdd', '\u6211\u7684 Gem', '\u7b14\u8bb0\u672c', '\u6700\u8fd1'];
 
 function normalizeText(value: string | null): string {
   return (value || '').trim().toLowerCase();
@@ -85,9 +87,17 @@ function hasConversationLinks(root: ParentNode): boolean {
   );
 }
 
+function countConversationLinks(root: ParentNode): number {
+  return Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((link) =>
+    Boolean(getConversationId(link.href))
+  ).length;
+}
+
 export function findSidebarRoot(): HTMLElement | null {
   const candidates = Array.from(
-    document.querySelectorAll<HTMLElement>('bard-sidenav, nav, aside, [role="navigation"], [role="complementary"]')
+    document.querySelectorAll<HTMLElement>(
+      'bard-sidenav, nav, aside, [role="navigation"], [role="complementary"], side-nav, mat-sidenav'
+    )
   ).filter(isVisibleElement);
 
   const explicitSidebar = candidates.find(isGeminiSidebarRoot);
@@ -106,19 +116,50 @@ export function findSidebarRoot(): HTMLElement | null {
     }
   }
 
-  return null;
+  return findSidebarByLandmarks();
 }
 
 function findSectionByTexts(root: HTMLElement, labels: string[]): HTMLElement | null {
   const targets = labels.map((label) => normalizeText(label));
   const elements = root.querySelectorAll<HTMLElement>('a, div, span, h1, h2, h3, h4, button, p');
-  for (const element of elements) {
+  const visibleElements = Array.from(elements).filter(isVisibleElement);
+  for (const element of visibleElements) {
     const normalized = normalizeText(element.textContent);
     if (targets.includes(normalized)) {
       return element;
     }
   }
+  for (const element of visibleElements) {
+    const normalized = normalizeText(element.textContent);
+    if (normalized.length <= 48 && targets.some((target) => normalized.includes(target))) {
+      return element;
+    }
+  }
   return null;
+}
+
+function findSidebarByLandmarks(): HTMLElement | null {
+  const landmarkLabels = mergeLabels(SIDEBAR_LANDMARK_LABELS_EN, SIDEBAR_LANDMARK_LABELS_ZH);
+  const elements = Array.from(document.body.querySelectorAll<HTMLElement>('body *')).filter((element) => {
+    const rect = element.getBoundingClientRect();
+    if (!isVisibleElement(element)) return false;
+    if (rect.left > 80) return false;
+    if (rect.width < 180 || rect.width > 520) return false;
+    if (rect.height < Math.min(360, window.innerHeight * 0.45)) return false;
+
+    const text = element.textContent || '';
+    const hits = landmarkLabels.filter((label) => includesAnyLabel(text, [label])).length;
+    return hits >= 3;
+  });
+
+  if (!elements.length) return null;
+
+  return elements
+    .map((element) => {
+      const rect = element.getBoundingClientRect();
+      return { element, area: rect.width * rect.height };
+    })
+    .sort((a, b) => a.area - b.area)[0].element;
 }
 
 export function findGemsSection(root: HTMLElement): HTMLElement | null {
@@ -248,14 +289,23 @@ export function injectProjectsSection(
   chatsSection: HTMLElement | null
 ): { host: HTMLElement; shadow: ShadowRoot; overlayShadow: ShadowRoot } {
   let host = document.getElementById(PROJECTS_HOST_ID) as HTMLElement | null;
-  const insertBefore = chatsSection ?? null;
-  const parent = chatsSection?.parentElement || root;
+  const { parent, insertBefore } = getStableProjectsInsertion(root, chatsSection);
   if (!host) {
     host = document.createElement('div');
     host.id = PROJECTS_HOST_ID;
     host.style.all = 'initial';
+    host.style.display = 'block';
+    host.style.width = '100%';
+    host.style.pointerEvents = 'auto';
+    host.style.position = 'relative';
+    host.style.zIndex = '1';
     parent.insertBefore(host, insertBefore);
   } else if (host.parentElement !== parent || (insertBefore && host.nextElementSibling !== insertBefore)) {
+    host.style.display = 'block';
+    host.style.width = '100%';
+    host.style.pointerEvents = 'auto';
+    host.style.position = 'relative';
+    host.style.zIndex = '1';
     parent.insertBefore(host, insertBefore);
   }
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
@@ -271,6 +321,37 @@ export function injectProjectsSection(
 
   const overlay = ensureOverlayHost();
   return { host, shadow, overlayShadow: overlay.shadow };
+}
+
+function getStableProjectsInsertion(
+  root: HTMLElement,
+  chatsSection: HTMLElement | null
+): { parent: HTMLElement; insertBefore: Element | null } {
+  if (!chatsSection || chatsSection === root) {
+    return { parent: root, insertBefore: null };
+  }
+
+  let candidate: HTMLElement = chatsSection;
+  for (let depth = 0; candidate.parentElement && candidate.parentElement !== root && depth < 4; depth += 1) {
+    const parent = candidate.parentElement;
+    const siblings = Array.from(parent.children);
+    const hasConversationSibling = siblings.some((child) => child !== candidate && hasConversationLinks(child));
+    const parentLooksLikeSection = siblings.length >= 2 && hasConversationSibling;
+    if (parentLooksLikeSection) {
+      return { parent, insertBefore: candidate };
+    }
+    candidate = parent;
+  }
+
+  let directChild: HTMLElement | null = chatsSection;
+  while (directChild?.parentElement && directChild.parentElement !== root) {
+    directChild = directChild.parentElement;
+  }
+
+  return {
+    parent: directChild?.parentElement === root ? root : chatsSection.parentElement || root,
+    insertBefore: directChild?.parentElement === root ? directChild : chatsSection
+  };
 }
 
 function extractIdFromPath(pathname: string): string | null {
@@ -429,6 +510,45 @@ export function getConversationIdFromChatRow(row: Element | null): string | null
     return findConversationIdByTitle(title);
   }
   return null;
+}
+
+export function findChatRowElement(target: Element | null, listRoot?: HTMLElement | null): HTMLElement | null {
+  if (!target) return null;
+
+  const directListItem = target.closest('[role="listitem"], li') as HTMLElement | null;
+  if (directListItem) {
+    return directListItem;
+  }
+
+  const anchor = target.closest('a[href]') as HTMLAnchorElement | null;
+  let current: HTMLElement | null = (anchor?.parentElement || target.closest('div') || target) as HTMLElement | null;
+  const boundary = listRoot || findChatsListContainer(findChatsSection(findSidebarRoot() || document.body));
+
+  while (current && current !== document.body) {
+    if (boundary && !boundary.contains(current) && current !== boundary) {
+      break;
+    }
+
+    const currentCount = countConversationLinks(current);
+    if (currentCount === 1) {
+      const parent = current.parentElement;
+      if (!parent || parent === document.body || parent === boundary) {
+        return current;
+      }
+
+      const parentCount = countConversationLinks(parent);
+      if (parentCount !== 1) {
+        return current;
+      }
+
+      current = parent;
+      continue;
+    }
+
+    current = current.parentElement;
+  }
+
+  return (target.closest('[role="listitem"], li, div') as HTMLElement | null) || (anchor as HTMLElement | null);
 }
 
 export function getProjectsHostId(): string {

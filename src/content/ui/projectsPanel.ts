@@ -27,6 +27,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   // 用于存储当前 state 以供 chatMenu 获取项目列表
   let currentState: RuntimeState | null = null;
   const chatMenu = createChatMenu(overlayLayer, () => currentState?.projects || []);
+  let panelEventsController: AbortController | null = null;
 
   let modalMode: ModalMode = 'create';
   let modalProjectId: string | null = null;
@@ -46,6 +47,100 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   }
 
   function attachPanelEvents(state: RuntimeState) {
+    panelEventsController?.abort();
+    panelEventsController = new AbortController();
+
+    panelRoot.addEventListener('click', (event) => {
+      const target = event.target as HTMLElement | null;
+      if (!target) return;
+
+      const chatMenuButton = target.closest<HTMLButtonElement>('[data-gp-action="chat-menu"]');
+      if (chatMenuButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        const chatRow = chatMenuButton.closest<HTMLElement>('[data-gp-chat-id]');
+        if (!chatRow) return;
+        const chatId = chatRow.dataset.gpChatId as string;
+        const chatProjectId = chatRow.dataset.gpProjectId as string;
+        const project = state.projects.find((p) => p.id === chatProjectId);
+        if (project) {
+          chatMenu.open(
+            chatMenuButton.getBoundingClientRect(),
+            chatId,
+            chatProjectId,
+            project.name,
+            {
+              onRemove: () => options.onRemoveChatFromProject(chatId),
+              onMoveToProject: (targetProjectId) => options.onMoveChatToProject(chatId, targetProjectId)
+            }
+          );
+        }
+        return;
+      }
+
+      const chatRow = target.closest<HTMLElement>('[data-gp-chat-id]');
+      if (chatRow) {
+        const mouseEvent = event as MouseEvent;
+        if (mouseEvent.button !== 0 || mouseEvent.metaKey || mouseEvent.ctrlKey || mouseEvent.shiftKey || mouseEvent.altKey) {
+          return;
+        }
+        const chatId = chatRow.dataset.gpChatId as string;
+        const chatLink = chatRow.querySelector<HTMLAnchorElement>('.gp-chat-link');
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        navigateToProjectChat(chatId, chatLink?.href || `/app/${chatId}`);
+        return;
+      }
+
+      const projectMenuButton = target.closest<HTMLButtonElement>('[data-gp-action="project-menu"]');
+      if (projectMenuButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        const projectRow = projectMenuButton.closest<HTMLElement>('[data-gp-project-id]');
+        const projectId = projectRow?.dataset.gpProjectId;
+        const project = state.projects.find((item) => item.id === projectId);
+        if (project) {
+          openProjectMenu(project, projectMenuButton.getBoundingClientRect());
+        }
+        return;
+      }
+
+      const newProjectRow = target.closest<HTMLElement>('[data-gp-action="new-project"]');
+      if (newProjectRow) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        openCreateModal();
+        return;
+      }
+
+      const header = target.closest<HTMLElement>('[data-gp-action="toggle-section"]');
+      if (header) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        options.onToggleCollapse(!state.uiPrefs.projectsCollapsed);
+        return;
+      }
+
+      const toggleRow = target.closest<HTMLElement>('[data-gp-action="toggle-project"]');
+      if (toggleRow) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        const projectRow = toggleRow.closest<HTMLElement>('[data-gp-project-id]');
+        const projectId = projectRow?.dataset.gpProjectId;
+        if (projectId) {
+          options.onToggleProjectExpand(projectId);
+        }
+      }
+    }, { capture: true, signal: panelEventsController.signal });
+
+    return;
+
     const header = panelRoot.querySelector<HTMLElement>('[data-gp-action="toggle-section"]');
     const newProjectRow = panelRoot.querySelector<HTMLElement>('[data-gp-action="new-project"]');
 
@@ -89,14 +184,18 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         const chatProjectId = chatRow.dataset.gpProjectId as string;
         const chatLink = chatRow.querySelector<HTMLAnchorElement>('.gp-chat-link');
 
-        // Route via Gemini's native sidebar link first to preserve SPA navigation behavior.
-        chatLink?.addEventListener('click', (event) => {
+        chatRow.addEventListener('click', (event) => {
           if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
             return;
           }
+          if ((event.target as HTMLElement).closest('[data-gp-action="chat-menu"]')) {
+            return;
+          }
           event.preventDefault();
-          navigateToChatViaNativeLink(chatId, chatLink.href);
-        });
+          event.stopPropagation();
+          event.stopImmediatePropagation();
+          navigateToProjectChat(chatId, chatLink?.href || `/app/${chatId}`);
+        }, true);
 
         chatKebab.addEventListener('click', (event) => {
           event.stopPropagation();
@@ -123,6 +222,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalMode = 'create';
     modalProjectId = null;
     modalSelectedIcon = 'default';
+    modalSelectedColor = '#1f1f1f';
     showModal({
       title: 'Create Project',
       confirmLabel: 'Create Project',
@@ -153,6 +253,28 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     }
   }
 
+  function syncModalIconSelection() {
+    modal.element.querySelectorAll<HTMLElement>('[data-gp-template]').forEach((option) => {
+      const isSelected = option.dataset.gpTemplate === modalSelectedIcon;
+      option.classList.toggle('selected', isSelected);
+      option.setAttribute('aria-pressed', String(isSelected));
+    });
+
+    modal.element.querySelectorAll<HTMLElement>('[data-gp-icon-option]').forEach((option) => {
+      const isSelected = option.dataset.gpIconOption === modalSelectedIcon;
+      option.classList.toggle('selected', isSelected);
+      option.setAttribute('aria-pressed', String(isSelected));
+    });
+  }
+
+  function syncModalColorSelection() {
+    modal.element.querySelectorAll<HTMLElement>('[data-gp-color]').forEach((option) => {
+      const isSelected = option.dataset.gpColor === modalSelectedColor;
+      option.classList.toggle('selected', isSelected);
+      option.setAttribute('aria-pressed', String(isSelected));
+    });
+  }
+
   function createProjectFromTemplate(
     templateName: string,
     templateIcon: ProjectIcon,
@@ -161,6 +283,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   ) {
     modalSelectedIcon = templateIcon;
     updateIconButton();
+    syncModalIconSelection();
     if (!inputDirty && input) {
       input.value = templateName;
     }
@@ -190,6 +313,8 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     confirm!.textContent = config.confirmLabel;
     confirm!.disabled = input?.value.trim().length === 0;
     updateIconButton();
+    syncModalIconSelection();
+    syncModalColorSelection();
 
     if (input) {
       input.oninput = () => {
@@ -241,6 +366,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         const iconId = option.dataset.gpIconOption as ProjectIcon;
         modalSelectedIcon = iconId;
         updateIconButton();
+        syncModalIconSelection();
         if (iconPopover) {
           iconPopover.style.display = 'none';
         }
@@ -262,10 +388,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         const color = dot.dataset.gpColor;
         if (color) {
           modalSelectedColor = color;
-          // Update visual selection
-          colorRow.querySelectorAll('.gp-color-dot').forEach(d => d.classList.remove('selected'));
-          dot.classList.add('selected');
-          // Update icon color in real-time
+          syncModalColorSelection();
           updateIconButton();
         }
       };
@@ -313,16 +436,18 @@ export function renderProjectsSection(
       const chats = Array.from(chatIndex.values())
         .filter((chat) => chat.projectId === project.id)
         .sort((a, b) => b.updatedAt - a.updatedAt);
+      const accentColor = getProjectAccentColor(project);
 
       const chatRows = isExpanded
         ? `
-          <div class="gp-project-chats">
+          <div class="gp-project-chats" style="--gp-project-color: ${escapeAttr(accentColor)};">
             ${chats.length
           ? chats
             .map(
               (chat) => `
                         <div class="gp-chat-row" data-gp-chat-id="${chat.conversationId}" data-gp-project-id="${project.id}">
                           <a class="gp-chat-link" href="${escapeHtml(chat.lastUrl || `/app/${chat.conversationId}`)}">
+                            <span class="gp-chat-color" aria-hidden="true"></span>
                             <span class="gp-chat-title">${escapeHtml(chat.title || 'Untitled chat')}</span>
                           </a>
                           <button class="gp-chat-kebab" data-gp-action="chat-menu" aria-label="Chat menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
@@ -572,7 +697,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         position: relative;
         margin-left: 30px;
         padding-left: 20px;
-        border-left: 1px solid rgba(60, 64, 67, 0.18);
+        border-left: 1px solid color-mix(in srgb, var(--gp-project-color) 45%, transparent);
       }
 
       .gp-chat-row {
@@ -596,6 +721,10 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         background: var(--gp-bg-hover);
       }
 
+      .gp-chat-row:has(.gp-chat-link:hover) {
+        background: var(--gp-bg-hover);
+      }
+
       .gp-chat-row.gp-force-hover {
         background: var(--gp-bg-hover);
       }
@@ -613,10 +742,25 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         min-width: 0; /* Allow text truncation */
         display: flex;
         align-items: center;
+        gap: 8px;
         height: 100%;
         text-decoration: none;
         color: inherit;
         pointer-events: auto;
+      }
+
+      .gp-chat-link:hover {
+        background: var(--gp-bg-hover);
+        border-radius: var(--gp-radius);
+      }
+
+      .gp-chat-color {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--gp-project-color);
+        flex: 0 0 6px;
+        box-shadow: 0 0 0 2px color-mix(in srgb, var(--gp-project-color) 18%, transparent);
       }
 
       .gp-chat-title {
@@ -705,6 +849,18 @@ function escapeHtml(value: string): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+function escapeAttr(value: string): string {
+  return escapeHtml(value).replace(/`/g, '&#96;');
+}
+
+function getProjectAccentColor(project: Project): string {
+  const color = project.color || '';
+  if (/^#[0-9a-f]{3,8}$/i.test(color) && color.toLowerCase() !== '#1f1f1f') {
+    return color;
+  }
+  return 'var(--gp-fg-muted)';
 }
 
 function ProjectNameInputWithIcon(): string {
@@ -796,9 +952,12 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         pointer-events: auto;
       }
       .gp-modal {
+        --gp-icon-size: 48px;
+        --gp-icon-gap: 12px;
+        --gp-content-width: calc(var(--gp-icon-size) * 10 + var(--gp-icon-gap) * 9);
         background: var(--gp-surface);
         border-radius: var(--gp-radius-xl);
-        width: 520px;
+        width: calc(var(--gp-content-width) + 42px);
         max-width: calc(100vw - 32px);
         box-shadow: var(--gp-shadow);
         border: 1px solid var(--gp-border);
@@ -848,20 +1007,24 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: flex;
         align-items: center;
         gap: 12px;
+        width: var(--gp-content-width);
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
         border: 1px solid var(--gp-border);
-        border-radius: var(--gp-radius-lg);
+        border-radius: var(--gp-radius-xl);
         padding: 8px; /* Uniform padding for consistent margins */
         position: relative;
         background: var(--gp-input-bg);
         transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .gp-namebox:focus-within {
-        border-color: var(--gp-focus);
-        box-shadow: 0 0 0 3px var(--gp-focus-ring);
+        border-color: var(--gp-fg);
+        box-shadow: inset 0 0 0 1px var(--gp-fg);
       }
       .gp-icon-button {
-        width: 36px;
-        height: 36px;
+        width: 38px;
+        height: 38px;
         border: none;
         border-radius: var(--gp-radius-sm);
         background: var(--gp-input-bg);
@@ -873,13 +1036,18 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         color: var(--gp-fg);
       }
       .gp-icon-button:hover { background: var(--gp-hover); }
-      .gp-icon-button svg { width: 18px; height: 18px; }
+      .gp-icon-button svg {
+        width: 22px;
+        height: 22px;
+        stroke-width: 2.35;
+      }
       .gp-icon-button:focus-visible {
         outline: none;
         box-shadow: 0 0 0 3px var(--gp-focus-ring);
       }
       .gp-name-input {
         flex: 1;
+        min-width: 0;
         border: none;
         outline: none;
         background: transparent;
@@ -911,7 +1079,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 40px;
         height: 40px;
         border: 1.5px solid var(--gp-border);
-        border-radius: var(--gp-radius);
+        border-radius: 10px;
         background: var(--gp-surface);
         display: inline-flex;
         align-items: center;
@@ -923,54 +1091,75 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-icon-option:hover {
         border-color: var(--gp-focus);
         background: var(--gp-accent-hover);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(60, 64, 67, 0.14);
+        transform: none;
       }
       .gp-icon-option:active {
         transform: translateY(0);
       }
       .gp-icon-option svg { width: 18px; height: 18px; }
+      .gp-icon-option.selected {
+        border-color: var(--gp-focus);
+        background: var(--gp-accent-hover);
+        color: var(--gp-focus);
+        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
+      }
       .gp-icon-option:focus-visible {
         outline: none;
         box-shadow: 0 0 0 3px var(--gp-focus-ring);
       }
       .gp-template-row {
         display: flex;
-        gap: 10px;
+        gap: var(--gp-icon-gap);
         flex-wrap: wrap;
         align-items: center;
+        width: var(--gp-content-width);
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
       }
       .gp-template-chip {
         display: inline-flex;
         align-items: center;
-        gap: 6px;
-        padding: 6px 12px;
-        border-radius: var(--gp-radius-pill);
+        justify-content: center;
+        width: var(--gp-icon-size);
+        height: var(--gp-icon-size);
+        padding: 0;
+        border-radius: 10px;
         border: 1px solid var(--gp-border);
         cursor: pointer;
-        font-size: 13px;
         color: var(--gp-fg);
         background: var(--gp-surface);
         transition: background var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition), transform var(--gp-transition);
-        line-height: 1;
-        height: 32px;
-        font-weight: 500;
+        flex: 0 0 auto;
       }
       .gp-template-chip:hover {
         border-color: var(--gp-focus);
         background: var(--gp-accent-hover);
-        transform: translateY(-1px);
-        box-shadow: 0 2px 8px rgba(60, 64, 67, 0.14);
+        transform: none;
       }
       .gp-template-chip:active { transform: translateY(0); }
-      .gp-template-chip svg { width: 16px; height: 16px; }
+      .gp-template-chip.selected {
+        border-color: var(--gp-focus);
+        background: var(--gp-accent-hover);
+        color: var(--gp-focus);
+        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
+      }
+      .gp-template-chip svg {
+        width: 24px;
+        height: 24px;
+        stroke-width: 2.15;
+      }
       .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gp-focus-ring); }
       
       /* Color Picker Row */
       .gp-color-row {
         display: flex;
-        gap: 8px;
+        gap: 10px;
         align-items: center;
+        width: var(--gp-content-width);
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
         margin-bottom: 8px;
       }
       .gp-color-dot {
@@ -989,10 +1178,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transform: translateY(-1px);
       }
       .gp-color-dot.selected {
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px currentColor;
+        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
       }
       .gp-color-dot:first-child.selected {
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px #1f1f1f;
+        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
       }
       
       /* Adaptive Color (Black/White) */
@@ -1005,7 +1194,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         color: #ffffff;
       }
       :host(.dark) .gp-color-dot:first-child.selected {
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px #ffffff;
+        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
       }
 
       /* 所有颜色的立体磨砂效果 - 移除，回归扁平 */
@@ -1021,24 +1210,42 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-modal-actions {
         display: flex;
         justify-content: flex-end;
+        width: var(--gp-content-width);
+        max-width: 100%;
+        margin-left: auto;
+        margin-right: auto;
+        margin-top: 4px;
       }
       .gp-primary {
         background: var(--gp-focus);
         color: var(--gp-on-accent);
         border: 1px solid var(--gp-focus);
-        padding: 8px 20px;
-        border-radius: var(--gp-radius-pill);
+        padding: 0 22px;
+        border-radius: var(--gp-radius-lg);
         cursor: pointer;
-        font-weight: 500;
-        box-shadow: 0 6px 16px rgba(60, 64, 67, 0.18);
-        transition: filter var(--gp-transition), transform var(--gp-transition);
-        height: 40px;
-        min-width: 140px;
+        font-family: var(--gp-font);
+        font-size: 15px;
+        font-weight: 800;
+        letter-spacing: 0;
+        -webkit-font-smoothing: antialiased;
+        box-shadow: none;
+        transition: background var(--gp-transition), border-color var(--gp-transition), transform var(--gp-transition);
+        height: 46px;
+        min-width: 156px;
         overflow: hidden;
       }
-      .gp-primary:hover { filter: brightness(1.03); transform: translateY(-1px); }
+      .gp-primary:hover {
+        background: #1967d2;
+        border-color: #1967d2;
+        transform: none;
+      }
+      :host(.dark) .gp-primary:hover {
+        background: #aecbfa;
+        border-color: #aecbfa;
+      }
       .gp-primary:disabled {
-        background: var(--gp-hover-strong);
+        background: var(--gp-hover);
+        border-color: var(--gp-border);
         color: var(--gp-muted);
         cursor: not-allowed;
         box-shadow: none;
@@ -1177,10 +1384,9 @@ function createModal(layer: HTMLElement) {
       <div class="gp-template-row" data-gp-template-row>
         ${ICON_OPTIONS.map(
     (icon) => `
-            <div class="gp-template-chip" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}">
+            <button class="gp-template-chip" type="button" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}" title="${icon.label}" aria-label="${icon.label}" aria-pressed="false">
               ${renderIconSvg(icon.id)}
-              <span>${icon.label}</span>
-            </div>
+            </button>
           `
   ).join('')}
       </div>
@@ -1423,21 +1629,34 @@ function createToast(layer: HTMLElement) {
   return { show, hide };
 }
 
-function navigateToChatViaNativeLink(conversationId: string, fallbackHref: string) {
-  const nativeLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/app/"]'));
-  const nativeLink = nativeLinks.find((link) => {
-    if (!link.href.includes(`/app/${conversationId}`)) return false;
-    return !!link.closest('nav, aside, [role="navigation"], [role="complementary"]');
-  });
-
-  if (nativeLink) {
-    nativeLink.click();
+function navigateToProjectChat(conversationId: string, fallbackHref: string) {
+  const before = window.location.href;
+  const targetUrl = new URL(fallbackHref, window.location.origin).href;
+  if (before === targetUrl) {
     return;
   }
 
-  if (fallbackHref) {
-    window.location.assign(fallbackHref);
+  const nativeLink = findNativeChatLink(conversationId);
+  if (nativeLink) {
+    nativeLink.click();
+    window.setTimeout(() => {
+      if (window.location.href === before) {
+        window.location.assign(targetUrl);
+      }
+    }, 200);
+    return;
   }
+
+  window.location.assign(targetUrl);
+}
+
+function findNativeChatLink(conversationId: string): HTMLAnchorElement | null {
+  const nativeLinks = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/app/"]'));
+  return nativeLinks.find((link) => {
+    if (!link.href.includes(`/app/${conversationId}`)) return false;
+    if (!link.closest('nav, aside, [role="navigation"], [role="complementary"]')) return false;
+    return true;
+  }) || null;
 }
 
 function attachThemeObserver(panelRoot: HTMLElement, overlayLayer: HTMLElement) {

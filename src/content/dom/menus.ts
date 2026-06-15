@@ -2,12 +2,14 @@
 import {
   findChatsListContainer,
   findChatsSection,
+  findChatRowElement,
   findSidebarRoot,
+  getConversationId,
   getConversationIdFromChatRow
 } from './anchors';
 import { renderIconSvg } from '../ui/icons';
 
-const DEBUG = true;
+const DEBUG = false;
 const ACTIVE_ROW_ATTR = 'data-gp-active-row';
 const ACTIVE_ROW_ID_ATTR = 'data-gp-conversation-id';
 const MENU_ITEM_ATTR = 'data-gp-item';
@@ -463,6 +465,9 @@ export function isGeminiChatMenu(root: HTMLElement): boolean {
 export function getConversationIdFromActiveRow(targetEl: HTMLElement): string | null {
   const active = document.querySelector<HTMLElement>(`[${ACTIVE_ROW_ATTR}="true"]`);
   const row = active || findChatRowFromTarget(targetEl);
+  const link = row?.querySelector<HTMLAnchorElement>('a[href]') || targetEl.closest<HTMLAnchorElement>('a[href]');
+  const hrefId = link?.href ? getConversationId(link.href) : null;
+  if (hrefId) return hrefId;
   if (row) {
     const cached = row.getAttribute(ACTIVE_ROW_ID_ATTR);
     if (cached) return cached;
@@ -995,9 +1000,15 @@ function escapeHtml(value: string): string {
 }
 
 function findChatRowFromTarget(target: HTMLElement): HTMLElement | null {
+  const sidebarRoot = findSidebarRoot();
+  const chatsHeader = sidebarRoot ? findChatsSection(sidebarRoot) : null;
+  const chatsList = findChatsListContainer(chatsHeader);
+  const resolved = findChatRowElement(target, chatsList);
+  if (resolved) return resolved;
+
   const anchor = target.closest('a[href]') as HTMLElement | null;
   if (anchor) {
-    return (anchor.closest('[role="listitem"], li, div') as HTMLElement | null) ?? anchor;
+    return (anchor.closest('[role="listitem"], li') as HTMLElement | null) ?? anchor;
   }
   let current: HTMLElement | null = target;
   while (current && current !== document.body) {

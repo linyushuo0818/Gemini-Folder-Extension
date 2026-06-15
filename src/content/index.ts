@@ -1,25 +1,26 @@
 import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
 import { runtimeSendMessage } from '../shared/webext';
 import {
-  findSidebarRoot,
-  findGemsSection,
-  findChatsSection,
+  findChatRowElement,
   findChatsListContainer,
-  injectProjectsSection,
+  findChatsSection,
+  findGemsSection,
+  findSidebarRoot,
   getConversationId,
-  getConversationIdFromChatRow
+  getConversationIdFromChatRow,
+  injectProjectsSection
 } from './dom/anchors';
 import { attachChatMenuEnhancer } from './dom/menus';
-import { createProjectsPanel } from './ui/projectsPanel';
-import * as prompts from './prompts';
 import { initGeminiResponseFolding } from './gemini/responseFolding';
-
+import * as prompts from './prompts';
+import { installSidebarInspector } from './sidebarInspector';
+import { createProjectsPanel } from './ui/projectsPanel';
 import { initChatGPT } from './chatgpt';
 
-const DEBUG_LOG = false;
-const DEBUG_PROJECT = true;
-const BUILD_MARKER = '2026-05-25-new-gemini-ui';
-const FORCE_HOVER_CLASS = 'gp-force-hover';
+const BUILD_MARKER = '2026-06-14-minimal-rewrite-v067';
+const HIDDEN_ATTR = 'data-gp-native-hidden';
+const RESCAN_DELAY_MS = 350;
+const MIN_EXPANDED_SIDEBAR_WIDTH = 180;
 
 const state: RuntimeState = {
   projects: [],
@@ -37,437 +38,263 @@ let panel: ReturnType<typeof createProjectsPanel> | null = null;
 let sidebarRoot: HTMLElement | null = null;
 let chatsHeader: HTMLElement | null = null;
 let chatsList: HTMLElement | null = null;
+let rootObserver: MutationObserver | null = null;
+let sidebarObserver: MutationObserver | null = null;
 let chatsObserver: MutationObserver | null = null;
-let menuEnhancerCleanup: (() => void) | null = null;
-let projectsBridgeInitialized = false;
-let activeForcedHoverNode: HTMLElement | null = null;
-
-function log(...args: unknown[]) {
-  if (DEBUG_LOG) {
-    // eslint-disable-next-line no-console
-    console.log('[gemini-projects]', ...args);
-  }
-}
-
-function logProject(...args: unknown[]) {
-  if (DEBUG_PROJECT) {
-    // eslint-disable-next-line no-console
-    console.log('[gp-project]', ...args);
-  }
-}
-
-function stampBuildMarker(): void {
-  document.documentElement.setAttribute('data-gp-build', BUILD_MARKER);
-}
+let rescanTimer: number | null = null;
+let lastRenderKey = '';
+let chatMenuAttached = false;
 
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
   return runtimeSendMessage<BackgroundResponse>(message);
 }
 
-function normalizeChatTitleAndPinned(rawTitle: string, row?: Element | null): { title: string; pinnedFromDom: boolean } {
-  const source = (rawTitle || '').trim();
-  const rowText = ((row as HTMLElement | null)?.textContent || '').trim();
-  const combined = `${source} ${rowText}`.toLowerCase();
-
-  const pinnedFromDom = /(?:\bpinned\b|已置顶|置顶)/i.test(combined);
-  const cleaned = source
-    .replace(/\s*(?:[-–—|·•]?\s*)?(?:pinned)(?:\.{3}|…)?\s*$/i, '')
-    .replace(/\s*(?:[-–—|·•]?\s*)?(?:已置顶|置顶)(?:\.{3}|…)?\s*$/i, '')
-    .trim();
-
-  return {
-    title: cleaned || source,
-    pinnedFromDom
-  };
-}
-
-export function getChatProjectId(conversationId: string): string | null {
-  return state.chatIndex.get(conversationId)?.projectId ?? null;
-}
-
-export function renderProjectsSection(
-  projects: Project[],
-  chatIndex: Map<string, ChatRef>,
-  expandedProjectIds: Set<string>
-) {
-  state.projects = projects;
-  state.chatIndex = chatIndex;
-  state.expandedProjectIds = expandedProjectIds;
-  panel?.render(state);
-}
-
-export function renderUnassignedChatsSection(chatIndex: Map<string, ChatRef>) {
-  if (!chatsList) return;
-  const chatLinks = Array.from(chatsList.querySelectorAll<HTMLAnchorElement>('a[href]'));
-  chatLinks.forEach((link) => {
-    const row = link.closest('[role="listitem"], li, div') || link;
-    const conversationId = getConversationIdFromChatRow(row) || getConversationId(link.href);
-    if (!conversationId) {
-      (row as HTMLElement).style.display = '';
-      return;
-    }
-    const chat = chatIndex.get(conversationId);
-    const shouldHide = !!chat?.projectId;
-    (row as HTMLElement).style.display = shouldHide ? 'none' : '';
-  });
-}
-
 async function bootstrap() {
-  stampBuildMarker();
+  document.documentElement.setAttribute('data-gp-build', BUILD_MARKER);
 
   if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('openai.com')) {
     initChatGPT();
     return;
   }
 
+  installSidebarInspector();
+  installNativeHideStyle();
+  await loadInitialState();
+  observeDocumentForSidebar();
+  runStage('responseFolding', () => initGeminiResponseFolding());
+  runStage('prompts', () => prompts.bootstrap());
+}
+
+async function loadInitialState() {
   try {
-    const response = await withTimeout(sendMessage({ type: 'getState' }), 1500);
-    if (response?.ok && response.state) {
-      state.projects = response.state.projects;
-      state.chatIndex = new Map(Object.entries(response.state.chatIndex));
-      state.uiPrefs = response.state.uiPrefs || { projectsCollapsed: false };
-    }
+    const response = await withTimeout(sendMessage({ type: 'getState' }), 1800);
+    if (!response.ok || !response.state) return;
+    state.projects = response.state.projects;
+    state.chatIndex = new Map(Object.entries(response.state.chatIndex));
+    state.uiPrefs = response.state.uiPrefs || { projectsCollapsed: false };
   } catch (error) {
-    // Do not block UI features when background messaging fails temporarily.
-    // eslint-disable-next-line no-console
-    console.warn('[gemini-projects] getState failed, continue bootstrap with defaults', error);
-  }
-
-  runStage('observeSidebar', () => observeSidebar());
-  runStage('initProjectsInteractionBridge', () => initProjectsInteractionBridge());
-  runStage('attachChatClickTracker', () => attachChatClickTracker());
-  runStage('initGeminiResponseFolding', () => initGeminiResponseFolding());
-  runStage('prompts.bootstrap', () => prompts.bootstrap());
-}
-
-function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
-  let timer: number | null = null;
-  const timeoutPromise = new Promise<T>((_, reject) => {
-    timer = window.setTimeout(() => {
-      reject(new Error(`timeout(${timeoutMs}ms)`));
-    }, timeoutMs);
-  });
-
-  return Promise.race([promise, timeoutPromise]).finally(() => {
-    if (timer !== null) {
-      window.clearTimeout(timer);
-    }
-  });
-}
-
-function runStage(name: string, fn: () => void): void {
-  try {
-    fn();
-  } catch (error) {
-    // Stage-level isolation: one feature failure must not block others.
-    // eslint-disable-next-line no-console
-    console.error(`[gemini-projects] bootstrap stage failed: ${name}`, error);
+    console.warn('[gemini-projects] getState failed; starting with local empty state', error);
   }
 }
 
-function observeSidebar() {
-  const tryInject = () => {
-    if (sidebarRoot && document.contains(sidebarRoot)) {
-      ensurePanel();
-      return;
-    }
-
-    sidebarRoot = findSidebarRoot();
-    if (!sidebarRoot) {
-      return;
-    }
-
-    ensurePanel();
-    attachSidebarObserver();
-  };
-
-  const rootObserver = new MutationObserver(() => tryInject());
-  rootObserver.observe(document.body, { childList: true, subtree: true });
-  tryInject();
+function observeDocumentForSidebar() {
+  rootObserver?.disconnect();
+  rootObserver = new MutationObserver(() => scheduleRescan());
+  rootObserver.observe(document.body, { childList: true });
+  scheduleRescan(0);
 }
 
-function getProjectsHost(): HTMLElement | null {
-  const host = document.getElementById('gemini-projects-host');
-  return host instanceof HTMLElement && host.shadowRoot ? host : null;
+function scheduleRescan(delay = RESCAN_DELAY_MS) {
+  if (rescanTimer !== null) window.clearTimeout(rescanTimer);
+  rescanTimer = window.setTimeout(() => {
+    rescanTimer = null;
+    runStage('rescanSidebar', rescanSidebar);
+  }, delay);
 }
 
-function isInsideProjectsShadow(host: HTMLElement, node: Node | null): boolean {
-  return !!(host.shadowRoot && node && host.shadowRoot.contains(node));
-}
+function rescanSidebar() {
+  const nextSidebar = findSidebarRoot();
+  if (!nextSidebar) return;
 
-function getProjectsInteractiveTargetAtPoint(host: HTMLElement, x: number, y: number): HTMLElement | null {
-  if (!host.shadowRoot) return null;
-
-  const selectors = [
-    '[data-gp-action="project-menu"]',
-    '[data-gp-action="chat-menu"]',
-    '.gp-chat-link',
-    '[data-gp-action="new-project"]',
-    '[data-gp-action="toggle-project"]',
-    '[data-gp-action="toggle-section"]',
-    '.gp-chat-row',
-    '.gp-row',
-    '.gp-title'
-  ];
-
-  const candidates: Array<{ node: HTMLElement; priority: number; area: number }> = [];
-  selectors.forEach((selector) => {
-    host.shadowRoot!.querySelectorAll<HTMLElement>(selector).forEach((node) => {
-      const style = window.getComputedStyle(node);
-      if (style.display === 'none' || style.visibility === 'hidden') return;
-      const rect = node.getBoundingClientRect();
-      if (rect.width <= 0 || rect.height <= 0) return;
-      if (x < rect.left || x > rect.right || y < rect.top || y > rect.bottom) return;
-
-      let priority = 9;
-      if (node.matches('[data-gp-action="project-menu"], [data-gp-action="chat-menu"]')) priority = 0;
-      else if (node.matches('.gp-chat-link')) priority = 1;
-      else if (node.matches('[data-gp-action="new-project"], [data-gp-action="toggle-project"], [data-gp-action="toggle-section"]')) priority = 2;
-      else if (node.matches('.gp-chat-row, .gp-row, .gp-title')) priority = 3;
-
-      candidates.push({ node, priority, area: rect.width * rect.height });
-    });
-  });
-
-  candidates.sort((a, b) => {
-    if (a.priority !== b.priority) return a.priority - b.priority;
-    return a.area - b.area;
-  });
-
-  return candidates[0]?.node ?? null;
-}
-
-function getProjectsHoverNode(target: HTMLElement | null): HTMLElement | null {
-  if (!target) return null;
-  return target.closest('.gp-chat-row, .gp-row, .gp-title') as HTMLElement | null;
-}
-
-function clearProjectsForcedHover(): void {
-  if (activeForcedHoverNode) {
-    activeForcedHoverNode.classList.remove(FORCE_HOVER_CLASS);
-    activeForcedHoverNode = null;
-  }
-}
-
-function updateProjectsForcedHover(x: number, y: number): void {
-  const host = getProjectsHost();
-  if (!host) {
-    clearProjectsForcedHover();
+  if (!isExpandedSidebar(nextSidebar)) {
+    cleanupInjectedProjects();
     return;
   }
 
-  const topNode = document.elementFromPoint(x, y);
-  if (isInsideProjectsShadow(host, topNode)) {
-    clearProjectsForcedHover();
-    return;
+  if (sidebarRoot !== nextSidebar) {
+    sidebarRoot = nextSidebar;
+    sidebarObserver?.disconnect();
+    sidebarObserver = new MutationObserver(() => scheduleRescan());
+    sidebarObserver.observe(sidebarRoot, { childList: true, subtree: true });
+    panel = null;
+    chatsList = null;
   }
 
-  const target = getProjectsInteractiveTargetAtPoint(host, x, y);
-  const hoverNode = getProjectsHoverNode(target);
-  if (!hoverNode) {
-    clearProjectsForcedHover();
-    return;
-  }
-
-  if (activeForcedHoverNode === hoverNode) {
-    return;
-  }
-
-  clearProjectsForcedHover();
-  activeForcedHoverNode = hoverNode;
-  activeForcedHoverNode.classList.add(FORCE_HOVER_CLASS);
-}
-
-function bridgeProjectsClick(event: MouseEvent): void {
-  const host = getProjectsHost();
-  if (!host) return;
-
-  const topNode = document.elementFromPoint(event.clientX, event.clientY);
-  if (isInsideProjectsShadow(host, topNode)) {
-    return;
-  }
-
-  const target = getProjectsInteractiveTargetAtPoint(host, event.clientX, event.clientY);
-  if (!target) return;
-
-  event.preventDefault();
-  event.stopPropagation();
-  event.stopImmediatePropagation();
-  target.click();
-}
-
-function initProjectsInteractionBridge(): void {
-  if (projectsBridgeInitialized) return;
-  projectsBridgeInitialized = true;
-
-  document.addEventListener('pointermove', (event) => {
-    updateProjectsForcedHover(event.clientX, event.clientY);
-  }, true);
-
-  document.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null;
-    if (target?.closest('#gp-overlay-layer, #gemini-projects-overlay')) {
-      return;
-    }
-    bridgeProjectsClick(event);
-  }, true);
-
-  window.addEventListener('blur', () => clearProjectsForcedHover());
-}
-
-function attachSidebarObserver() {
-  if (!sidebarRoot) return;
-
-  const observer = new MutationObserver(() => {
-    ensurePanel();
-    ensureChatsObserver();
-  });
-
-  observer.observe(sidebarRoot, { childList: true, subtree: true });
+  ensurePanel();
+  ensureChatsList();
+  syncNativeChatsFromDom();
+  applyNativeChatVisibility();
+  renderPanelIfChanged();
 }
 
 function ensurePanel() {
   if (!sidebarRoot) return;
-  const gems = findGemsSection(sidebarRoot);
+  if (!isExpandedSidebar(sidebarRoot)) return;
   const chats = findChatsSection(sidebarRoot);
-  if (!chats) {
-    return;
-  }
-
+  if (!chats) return;
+  const gems = findGemsSection(sidebarRoot);
   const { shadow, overlayShadow } = injectProjectsSection(sidebarRoot, gems, chats);
 
   if (!panel) {
     panel = createProjectsPanel({
       shadow,
       overlayShadow,
-      onSaveProject: handleCreateProject,
+      onSaveProject: handleSaveProject,
       onToggleProjectExpand: handleToggleProjectExpand,
       onDeleteProject: handleDeleteProject,
       onToggleCollapse: handleToggleCollapse,
-      // 聊天菜单回调 (Chat menu callbacks)
-      onRemoveChatFromProject: handleRemoveChatFromProject,
-      onMoveChatToProject: handleMoveChatToProject
+      onRemoveChatFromProject: (conversationId) => handleMoveChat(conversationId, null),
+      onMoveChatToProject: (conversationId, projectId) => handleMoveChat(conversationId, projectId)
     });
   }
 
-  renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
-
-  if (!menuEnhancerCleanup) {
-    menuEnhancerCleanup = attachChatMenuEnhancer({
+  if (!chatMenuAttached) {
+    attachChatMenuEnhancer({
       overlayShadow,
       getProjects: () => state.projects,
-      getChatProjectId,
-      onMoveChat: handleMoveChat,
+      getChatProjectId: (conversationId) => state.chatIndex.get(conversationId)?.projectId ?? null,
+      onMoveChat: (conversationId, projectId) => {
+        handleMoveChat(conversationId, projectId).catch((error) =>
+          console.warn('[gemini-projects] move from menu failed', error)
+        );
+      },
       onCreateProject: () => panel?.openCreateModal()
     });
+    chatMenuAttached = true;
   }
-
-  ensureChatsObserver();
 }
 
-function ensureChatsObserver() {
+function ensureChatsList() {
   if (!sidebarRoot) return;
   const header = findChatsSection(sidebarRoot);
   if (!header) return;
   chatsHeader = header;
 
-  const list = findChatsListContainer(chatsHeader);
-  if (!list) return;
+  const list = findChatsListContainer(header);
+  if (!list || list === chatsList) return;
 
-  if (chatsList !== list) {
-    chatsList = list;
-    if (chatsObserver) {
-      chatsObserver.disconnect();
+  chatsList = list;
+  chatsObserver?.disconnect();
+  chatsObserver = new MutationObserver((mutations) => {
+    if (mutations.some((mutation) => isRelevantChatsMutation(mutation))) {
+      scheduleRescan();
     }
-    chatsObserver = new MutationObserver(() => {
-      syncChatsFromDom();
-      renderUnassignedChatsSection(state.chatIndex);
-      renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
-    });
-    chatsObserver.observe(chatsList, { childList: true, subtree: true });
-  }
-
-  syncChatsFromDom();
-  renderUnassignedChatsSection(state.chatIndex);
-}
-
-function attachChatClickTracker() {
-  document.addEventListener('click', (event) => {
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-    const link = target.closest('a[href]') as HTMLAnchorElement | null;
-    if (!link) return;
-    const conversationId = getConversationId(link.href);
-    if (!conversationId) return;
-    const existing = state.chatIndex.get(conversationId);
-    const row = link.closest('[role="listitem"], li, div') || link;
-    const normalized = normalizeChatTitleAndPinned((link.textContent || '').trim() || existing?.title || '', row);
-    const title = normalized.title || existing?.title || '';
-    state.chatIndex.set(conversationId, {
-      conversationId,
-      title,
-      isPinned: normalized.pinnedFromDom ? true : (existing?.isPinned ?? false),
-      projectId: existing?.projectId ?? null,
-      updatedAt: Date.now(),
-      lastUrl: link.href
-    });
-    sendMessage({
-      type: 'upsertChatRefs',
-      chats: [
-        {
-          conversationId,
-          title,
-          isPinned: normalized.pinnedFromDom ? true : (existing?.isPinned ?? false),
-          projectId: existing?.projectId ?? null,
-          updatedAt: Date.now(),
-          lastUrl: link.href
-        }
-      ]
-    }).catch(() => undefined);
   });
+  chatsObserver.observe(chatsList, { childList: true, subtree: true });
 }
 
-function syncChatsFromDom() {
+function syncNativeChatsFromDom() {
   if (!chatsList) return;
-  const chatLinks = Array.from(chatsList.querySelectorAll<HTMLAnchorElement>('a[href]'));
-  const updates: ChatRef[] = [];
 
-  chatLinks.forEach((link) => {
-    const row = link.closest('[role="listitem"], li, div') || link;
-    const conversationId = getConversationIdFromChatRow(row) || getConversationId(link.href);
-    if (!conversationId) return;
-    const normalized = normalizeChatTitleAndPinned((link.textContent || '').trim(), row);
-    const title = normalized.title;
-    if (!title) return;
+  const updates: ChatRef[] = [];
+  for (const link of collectNativeChatLinks(chatsList)) {
+    const row = findChatRowElement(link, chatsList) || link;
+    const conversationId = getConversationId(link.href) || getConversationIdFromChatRow(row);
+    if (!conversationId) continue;
+
+    const existing = state.chatIndex.get(conversationId);
+    const title = normalizeTitle(link.textContent || row.textContent || existing?.title || '');
+    const lastUrl = link.href || existing?.lastUrl || `/app/${conversationId}`;
+    if (!title && existing?.title) continue;
+
     updates.push({
       conversationId,
-      title,
-      isPinned: normalized.pinnedFromDom ? true : (state.chatIndex.get(conversationId)?.isPinned ?? false),
-      updatedAt: Date.now(),
-      projectId: state.chatIndex.get(conversationId)?.projectId ?? null,
-      lastUrl: link.href
+      title: title || existing?.title || 'Untitled chat',
+      isPinned: existing?.isPinned ?? false,
+      projectId: existing?.projectId ?? null,
+      updatedAt: existing?.updatedAt ?? Date.now(),
+      lastUrl
     });
-  });
+  }
 
-  if (updates.length) {
-    updates.forEach((chat) => {
-      const existing = state.chatIndex.get(chat.conversationId);
-      state.chatIndex.set(chat.conversationId, {
-        ...chat,
-        projectId: existing?.projectId ?? chat.projectId,
-        isPinned: typeof chat.isPinned === 'boolean' ? chat.isPinned : (existing?.isPinned ?? false)
-      });
+  if (!updates.length) return;
+
+  let changed = false;
+  for (const chat of updates) {
+    const existing = state.chatIndex.get(chat.conversationId);
+    if (
+      existing?.title !== chat.title ||
+      existing?.lastUrl !== chat.lastUrl ||
+      existing?.projectId !== chat.projectId
+    ) {
+      changed = true;
+    }
+    state.chatIndex.set(chat.conversationId, {
+      ...chat,
+      projectId: existing?.projectId ?? chat.projectId,
+      updatedAt: existing?.updatedAt ?? Date.now()
     });
+  }
+
+  if (changed) {
     sendMessage({ type: 'upsertChatRefs', chats: updates }).catch(() => undefined);
   }
 }
 
-async function handleCreateProject(project: Project) {
-  const response = await sendMessage({ type: 'upsertProject', project });
-  if (response.ok && response.state) {
-    state.projects = response.state.projects;
-    renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
+function applyNativeChatVisibility() {
+  if (!chatsList) return;
+
+  const touchedRows = new Set<HTMLElement>();
+  for (const link of collectNativeChatLinks(chatsList)) {
+    const row = findChatRowElement(link, chatsList);
+    const conversationId = getConversationId(link.href) || getConversationIdFromChatRow(row);
+    const target = getNativeChatVisibilityTarget(row, link, chatsList);
+    if (!conversationId || !target) continue;
+
+    touchedRows.add(target);
+    if (state.chatIndex.get(conversationId)?.projectId) {
+      target.setAttribute(HIDDEN_ATTR, 'true');
+    } else {
+      target.removeAttribute(HIDDEN_ATTR);
+    }
   }
+
+  chatsList.querySelectorAll<HTMLElement>(`[${HIDDEN_ATTR}]`).forEach((node) => {
+    if (!touchedRows.has(node)) node.removeAttribute(HIDDEN_ATTR);
+  });
+}
+
+function getNativeChatVisibilityTarget(
+  row: HTMLElement | null,
+  link: HTMLAnchorElement,
+  listRoot: HTMLElement
+): HTMLElement | null {
+  if (row) {
+    const safeRow = getSafeNativeChatRow(row, link, listRoot);
+    if (safeRow) return safeRow;
+  }
+  return listRoot.contains(link) ? link : null;
+}
+
+function collectNativeChatLinks(root: ParentNode): HTMLAnchorElement[] {
+  return Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((link) => {
+    if (!getConversationId(link.href)) return false;
+    if (link.closest('#gemini-projects-host')) return false;
+    return true;
+  });
+}
+
+function getSafeNativeChatRow(
+  row: HTMLElement,
+  link: HTMLAnchorElement,
+  listRoot: HTMLElement
+): HTMLElement | null {
+  if (!listRoot.contains(row)) return null;
+  if (row === listRoot || row === sidebarRoot || row === document.body || row === document.documentElement) return null;
+  if (!row.contains(link)) return null;
+  if (row.contains(document.getElementById('gemini-projects-host'))) return null;
+  if (row.querySelectorAll<HTMLAnchorElement>('a[href*="/app/"]').length !== 1) return null;
+
+  const rect = row.getBoundingClientRect();
+  const listRect = listRoot.getBoundingClientRect();
+  if (rect.height <= 0 || rect.height > 96) return null;
+  if (rect.width <= 0 || rect.width > listRect.width + 16) return null;
+
+  const tag = row.tagName.toLowerCase();
+  const role = row.getAttribute('role') || '';
+  if (tag === 'li' || role === 'listitem') return row;
+
+  const parentConversationCount = row.parentElement
+    ? collectNativeChatLinks(row.parentElement).length
+    : Number.POSITIVE_INFINITY;
+  return parentConversationCount > 1 ? row : null;
+}
+
+async function handleSaveProject(project: Project) {
+  const response = await sendMessage({ type: 'upsertProject', project });
+  if (!response.ok || !response.state) return;
+  state.projects = response.state.projects;
+  renderPanelIfChanged(true);
 }
 
 function handleToggleProjectExpand(projectId: string) {
@@ -475,62 +302,151 @@ function handleToggleProjectExpand(projectId: string) {
     state.expandedProjectIds.delete(projectId);
   } else {
     state.expandedProjectIds.add(projectId);
-    const count = Array.from(state.chatIndex.values()).filter((chat) => chat.projectId === projectId).length;
-    logProject('expand projectId=', projectId, 'items=', count);
   }
-  renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
+  renderPanelIfChanged(true);
 }
 
 function handleToggleCollapse(collapsed: boolean) {
   state.uiPrefs.projectsCollapsed = collapsed;
-  sendMessage({ type: 'updateUiPrefs', prefs: { projectsCollapsed: collapsed } });
-  renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
-}
-
-async function handleRenameProject(projectId: string, name: string) {
-  const response = await sendMessage({ type: 'renameProject', projectId, name });
-  if (response.ok && response.state) {
-    state.projects = response.state.projects;
-    renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
-  }
+  sendMessage({ type: 'updateUiPrefs', prefs: { projectsCollapsed: collapsed } }).catch(() => undefined);
+  renderPanelIfChanged(true);
 }
 
 async function handleDeleteProject(projectId: string) {
   const response = await sendMessage({ type: 'deleteProject', projectId });
-  if (response.ok && response.state) {
-    state.projects = response.state.projects;
-    state.chatIndex = new Map(Object.entries(response.state.chatIndex));
-    state.expandedProjectIds.delete(projectId);
-    renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
-    renderUnassignedChatsSection(state.chatIndex);
-  }
+  if (!response.ok || !response.state) return;
+  state.projects = response.state.projects;
+  state.chatIndex = new Map(Object.entries(response.state.chatIndex));
+  state.expandedProjectIds.delete(projectId);
+  applyNativeChatVisibility();
+  renderPanelIfChanged(true);
 }
 
 async function handleMoveChat(conversationId: string, projectId: string | null) {
-  logProject('moveChat conversationId=', conversationId, 'to projectId=', projectId);
+  await ensureChatKnown(conversationId);
   const response = await sendMessage({ type: 'moveChat', conversationId, projectId });
-  if (response.ok && response.state) {
-    state.chatIndex = new Map(Object.entries(response.state.chatIndex));
-    renderProjectsSection(state.projects, state.chatIndex, state.expandedProjectIds);
-    renderUnassignedChatsSection(state.chatIndex);
+  if (!response.ok || !response.state) return;
+  state.projects = response.state.projects ?? state.projects;
+  state.chatIndex = new Map(Object.entries(response.state.chatIndex));
+  applyNativeChatVisibility();
+  renderPanelIfChanged(true);
+}
+
+async function ensureChatKnown(conversationId: string) {
+  const existing = state.chatIndex.get(conversationId);
+  if (existing?.title && existing.lastUrl) return;
+
+  const link = findNativeLinkByConversationId(conversationId);
+  if (!link) return;
+
+  const row = chatsList ? findChatRowElement(link, chatsList) : link;
+  const chat: ChatRef = {
+    conversationId,
+    title: normalizeTitle(link.textContent || row?.textContent || existing?.title || '') || 'Untitled chat',
+    isPinned: existing?.isPinned ?? false,
+    projectId: existing?.projectId ?? null,
+    updatedAt: Date.now(),
+    lastUrl: link.href
+  };
+  state.chatIndex.set(conversationId, chat);
+  await sendMessage({ type: 'upsertChatRefs', chats: [chat] }).catch(() => undefined);
+}
+
+function findNativeLinkByConversationId(conversationId: string): HTMLAnchorElement | null {
+  const roots: ParentNode[] = [chatsList, sidebarRoot, document].filter(Boolean) as ParentNode[];
+  for (const root of roots) {
+    const link = collectNativeChatLinks(root).find((candidate) => getConversationId(candidate.href) === conversationId);
+    if (link) return link;
+  }
+  return null;
+}
+
+function normalizeTitle(value: string): string {
+  return value
+    .replace(/\s+/g, ' ')
+    .replace(/\s*(?:Pinned|已置顶|置顶)\s*$/i, '')
+    .trim();
+}
+
+function installNativeHideStyle() {
+  if (document.getElementById('gp-native-hide-style')) return;
+  const style = document.createElement('style');
+  style.id = 'gp-native-hide-style';
+  style.textContent = `[${HIDDEN_ATTR}="true"] { display: none !important; }`;
+  document.documentElement.appendChild(style);
+}
+
+function isExpandedSidebar(sidebar: HTMLElement): boolean {
+  const rect = sidebar.getBoundingClientRect();
+  const style = window.getComputedStyle(sidebar);
+  if (style.display === 'none' || style.visibility === 'hidden') return false;
+  if (rect.width < MIN_EXPANDED_SIDEBAR_WIDTH || rect.height <= 0) return false;
+  if (rect.right <= 0 || rect.left >= window.innerWidth) return false;
+  return Boolean(findChatsSection(sidebar) || findChatsListContainer(findChatsSection(sidebar)));
+}
+
+function cleanupInjectedProjects() {
+  panel = null;
+  chatsList = null;
+  lastRenderKey = '';
+  document.getElementById('gemini-projects-host')?.remove();
+  document.getElementById('gemini-projects-overlay')?.remove();
+  document.querySelectorAll<HTMLElement>(`[${HIDDEN_ATTR}]`).forEach((node) => node.removeAttribute(HIDDEN_ATTR));
+}
+
+function isRelevantChatsMutation(mutation: MutationRecord): boolean {
+  if (mutation.target instanceof HTMLElement && mutation.target.closest('#gemini-projects-host')) {
+    return false;
+  }
+  return Array.from(mutation.addedNodes).some(nodeHasConversationLink) ||
+    Array.from(mutation.removedNodes).some(nodeHasConversationLink);
+}
+
+function nodeHasConversationLink(node: Node): boolean {
+  if (!(node instanceof Element)) return false;
+  if (node.closest('#gemini-projects-host')) return false;
+  if (node instanceof HTMLAnchorElement && getConversationId(node.href)) return true;
+  return Boolean(Array.from(node.querySelectorAll<HTMLAnchorElement>('a[href]')).find((link) => getConversationId(link.href)));
+}
+
+function renderPanelIfChanged(force = false) {
+  if (!panel) return;
+  const key = getRenderKey();
+  if (!force && key === lastRenderKey) return;
+  lastRenderKey = key;
+  panel.render(state);
+}
+
+function getRenderKey(): string {
+  const projects = state.projects
+    .map((project) => `${project.id}:${project.name}:${project.icon}:${project.color || ''}:${project.sortIndex}`)
+    .join('|');
+  const chats = Array.from(state.chatIndex.values())
+    .filter((chat) => chat.projectId)
+    .map((chat) => `${chat.conversationId}:${chat.title}:${chat.projectId}:${chat.lastUrl || ''}:${chat.updatedAt}`)
+    .sort()
+    .join('|');
+  return `${state.uiPrefs.projectsCollapsed}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
+  let timer: number | null = null;
+  const timeoutPromise = new Promise<T>((_, reject) => {
+    timer = window.setTimeout(() => reject(new Error(`timeout(${timeoutMs}ms)`)), timeoutMs);
+  });
+  return Promise.race([promise, timeoutPromise]).finally(() => {
+    if (timer !== null) window.clearTimeout(timer);
+  });
+}
+
+function runStage(name: string, fn: () => void) {
+  try {
+    fn();
+  } catch (error) {
+    console.error(`[gemini-projects] stage failed: ${name}`, error);
   }
 }
 
-// 从项目中移除聊天（移动到未分类）
-async function handleRemoveChatFromProject(conversationId: string) {
-  logProject('removeChatFromProject conversationId=', conversationId);
-  await handleMoveChat(conversationId, null);
-}
-
-// 将聊天移动到另一个项目
-async function handleMoveChatToProject(conversationId: string, projectId: string) {
-  logProject('moveChatToProject conversationId=', conversationId, 'to projectId=', projectId);
-  await handleMoveChat(conversationId, projectId);
-}
-
 bootstrap().catch((error) => {
-  // eslint-disable-next-line no-console
   console.error('[gemini-projects] bootstrap failed', error);
-  log('bootstrap failed', error);
 });
-
