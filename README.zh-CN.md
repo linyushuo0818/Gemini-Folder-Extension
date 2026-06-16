@@ -1,34 +1,33 @@
-# Gemini Projects Extension
+# Gemini Projects
 
-为 Gemini 添加本地项目文件夹和提示词库。
+给 Gemini 添加本地 Projects 和 Prompt Library。
 
 [English](README.md) | 简体中文
 
 ## 它是做什么的
 
-Gemini Projects 是一个用于 `https://gemini.google.com` 的 Chrome 扩展。它会在 Gemini 侧边栏里增加一个轻量的 Projects 工作流，让你可以把相关聊天整理到本地项目里，不用等待官方原生项目功能。
+Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮你把不同主题、课程、客户、写作、研究或长期任务相关的聊天整理到一起，不用一直在一长串历史记录里找。
 
-扩展也包含一个本地 Prompt Library，方便保存、搜索和复用常用提示词。
+它还带有一个本地 Prompt Library，可以保存常用提示词，并在 Gemini 输入框中快速搜索和插入。
 
-## 功能
+## 主要功能
 
-- 为 Gemini 聊天创建本地项目
-- 从侧边栏把已有聊天加入项目
-- 将聊天移出项目，但不删除原聊天
-- 当聊天在手机或其他设备上从 Gemini 历史记录中删除后，在项目中标记为 `Missing`
-- 为项目选择图标和颜色
-- 编辑、删除、备份和恢复项目数据
-- 在本地提示词库中保存常用 prompts
-- 快速搜索、编辑、删除和插入已保存 prompts
+- 在 Gemini 侧边栏创建本地 Projects
+- 把已有聊天移动到 Project 中
+- 从 Project 中移除聊天，但不删除原始 Gemini 聊天
+- 当某个 Project 聊天已在手机或其他设备上从 Gemini 历史记录中删除时，会显示缺失状态
+- 为 Project 选择图标和颜色
+- 备份和恢复本地 Projects 与提示词数据
+- 保存、搜索、编辑和复用常用提示词
 - 数据保存在浏览器本地存储中
 
 ## 下载
 
-最新打包版本可以在 [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases) 页面下载。
+请到 [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases) 页面下载最新版 zip。
 
-v0.1.68 对应文件：
+当前版本对应文件：
 
-- `Gemini-Projects-0.1.68-webstore-20260615-*.zip`
+- `gemini-projects-2.0.0-webstore-*.zip`
 
 ## 手动安装
 
@@ -39,63 +38,27 @@ v0.1.68 对应文件：
 5. 点击 `Load unpacked`。
 6. 选择解压后包含 `manifest.json` 的文件夹。
 
-目前主要支持 Chrome 和其他 Chromium 内核浏览器。
-
-## Chrome Web Store
-
-每个 Release 附带的 zip 都是 Chrome Web Store 可上传结构，`manifest.json` 位于压缩包根目录，可以直接上传到 Chrome Web Store 开发者后台。
-
-## 开发
-
-环境要求：
-
-- Node.js 18+
-- npm
-
-安装依赖：
-
-```bash
-npm install
-```
-
-构建扩展：
-
-```bash
-npm run build
-```
-
-生成商店上传包：
-
-```powershell
-npm run package:store
-```
-
-构建产物会输出到 `dist/`，发布包会输出到 `release/`。
+Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 
 ## 隐私
 
-- Projects 和 prompts 使用 `chrome.storage` 保存在本地。
-- 扩展核心功能不依赖额外后端服务。
-- 扩展不会主动上传你的项目、提示词或聊天整理数据。
-- Gemini 本身仍运行在 Google 网站上，因此 Gemini 账号和服务相关行为仍以 Google 的政策为准。
+- Projects 和提示词使用 Chrome 扩展本地存储保存。
+- 扩展不需要额外账号或后端服务。
+- 扩展不会主动上传你的 Projects、提示词或聊天整理数据。
+- Gemini 本身仍运行在 Google 网站中，Gemini 账号和服务行为以 Google 的政策为准。
 
 ## 当前版本
 
-### v0.1.68
+### v2.0.0
 
-- 处理手机或其他设备删除聊天后，本地项目分类仍保留引用的情况。
-- 当项目里的聊天不再出现在当前 Gemini 原生侧边栏中时，标记为 `Missing`。
-- 阻止跳转到已经失效的 Gemini 聊天链接，同时保留菜单，方便手动移出项目。
-- 收紧 Gemini 侧边栏锚点识别，避免 Projects 在历史列表消失时和顶部 logo 区域重叠。
-
-### v0.1.67
-
-- 修复 Gemini UI 更新后 Project 侧边栏失效的问题。
-- 重新处理新版 Gemini 页面里的侧边栏识别和交互逻辑。
-- 增加 page bridge，让点击和 hover 行为更稳定。
-- 重做 New Project 创建流程和图标选择器。
-- 更新 Manifest V3 打包流程，生成可上传 Chrome Web Store 的压缩包。
+- 修复 Gemini 侧边栏更新后 Projects 无法正常使用的问题。
+- 优化 New Project 窗口，支持更清晰的图标和颜色选择。
+- 改善在手机或其他设备删除 Gemini 聊天后的处理方式。
+- 对已缺失的 Project 聊天显示缺失状态，而不是打乱项目列表。
+- 优化 Project 和聊天菜单，用于移动、移除、编辑和删除。
+- 添加本地数据备份和恢复入口。
+- 优化 Prompt Library 的布局和控件。
 
 ## 说明
 
-这是一个非官方扩展，与 Google 或 Gemini 官方无关。
+Gemini Projects 是非官方扩展，与 Google 或 Gemini 官方无关。
