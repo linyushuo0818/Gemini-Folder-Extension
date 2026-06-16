@@ -21,7 +21,7 @@ const BUILD_MARKER = '2.0.0';
 const HIDDEN_ATTR = 'data-gp-native-hidden';
 const RESCAN_DELAY_MS = 350;
 const PANEL_READY_RETRY_MS = 120;
-const PANEL_READY_RETRY_LIMIT = 12;
+const PANEL_READY_RETRY_LIMIT = 40;
 const MIN_EXPANDED_SIDEBAR_WIDTH = 180;
 
 const state: RuntimeState = {
@@ -66,6 +66,7 @@ async function bootstrap() {
   installNativeHideStyle();
   await loadInitialState();
   observeDocumentForSidebar();
+  installLifecycleRescans();
   runStage('responseFolding', () => initGeminiResponseFolding());
   runStage('prompts', () => prompts.bootstrap());
 }
@@ -85,7 +86,7 @@ async function loadInitialState() {
 function observeDocumentForSidebar() {
   rootObserver?.disconnect();
   rootObserver = new MutationObserver(() => scheduleRescan());
-  rootObserver.observe(document.body, { childList: true });
+  rootObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
   scheduleRescan(0);
 }
 
@@ -99,7 +100,13 @@ function scheduleRescan(delay = RESCAN_DELAY_MS) {
 
 function rescanSidebar() {
   const nextSidebar = findSidebarRoot();
-  if (!nextSidebar) return;
+  if (!nextSidebar) {
+    if (pendingPanelRetryCount < PANEL_READY_RETRY_LIMIT) {
+      pendingPanelRetryCount += 1;
+      scheduleRescan(PANEL_READY_RETRY_MS);
+    }
+    return;
+  }
 
   if (!isExpandedSidebar(nextSidebar)) {
     state.nativeConversationIds = new Set();
@@ -112,9 +119,10 @@ function rescanSidebar() {
     sidebarRoot = nextSidebar;
     sidebarObserver?.disconnect();
     sidebarObserver = new MutationObserver(() => scheduleRescan());
-    sidebarObserver.observe(sidebarRoot, { childList: true, subtree: true });
+    sidebarObserver.observe(sidebarRoot, { childList: true, subtree: true, characterData: true });
     panel = null;
     chatsList = null;
+    pendingPanelRetryCount = 0;
   }
 
   if (!ensurePanel()) {
@@ -131,15 +139,22 @@ function rescanSidebar() {
   renderPanelIfChanged();
 }
 
+function installLifecycleRescans() {
+  window.addEventListener('pageshow', () => scheduleRescan(0));
+  window.addEventListener('focus', () => scheduleRescan(0));
+  window.addEventListener('popstate', () => scheduleRescan(0));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') {
+      scheduleRescan(0);
+    }
+  });
+}
+
 function ensurePanel() {
   if (!sidebarRoot) return false;
   if (!isExpandedSidebar(sidebarRoot)) return false;
   const chats = findChatsSection(sidebarRoot);
   if (!chats) {
-    return false;
-  }
-  const nativeChatsList = findChatsListContainer(chats);
-  if (!nativeChatsList) {
     return false;
   }
   const gems = findGemsSection(sidebarRoot);
@@ -178,11 +193,21 @@ function ensurePanel() {
 function ensureChatsList() {
   if (!sidebarRoot) return;
   const header = findChatsSection(sidebarRoot);
-  if (!header) return;
+  if (!header) {
+    chatsHeader = null;
+    chatsList = null;
+    chatsObserver?.disconnect();
+    return;
+  }
   chatsHeader = header;
 
   const list = findChatsListContainer(header);
-  if (!list || list === chatsList) return;
+  if (!list) {
+    chatsList = null;
+    chatsObserver?.disconnect();
+    return;
+  }
+  if (list === chatsList) return;
 
   chatsList = list;
   chatsObserver?.disconnect();
@@ -411,7 +436,7 @@ function isExpandedSidebar(sidebar: HTMLElement): boolean {
   if (style.display === 'none' || style.visibility === 'hidden') return false;
   if (rect.width < MIN_EXPANDED_SIDEBAR_WIDTH || rect.height <= 0) return false;
   if (rect.right <= 0 || rect.left >= window.innerWidth) return false;
-  return Boolean(findChatsSection(sidebar) || findChatsListContainer(findChatsSection(sidebar)));
+  return true;
 }
 
 function cleanupInjectedProjects() {
