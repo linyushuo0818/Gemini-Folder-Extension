@@ -1,6 +1,5 @@
 ﻿const PROJECTS_HOST_ID = 'gemini-projects-host';
 const OVERLAY_HOST_ID = 'gemini-projects-overlay';
-const PROJECTS_REVEAL_DELAY_MS = 220;
 const GEMS_SECTION_LABELS_EN = ['Gem', 'Gems'];
 const CHATS_SECTION_LABELS_EN = ['Chats', 'Recent', 'Recents', 'Recent chats'];
 const SIDEBAR_LANDMARK_LABELS_EN = ['New chat', 'Search chats', 'Gems', 'Notebooks', 'Recents'];
@@ -104,21 +103,6 @@ function getElementPath(element: Element): string {
     current = parent;
   }
   return parts.join(' > ');
-}
-
-let projectsRevealTimer: number | null = null;
-let projectsRevealKey = '';
-
-function scheduleProjectsReveal(host: HTMLElement, placementKey: string) {
-  projectsRevealKey = placementKey;
-  if (projectsRevealTimer !== null) {
-    window.clearTimeout(projectsRevealTimer);
-  }
-  projectsRevealTimer = window.setTimeout(() => {
-    if (projectsRevealKey !== placementKey) return;
-    if (!document.getElementById(PROJECTS_HOST_ID)) return;
-    host.style.visibility = 'visible';
-  }, PROJECTS_REVEAL_DELAY_MS);
 }
 
 export function findSidebarRoot(): HTMLElement | null {
@@ -374,7 +358,6 @@ export function injectProjectsSection(
   let host = document.getElementById(PROJECTS_HOST_ID) as HTMLElement | null;
   const { parent, insertBefore } = getStableProjectsInsertion(root, chatsSection);
   const placementKey = `${getElementPath(parent)}|${insertBefore ? getElementPath(insertBefore) : 'end'}`;
-  let placementChanged = !host || host.dataset.gpPlacementKey !== placementKey;
   if (!host) {
     host = document.createElement('div');
     host.id = PROJECTS_HOST_ID;
@@ -384,7 +367,7 @@ export function injectProjectsSection(
     host.style.pointerEvents = 'auto';
     host.style.position = 'relative';
     host.style.zIndex = '1';
-    host.style.visibility = 'hidden';
+    host.style.visibility = 'visible';
     parent.insertBefore(host, insertBefore);
   } else if (host.parentElement !== parent || host.nextElementSibling !== insertBefore) {
     host.style.display = 'block';
@@ -392,10 +375,10 @@ export function injectProjectsSection(
     host.style.pointerEvents = 'auto';
     host.style.position = 'relative';
     host.style.zIndex = '1';
-    host.style.visibility = 'hidden';
-    placementChanged = true;
+    host.style.visibility = 'visible';
     parent.insertBefore(host, insertBefore);
   }
+  host.style.visibility = 'visible';
   host.dataset.gpPlacementKey = placementKey;
   const shadow = host.shadowRoot ?? host.attachShadow({ mode: 'open' });
   if (!shadow.innerHTML) {
@@ -408,9 +391,6 @@ export function injectProjectsSection(
     `;
   }
 
-  if (placementChanged || host.style.visibility === 'hidden') {
-    scheduleProjectsReveal(host, placementKey);
-  }
   const overlay = ensureOverlayHost();
   return { host, shadow, overlayShadow: overlay.shadow };
 }

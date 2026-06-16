@@ -1,7 +1,5 @@
 
 import { Prompt, promptStore } from './store';
-import { exportAllData, triggerImport } from '../../shared/backup';
-import { runtimeSendMessage } from '../../shared/webext';
 
 const PICKER_ID = 'gp-prompt-picker-root';
 
@@ -153,7 +151,6 @@ export class PromptPicker {
     const input = this.shadow.querySelector('.search-input') as HTMLInputElement;
     if (input) {
       input.value = '';
-      setTimeout(() => input.focus(), 10);
     }
   }
 
@@ -269,7 +266,7 @@ export class PromptPicker {
     const visibleRows = itemCount <= 0 ? 1 : 2.5;
     const listTarget = itemCount <= 0 ? 104 : Math.max(228, itemSpacing * visibleRows + 8);
     const viewportMax = Math.min(window.innerHeight - 24, 620);
-    const viewportMin = headerHeight + footerHeight + 104;
+    const viewportMin = headerHeight + footerHeight + 92;
     const target = Math.max(viewportMin, Math.min(headerHeight + footerHeight + listTarget, viewportMax));
 
     picker.style.height = `${Math.round(target)}px`;
@@ -370,7 +367,13 @@ export class PromptPicker {
         --gp-focus-ring: rgba(138, 180, 248, 0.14);
       }
 
-      * { box-sizing: border-box; outline: none; }
+      * {
+        box-sizing: border-box;
+        outline: none;
+        -webkit-text-stroke: 0 transparent;
+        text-shadow: none;
+        paint-order: normal;
+      }
 
       /* === MAIN CONTAINER === */
       .picker {
@@ -417,8 +420,8 @@ export class PromptPicker {
       }
       .search-row:focus-within {
         background: var(--gp-surface);
-        border-color: var(--gp-blue-soft);
-        box-shadow: 0 0 0 2px var(--gp-focus-ring);
+        border-color: var(--gp-fg);
+        box-shadow: inset 0 0 0 1px var(--gp-fg);
       }
 
       .search-box {
@@ -490,13 +493,11 @@ export class PromptPicker {
         overflow-y: auto;
         overscroll-behavior: contain;
         padding: 8px 12px 84px;
+        scrollbar-width: none;
       }
       .list::-webkit-scrollbar {
-        width: 8px;
-      }
-      .list::-webkit-scrollbar-thumb {
-        background: rgba(95, 99, 104, 0.5);
-        border-radius: var(--gp-radius-pill);
+        width: 0;
+        height: 0;
       }
       
       .empty-box {
@@ -735,6 +736,7 @@ export class PromptPicker {
       /* === FLOATING ACTION === */
       .footer-action {
         position: absolute;
+        left: 12px;
         right: 12px;
         bottom: 12px;
         z-index: 8;
@@ -743,34 +745,14 @@ export class PromptPicker {
       .footer-buttons {
         display: flex;
         align-items: center;
-        gap: 8px;
+        justify-content: space-between;
+        pointer-events: none;
+      }
+      .primary-cluster {
+        position: relative;
         pointer-events: auto;
       }
-      .btn-utility {
-        height: 36px;
-        border-radius: var(--gp-radius-pill);
-        border: 1px solid var(--gp-border);
-        background: rgba(255, 255, 255, 0.92);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        color: var(--gp-fg);
-        font-family: var(--gp-font-sans);
-        font-size: 12px;
-        font-weight: 500;
-        letter-spacing: 0;
-        padding: 0 12px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        box-shadow: var(--gp-shadow-sm);
-        transition: background var(--gp-transition), transform var(--gp-transition), box-shadow var(--gp-transition);
-      }
-      .btn-utility:hover {
-        background: var(--gp-bg-hover);
-        box-shadow: 0 3px 10px rgba(60, 64, 67, 0.12);
-      }
-      .btn-new {
+      .btn-orb {
         width: 40px;
         height: 40px;
         border-radius: 50%;
@@ -785,51 +767,54 @@ export class PromptPicker {
         box-shadow: 0 6px 16px rgba(60, 64, 67, 0.20);
         transition: transform var(--gp-transition), filter var(--gp-transition);
       }
-      .btn-new:hover {
+      .btn-orb:hover {
         transform: translateY(-1px);
         filter: brightness(1.03);
       }
-      .btn-new:active { transform: scale(0.96); }
-      .btn-new span {
+      .btn-orb:active { transform: scale(0.96); }
+      .btn-orb span {
         display: none;
       }
-      .btn-new svg { width: 16px; height: 16px; }
+      .btn-orb svg { width: 16px; height: 16px; }
 
       /* === MODAL (EDIT/CREATE) === */
       .modal-overlay {
         position: fixed;
         inset: 0;
-        background: rgba(32, 33, 36, 0.24);
+        background: rgba(32, 33, 36, 0.28);
         z-index: 2147483647;
         display: flex;
         align-items: center;
         justify-content: center;
         padding: 16px;
-        backdrop-filter: blur(6px);
-        -webkit-backdrop-filter: blur(6px);
+        backdrop-filter: blur(5px);
+        -webkit-backdrop-filter: blur(5px);
         animation: modalFadeIn 0.18s ease-out;
       }
       @keyframes modalFadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
       .modal {
-        width: min(860px, calc(100vw - 32px));
-        height: min(66vh, 580px);
-        min-height: min(410px, calc(100vh - 32px));
-        background: rgba(255, 255, 255, 0.98);
-        border: 1px solid var(--gp-border);
-        border-radius: var(--gp-radius-lg);
-        box-shadow: 0 16px 36px rgba(60, 64, 67, 0.22);
+        width: min(720px, calc(100vw - 40px));
+        max-height: min(82vh, 620px);
+        background: #ffffff;
+        border: 1px solid rgba(60, 64, 67, 0.18);
+        border-radius: 22px;
+        box-shadow:
+          0 28px 70px rgba(60, 64, 67, 0.28),
+          0 2px 10px rgba(60, 64, 67, 0.12);
         overflow: hidden;
         display: flex;
         flex-direction: column;
       }
       :host([data-gp-theme="dark"]) .modal {
-        background: rgba(32, 33, 36, 0.98);
-        border-color: var(--gp-border);
-        box-shadow: 0 12px 28px rgba(0, 0, 0, 0.45);
+        background: #202124;
+        border-color: rgba(255, 255, 255, 0.16);
+        box-shadow:
+          0 28px 70px rgba(0, 0, 0, 0.58),
+          0 2px 10px rgba(0, 0, 0, 0.34);
       }
 
       .modal-header {
-        padding: 6px 14px;
+        padding: 18px 20px 16px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -840,17 +825,19 @@ export class PromptPicker {
       }
       .modal-title {
         font-family: var(--gp-font-sans);
-        font-size: 16px;
-        font-weight: 500;
+        font-size: 18px;
+        font-weight: 650;
+        line-height: 24px;
         color: var(--gp-fg);
+        margin: 0;
       }
       .modal-close {
         background: transparent;
         border: none;
         color: var(--gp-fg-secondary);
         cursor: pointer;
-        padding: 4px;
-        border-radius: var(--gp-radius-sm);
+        padding: 6px;
+        border-radius: 999px;
         transition: background var(--gp-transition);
         display: flex;
         align-items: center;
@@ -859,21 +846,20 @@ export class PromptPicker {
       .modal-close:hover { background: var(--gp-bg-hover); color: var(--gp-fg); }
 
       .modal-body {
-        padding: 10px 14px 10px;
-        flex: 1;
+        padding: 16px 22px 12px;
         min-height: 0;
         overflow-y: auto;
         display: flex;
         flex-direction: column;
-        gap: 12px;
+        gap: 14px;
       }
 
       /* Form Elements */
-      .form-group { display: flex; flex-direction: column; gap: 10px; }
-      .form-group.content-group { flex: 1; min-height: 150px; }
+      .form-group { display: flex; flex-direction: column; gap: 8px; }
+      .form-group.content-group { min-height: 0; }
       .form-label {
-        font-size: 12px;
-        font-weight: 500;
+        font-size: 13px;
+        font-weight: 650;
         text-transform: none;
         letter-spacing: 0;
         color: var(--gp-fg-secondary);
@@ -882,20 +868,22 @@ export class PromptPicker {
 
       .form-input, .form-textarea {
         background: var(--gp-surface);
-        border: 1px solid var(--gp-border);
-        border-radius: var(--gp-radius-md);
-        padding: 11px 14px;
-        font-size: 16px;
+        border: 1px solid rgba(60, 64, 67, 0.18);
+        border-radius: 14px;
+        padding: 12px 14px;
+        font-size: 15px;
         color: var(--gp-fg);
         font-family: var(--gp-font-sans);
         width: 100%;
-        transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
+        transition: border-color var(--gp-transition), box-shadow var(--gp-transition), background var(--gp-transition);
       }
       .form-input {
         font-weight: 500;
+        height: 48px;
       }
       .form-textarea {
         font-weight: 400;
+        display: block;
       }
       :host([data-gp-theme="dark"]) .form-input,
       :host([data-gp-theme="dark"]) .form-textarea {
@@ -903,8 +891,8 @@ export class PromptPicker {
         border-color: rgba(255, 255, 255, 0.15);
       }
       .form-input:focus, .form-textarea:focus {
-        border-color: var(--gp-focus);
-        box-shadow: 0 0 0 2px var(--gp-focus-ring);
+        border-color: var(--gp-fg);
+        box-shadow: inset 0 0 0 2px var(--gp-fg);
         outline: none;
       }
       .form-input::placeholder, .form-textarea::placeholder {
@@ -918,16 +906,15 @@ export class PromptPicker {
         border-color: var(--gp-border);
       }
       .form-textarea {
-        flex: 1;
-        min-height: 160px;
-        height: 100%;
+        min-height: 220px;
+        height: min(34vh, 300px);
+        max-height: 340px;
         resize: none;
         line-height: 1.55;
-        padding-bottom: 34px;
+        padding-bottom: 36px;
       }
       .textarea-shell {
         position: relative;
-        flex: 1;
         min-height: 0;
       }
       .textarea-token {
@@ -943,17 +930,18 @@ export class PromptPicker {
       }
 
       .modal-footer {
-        padding: 8px 14px 10px;
+        padding: 12px 22px 14px;
         border-top: 1px solid var(--gp-border);
         display: flex;
         justify-content: space-between;
         align-items: center;
         gap: 12px;
         flex-shrink: 0;
-        background: transparent;
+        background: rgba(248, 250, 253, 0.72);
       }
       :host([data-gp-theme="dark"]) .modal-footer {
         border-top-color: var(--gp-border);
+        background: rgba(255, 255, 255, 0.03);
       }
       .modal-footer-left,
       .modal-footer-right {
@@ -967,11 +955,12 @@ export class PromptPicker {
 
       .btn {
         height: 36px;
-        padding: 0 14px;
-        border-radius: var(--gp-radius-sm);
+        min-width: 82px;
+        padding: 0 16px;
+        border-radius: 12px;
         font-family: var(--gp-font-sans);
-        font-size: 13px;
-        font-weight: 500;
+        font-size: 14px;
+        font-weight: 600;
         cursor: pointer;
         display: flex;
         align-items: center;
@@ -979,8 +968,8 @@ export class PromptPicker {
         transition: background var(--gp-transition), border-color var(--gp-transition), color var(--gp-transition);
       }
       .btn-cancel {
-        background: transparent;
-        border: 1px solid var(--gp-border);
+        background: var(--gp-surface);
+        border: 1px solid rgba(60, 64, 67, 0.16);
         color: var(--gp-fg);
       }
       .btn-cancel:hover {
@@ -989,9 +978,9 @@ export class PromptPicker {
       }
 
       .btn-delete {
-        border: 1px solid transparent;
-        color: rgba(190, 24, 24, 0.8);
-        background: transparent;
+        border: 1px solid rgba(217, 48, 37, 0.28);
+        color: #d93025;
+        background: rgba(217, 48, 37, 0.04);
         font-weight: 500;
       }
       .btn-delete:hover {
@@ -1005,9 +994,14 @@ export class PromptPicker {
       }
       
       .btn-save {
-        background: var(--gp-accent);
-        color: var(--gp-accent-fg);
-        border: 1px solid var(--gp-accent);
+        background: #202124;
+        color: #ffffff;
+        border: 1px solid #202124;
+      }
+      :host([data-gp-theme="dark"]) .btn-save {
+        background: #e8eaed;
+        color: #202124;
+        border-color: #e8eaed;
       }
       .btn-save:hover { filter: brightness(1.06); }
       .btn-save:disabled {
@@ -1032,11 +1026,12 @@ export class PromptPicker {
         <div class="list" id="list-container"></div>
         <div class="footer-action">
           <div class="footer-buttons">
-            <button class="btn-utility" id="btn-backup" title="Backup to local file">Backup</button>
-            <button class="btn-utility" id="btn-restore" title="Restore from backup file">Restore</button>
-            <button class="btn-new" id="btn-primary-action" title="New Prompt">
-              ${ICONS.plus} <span>New Prompt</span>
-            </button>
+            <div></div>
+            <div class="primary-cluster">
+              <button class="btn-orb btn-new" id="btn-primary-action" title="New Prompt">
+                ${ICONS.plus} <span>New Prompt</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -1058,36 +1053,7 @@ export class PromptPicker {
       this.showModal();
       this.updateList();
     });
-    this.shadow.getElementById('btn-backup')?.addEventListener('click', async () => {
-      try {
-        await exportAllData();
-      } catch (error) {
-        // eslint-disable-next-line no-console
-        console.error('[GP Prompts] Backup failed', error);
-        alert('Backup failed. Please try again.');
-      }
-    });
-    this.shadow.getElementById('btn-restore')?.addEventListener('click', () => {
-      triggerImport(async (result) => {
-        alert(result.message);
-        if (!result.success) return;
-
-        try {
-          await this.sendRuntimeMessage({ type: 'refreshStateCache' });
-        } catch {
-          // ignore and continue with page reload
-        }
-        window.location.reload();
-      });
-    });
     this.refreshPickerControls();
-  }
-
-  private async sendRuntimeMessage<T>(message: T): Promise<void> {
-    const response = await runtimeSendMessage<{ ok?: boolean; error?: string }>(message);
-    if (response && response.ok === false) {
-      throw new Error(response.error || 'Runtime message failed');
-    }
   }
 
   // ===================== Modal Methods =====================

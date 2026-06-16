@@ -1,5 +1,7 @@
 ﻿import { ChatRef, Project, ProjectIcon, RuntimeState } from '../../shared/types';
-import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg } from './icons';
+import { exportAllData, triggerImport } from '../../shared/backup';
+import { runtimeSendMessage } from '../../shared/webext';
+import { ICON_OPTIONS, COLOR_OPTIONS, IconOption, getIconLabel, renderIconSvg } from './icons';
 
 interface ProjectsPanelOptions {
   shadow: ShadowRoot;
@@ -13,6 +15,7 @@ interface ProjectsPanelOptions {
 }
 
 type ModalMode = 'create' | 'edit';
+const PANEL_COLLAPSE_ANIMATION_MS = 190;
 
 export function createProjectsPanel(options: ProjectsPanelOptions) {
   const panelRoot = ensurePanelRoot(options.shadow);
@@ -36,7 +39,6 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   let modalSelectedColor: string = '#1f1f1f'; // Default black
   let inputDirty = false;
   let iconButton: HTMLButtonElement | null = null;
-  let iconPopover: HTMLElement | null = null;
 
   function render(state: RuntimeState) {
     // 存储当前 state 以供 chatMenu 获取项目列表
@@ -129,7 +131,9 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
-        options.onToggleCollapse(!state.uiPrefs.projectsCollapsed);
+        const nextCollapsed = !state.uiPrefs.projectsCollapsed;
+        setPanelCollapsed(nextCollapsed);
+        window.setTimeout(() => options.onToggleCollapse(nextCollapsed), PANEL_COLLAPSE_ANIMATION_MS);
         return;
       }
 
@@ -232,7 +236,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalSelectedColor = '#1f1f1f';
     showModal({
       title: 'Create Project',
-      confirmLabel: 'Create Project',
+      confirmLabel: 'Done',
       name: '',
       showIcons: true
     });
@@ -260,15 +264,17 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     }
   }
 
+  function setPanelCollapsed(collapsed: boolean) {
+    const title = panelRoot.querySelector<HTMLElement>('[data-gp-action="toggle-section"]');
+    const container = panelRoot.querySelector<HTMLElement>('[data-gp-list-container]');
+    title?.classList.toggle('collapsed', collapsed);
+    title?.setAttribute('aria-expanded', String(!collapsed));
+    container?.classList.toggle('collapsed', collapsed);
+  }
+
   function syncModalIconSelection() {
     modal.element.querySelectorAll<HTMLElement>('[data-gp-template]').forEach((option) => {
       const isSelected = option.dataset.gpTemplate === modalSelectedIcon;
-      option.classList.toggle('selected', isSelected);
-      option.setAttribute('aria-pressed', String(isSelected));
-    });
-
-    modal.element.querySelectorAll<HTMLElement>('[data-gp-icon-option]').forEach((option) => {
-      const isSelected = option.dataset.gpIconOption === modalSelectedIcon;
       option.classList.toggle('selected', isSelected);
       option.setAttribute('aria-pressed', String(isSelected));
     });
@@ -305,8 +311,9 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     const input = modal.element.querySelector<HTMLInputElement>('[data-gp-name-input]');
     const confirm = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="confirm"]');
     const iconRow = modal.element.querySelector<HTMLElement>('[data-gp-template-row]');
-    iconButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="icon-picker"]');
-    iconPopover = modal.element.querySelector<HTMLElement>('[data-gp-icon-popover]');
+    const backupButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="backup"]');
+    const restoreButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="restore"]');
+    iconButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-current-icon]');
 
     if (input) {
       input.value = config.name;
@@ -351,34 +358,13 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
       modal.close();
     };
 
-    if (iconButton) {
-      iconButton.onclick = (event) => {
-        event.stopPropagation();
-        if (!iconPopover) return;
-        iconPopover.style.display = iconPopover.style.display === 'flex' ? 'none' : 'flex';
-      };
+    if (backupButton) {
+      backupButton.onclick = handleBackupClick;
     }
 
-    modal.element.onclick = (event) => {
-      const target = event.target as HTMLElement;
-      if (!iconPopover || !iconButton) return;
-      if (iconPopover.contains(target) || iconButton.contains(target)) {
-        return;
-      }
-      iconPopover.style.display = 'none';
-    };
-
-    iconPopover?.querySelectorAll<HTMLElement>('[data-gp-icon-option]').forEach((option) => {
-      option.onclick = () => {
-        const iconId = option.dataset.gpIconOption as ProjectIcon;
-        modalSelectedIcon = iconId;
-        updateIconButton();
-        syncModalIconSelection();
-        if (iconPopover) {
-          iconPopover.style.display = 'none';
-        }
-      };
-    });
+    if (restoreButton) {
+      restoreButton.onclick = handleRestoreClick;
+    }
 
     iconRow?.querySelectorAll<HTMLElement>('[data-gp-template]').forEach((chip) => {
       chip.onclick = () => {
@@ -411,6 +397,36 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
   function showToast(message: string) {
     toast.show(message);
+  }
+
+  async function refreshStateCache(): Promise<void> {
+    const response = await runtimeSendMessage<{ ok?: boolean; error?: string }>({ type: 'refreshStateCache' });
+    if (response && response.ok === false) {
+      throw new Error(response.error || 'Runtime message failed');
+    }
+  }
+
+  async function handleBackupClick() {
+    try {
+      await exportAllData();
+    } catch (error) {
+      console.error('[Gemini Projects] Backup failed', error);
+      showToast('Backup failed. Please try again.');
+    }
+  }
+
+  function handleRestoreClick() {
+    triggerImport(async (result) => {
+      showToast(result.message);
+      if (!result.success) return;
+
+      try {
+        await refreshStateCache();
+      } catch {
+        // Reload below will rebuild state even if the eager cache refresh fails.
+      }
+      window.location.reload();
+    });
   }
 
   function closeAllOverlays() {
@@ -504,7 +520,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         font-family: inherit;
         color: var(--gp-fg, #1f1f1f);
         box-sizing: border-box;
-        
+
         /* Native Fonts & Colors (Gemini) */
         --gp-font: "Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif;
         --gp-fg: #1f1f1f;
@@ -512,10 +528,10 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         --gp-section: rgba(0, 0, 0, 0.54);
         --gp-bg-hover: rgba(31, 31, 31, 0.06); 
         --gp-bg-active: #f1f3f4;
-        
+
         --gp-radius: 24px;
         --gp-spacing-row: 0px;
-        
+
         display: block;
         width: 100%;
         pointer-events: auto;
@@ -523,7 +539,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         isolation: isolate;
         padding-top: 8px;
       }
-      
+
       :host(.dark) {
         --gp-fg: #e3e3e3;
         --gp-fg-muted: #bdc1c6;
@@ -563,7 +579,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         border-radius: 0;
         transition: background 0.1s ease;
       }
-      
+
       .gp-title:hover {
         background: transparent;
         color: var(--gp-fg-muted);
@@ -575,15 +591,16 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         display: flex;
         align-items: center;
         justify-content: center;
-        transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+        transition: transform ${PANEL_COLLAPSE_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1);
         color: var(--gp-fg-muted);
-        opacity: 0.75;
+        opacity: 0.82;
       }
-      
+
       .gp-chevron svg {
-        width: 16px; 
-        height: 16px;
-        fill: none;
+        width: 18px;
+        height: 18px;
+        fill: currentColor;
+        display: block;
       }
 
       .gp-title.collapsed .gp-chevron {
@@ -591,15 +608,26 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       }
 
       .gp-list-container {
+        display: grid;
+        grid-template-rows: 1fr;
+        overflow: hidden;
+        opacity: 1;
+        transition:
+          grid-template-rows ${PANEL_COLLAPSE_ANIMATION_MS}ms cubic-bezier(0.2, 0, 0, 1),
+          opacity 120ms ease;
+      }
+
+      .gp-list-container.collapsed {
+        grid-template-rows: 0fr;
+        opacity: 0;
+      }
+
+      .gp-list-content {
+        min-height: 0;
         display: flex;
         flex-direction: column;
         gap: 0;
         overflow: hidden;
-        padding-top: 0;
-      }
-      
-      .gp-list-container.hidden {
-        display: none;
       }
 
       .gp-row {
@@ -630,7 +658,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       .gp-row.gp-force-hover {
         background: var(--gp-bg-hover);
       }
-      
+
       /* Removed: Active state background creates visual clutter with stacked pill shapes.
          Only hover is now highlighted for a cleaner look.
       .gp-row.active {
@@ -662,7 +690,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         color: var(--gp-fg-muted);
         line-height: 0;
       }
-      
+
       .gp-icon svg {
         width: 20px;
         height: 20px;
@@ -686,18 +714,18 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         margin-right: -8px;
         flex-shrink: 0;
       }
-      
+
       .gp-kebab svg {
         width: 20px;
         height: 20px;
       }
-      
+
       .gp-row:hover .gp-kebab, 
       .gp-row.gp-force-hover .gp-kebab,
       .gp-kebab:focus {
         opacity: 1;
       }
-      
+
       .gp-kebab:hover {
         background: var(--gp-bg-active);
         color: var(--gp-fg);
@@ -729,7 +757,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         transition: background 0.1s;
         pointer-events: auto;
       }
-      
+
       .gp-chat-row:hover {
         background: var(--gp-bg-hover);
       }
@@ -741,7 +769,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       .gp-chat-row.missing {
         color: var(--gp-section);
       }
-      
+
       .gp-chat-row:hover .gp-chat-link {
         color: var(--gp-fg);
       }
@@ -802,7 +830,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         border-color: rgba(189, 193, 198, 0.22);
         background: rgba(189, 193, 198, 0.1);
       }
-      
+
       .gp-chat-kebab {
         width: 24px;
         height: 24px;
@@ -819,22 +847,22 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         margin-right: -6px; /* Scaled margin (-8px * 0.75 = -6px) */
         flex-shrink: 0;
       }
-      
+
       .gp-chat-kebab svg {
         width: 18px;
         height: 18px;
       }
-      
+
       .gp-chat-row:hover .gp-chat-kebab,
       .gp-chat-row.gp-force-hover .gp-chat-kebab {
         opacity: 1;
       }
-      
+
       .gp-chat-kebab:hover {
         background: var(--gp-bg-active);
         color: var(--gp-fg);
       }
-      
+
       .gp-chat-empty {
         padding: 8px 16px 8px 52px;
         margin: 0;
@@ -852,31 +880,33 @@ function buildPanelMarkup(state: RuntimeState): string {
   const collapsed = state.uiPrefs.projectsCollapsed;
   const chevronSvg = `
     <svg viewBox="0 0 24 24">
-      <path d="M6 9l6 6 6-6" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
     </svg>
   `;
 
   return `
     <div class="gp-panel">
       <!-- Header with Chevron -->
-      <div class="gp-title ${collapsed ? 'collapsed' : ''}" data-gp-action="toggle-section" role="button">
+      <div class="gp-title ${collapsed ? 'collapsed' : ''}" data-gp-action="toggle-section" role="button" aria-expanded="${String(!collapsed)}">
         <span>Projects</span>
         <span class="gp-chevron">${chevronSvg}</span>
       </div>
-      
+
       <!-- Collapsible Container -->
-      <div class="gp-list-container ${collapsed ? 'hidden' : ''}">
-        <div class="gp-row gp-new" data-gp-action="new-project">
-          <span class="gp-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
-          <span class="gp-label">New Project</span>
-        </div>
-        ${renderProjectsSection(
+      <div class="gp-list-container ${collapsed ? 'collapsed' : ''}" data-gp-list-container>
+        <div class="gp-list-content">
+          <div class="gp-row gp-new" data-gp-action="new-project">
+            <span class="gp-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
+            <span class="gp-label">New Project</span>
+          </div>
+          ${renderProjectsSection(
     state.projects,
     state.chatIndex,
     state.expandedProjectIds,
     state.nativeConversationIds,
     state.nativeChatsReady
   )}
+        </div>
       </div>
     </div>
   `;
@@ -906,21 +936,22 @@ function getProjectAccentColor(project: Project): string {
 function ProjectNameInputWithIcon(): string {
   return `
     <div class="gp-namebox" data-gp-namebox>
-      <button class="gp-icon-button" type="button" data-gp-action="icon-picker" aria-label="Choose icon"></button>
+      <span class="gp-icon-button" data-gp-current-icon aria-hidden="true"></span>
       <input class="gp-name-input" data-gp-name-input type="text" placeholder="Project name" />
-      <div class="gp-icon-popover" data-gp-icon-popover>
-        <div class="gp-icon-grid">
-          ${ICON_OPTIONS.map(
-    (icon) => `
-              <button class="gp-icon-option" type="button" data-gp-icon-option="${icon.id}" title="${icon.label}">
-                ${renderIconSvg(icon.id)}
-              </button>
-            `
-  ).join('')}
-        </div>
-      </div>
     </div>
   `;
+}
+
+const BACKUP_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M5.5 20h13"/></svg>`;
+const RESTORE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.35-5.65"/><path d="M4 4.5v5h5"/></svg>`;
+
+function getModalIconRows(): IconOption[][] {
+  const perRow = 10;
+  return [
+    ICON_OPTIONS.slice(0, perRow),
+    ICON_OPTIONS.slice(perRow, perRow * 2),
+    ICON_OPTIONS.slice(perRow * 2, perRow * 3)
+  ];
 }
 
 function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
@@ -945,15 +976,17 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-muted: #747775;
         --gp-border: rgba(60, 64, 67, 0.12);
         --gp-hover: #f1f3f4;
-        --gp-hover-strong: rgba(26, 115, 232, 0.12);
+        --gp-hover-strong: rgba(60, 64, 67, 0.10);
+        --gp-selected: rgba(60, 64, 67, 0.06);
+        --gp-selected-border: rgba(60, 64, 67, 0.22);
         --gp-surface: #ffffff;
         --gp-surface-2: #f8fafd;
         --gp-shadow: 0 16px 40px rgba(60, 64, 67, 0.18), 0 1px 3px rgba(60, 64, 67, 0.16);
         --gp-radius-xs: 8px;
-        --gp-radius-sm: 8px;
-        --gp-radius: 14px;
-        --gp-radius-lg: 14px;
-        --gp-radius-xl: 20px;
+        --gp-radius-sm: 12px;
+        --gp-radius: 16px;
+        --gp-radius-lg: 18px;
+        --gp-radius-xl: 28px;
         --gp-radius-pill: 999px;
         --gp-transition: .18s ease;
         --gp-accent: #1a73e8;
@@ -963,14 +996,16 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-focus-ring: rgba(26, 115, 232, 0.16);
         --gp-input-bg: #f8fafd;
       }
-      
+
       :host(.dark) {
         --gp-fg: #e8eaed;
         --gp-fg-muted: #bdc1c6;
         --gp-muted: #9aa0a6;
         --gp-border: rgba(232, 234, 237, 0.16);
         --gp-hover: rgba(255, 255, 255, 0.08);
-        --gp-hover-strong: rgba(138, 180, 248, 0.18);
+        --gp-hover-strong: rgba(255, 255, 255, 0.12);
+        --gp-selected: rgba(255, 255, 255, 0.08);
+        --gp-selected-border: rgba(232, 234, 237, 0.28);
         --gp-surface: #202124;
         --gp-surface-2: #292a2d;
         --gp-shadow: 0 24px 52px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.36);
@@ -994,25 +1029,35 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-modal {
         --gp-icon-size: 48px;
         --gp-icon-gap: 12px;
+        --gp-action-width: 132px;
+        --gp-action-height: 44px;
         --gp-content-width: calc(var(--gp-icon-size) * 10 + var(--gp-icon-gap) * 9);
+        --gp-modal-pad-x: 24px;
+        --gp-modal-pad-y: 24px;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-xl);
-        width: calc(var(--gp-content-width) + 42px);
+        box-sizing: border-box;
+        width: calc(var(--gp-content-width) + var(--gp-modal-pad-x) * 2);
         max-width: calc(100vw - 32px);
         box-shadow: var(--gp-shadow);
         border: 1px solid var(--gp-border);
-        padding: 20px;
+        padding: var(--gp-modal-pad-y) var(--gp-modal-pad-x);
         display: flex;
         flex-direction: column;
-        gap: 14px;
+        gap: 16px;
         font-family: var(--gp-font);
         color: var(--gp-fg);
         position: relative;
+      }
+      .gp-modal,
+      .gp-modal * {
+        box-sizing: border-box;
       }
       .gp-modal-header {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        width: 100%;
         font-size: 19px;
         font-weight: 800;
         font-family: var(--gp-font);
@@ -1033,12 +1078,13 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         font-size: 18px;
         cursor: pointer;
         color: var(--gp-muted);
-        width: 32px;
-        height: 32px;
-        border-radius: var(--gp-radius-pill);
+        width: 28px;
+        height: 28px;
+        border-radius: 50%;
         display: inline-flex;
         align-items: center;
         justify-content: center;
+        margin-right: -5px;
         transition: background var(--gp-transition);
       }
       .gp-modal-close svg { width: 18px; height: 18px; }
@@ -1047,12 +1093,9 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: flex;
         align-items: center;
         gap: 12px;
-        width: var(--gp-content-width);
-        max-width: 100%;
-        margin-left: auto;
-        margin-right: auto;
+        width: 100%;
         border: 1px solid var(--gp-border);
-        border-radius: var(--gp-radius-xl);
+        border-radius: var(--gp-radius-lg);
         padding: 8px; /* Uniform padding for consistent margins */
         position: relative;
         background: var(--gp-input-bg);
@@ -1071,19 +1114,14 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        cursor: pointer;
-        transition: box-shadow var(--gp-transition), background var(--gp-transition);
+        cursor: default;
         color: var(--gp-fg);
+        flex: 0 0 38px;
       }
-      .gp-icon-button:hover { background: var(--gp-hover); }
       .gp-icon-button svg {
         width: 22px;
         height: 22px;
         stroke-width: 2.35;
-      }
-      .gp-icon-button:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 3px var(--gp-focus-ring);
       }
       .gp-name-input {
         flex: 1;
@@ -1096,66 +1134,17 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         font-family: var(--gp-font);
       }
       .gp-name-input::placeholder { color: var(--gp-muted); }
-      .gp-icon-popover {
-        position: absolute;
-        top: calc(100% + 10px);
-        left: 0;
-        background: var(--gp-surface);
-        border-radius: var(--gp-radius-xl);
-        border: 1px solid var(--gp-border);
-        box-shadow: 0 16px 36px rgba(60, 64, 67, 0.22);
-        padding: 16px;
-        display: none;
-        z-index: 2147483647;
-      }
-      .gp-icon-grid {
-        display: grid;
-        /* 精确的6x5等距网格布局 */
-        grid-template-columns: repeat(6, 1fr);
-        gap: 8px;
-        width: 288px; /* (40+8)*6 - 8 = 精确宽度 */
-      }
-      .gp-icon-option {
-        width: 40px;
-        height: 40px;
-        border: 1.5px solid var(--gp-border);
-        border-radius: 10px;
-        background: var(--gp-surface);
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        transition: border-color var(--gp-transition), background var(--gp-transition), transform var(--gp-transition), box-shadow var(--gp-transition);
-        color: var(--gp-fg);
-      }
-      .gp-icon-option:hover {
-        border-color: var(--gp-focus);
-        background: var(--gp-accent-hover);
-        transform: none;
-      }
-      .gp-icon-option:active {
-        transform: translateY(0);
-      }
-      .gp-icon-option svg { width: 18px; height: 18px; }
-      .gp-icon-option.selected {
-        border-color: var(--gp-focus);
-        background: var(--gp-accent-hover);
-        color: var(--gp-focus);
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
-      }
-      .gp-icon-option:focus-visible {
-        outline: none;
-        box-shadow: 0 0 0 3px var(--gp-focus-ring);
-      }
       .gp-template-row {
         display: flex;
+        flex-direction: column;
+        gap: 10px;
+        width: 100%;
+      }
+      .gp-template-row-group {
+        display: grid;
+        grid-template-columns: repeat(10, var(--gp-icon-size));
         gap: var(--gp-icon-gap);
-        flex-wrap: wrap;
-        align-items: center;
-        width: var(--gp-content-width);
-        max-width: 100%;
-        margin-left: auto;
-        margin-right: auto;
+        width: 100%;
       }
       .gp-template-chip {
         display: inline-flex;
@@ -1164,42 +1153,41 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: var(--gp-icon-size);
         height: var(--gp-icon-size);
         padding: 0;
-        border-radius: 10px;
-        border: 1px solid var(--gp-border);
+        border-radius: var(--gp-radius-pill);
+        border: 1px solid transparent;
         cursor: pointer;
         color: var(--gp-fg);
-        background: var(--gp-surface);
+        background: transparent;
         transition: background var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition), transform var(--gp-transition);
         flex: 0 0 auto;
       }
       .gp-template-chip:hover {
-        border-color: var(--gp-focus);
-        background: var(--gp-accent-hover);
+        border-color: transparent;
+        background: var(--gp-hover);
         transform: none;
       }
       .gp-template-chip:active { transform: translateY(0); }
       .gp-template-chip.selected {
-        border-color: var(--gp-focus);
-        background: var(--gp-accent-hover);
-        color: var(--gp-focus);
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
+        border-color: var(--gp-selected-border);
+        background: var(--gp-selected);
+        color: var(--gp-fg);
+        box-shadow: inset 0 0 0 2px var(--gp-selected-border);
+        border-radius: 50%;
       }
       .gp-template-chip svg {
         width: 24px;
         height: 24px;
         stroke-width: 2.15;
       }
-      .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--gp-focus-ring); }
-      
+      .gp-template-chip:focus-visible { outline: none; box-shadow: 0 0 0 3px rgba(60, 64, 67, 0.18); }
+
       /* Color Picker Row */
       .gp-color-row {
         display: flex;
         gap: 10px;
         align-items: center;
-        width: var(--gp-content-width);
-        max-width: 100%;
-        margin-left: auto;
-        margin-right: auto;
+        width: calc(100% - 10px);
+        margin-left: 10px;
         margin-bottom: 8px;
       }
       .gp-color-dot {
@@ -1218,12 +1206,12 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transform: translateY(-1px);
       }
       .gp-color-dot.selected {
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
+        box-shadow: inset 0 0 0 4px var(--gp-surface), 0 0 0 2px currentColor;
       }
       .gp-color-dot:first-child.selected {
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
+        box-shadow: inset 0 0 0 4px var(--gp-surface), 0 0 0 2px currentColor;
       }
-      
+
       /* Adaptive Color (Black/White) */
       .gp-color-adaptive {
         background-color: #1f1f1f;
@@ -1234,7 +1222,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         color: #ffffff;
       }
       :host(.dark) .gp-color-dot:first-child.selected {
-        box-shadow: 0 0 0 2px var(--gp-surface), 0 0 0 4px var(--gp-focus);
+        box-shadow: inset 0 0 0 4px var(--gp-surface), 0 0 0 2px currentColor;
       }
 
       /* 所有颜色的立体磨砂效果 - 移除，回归扁平 */
@@ -1246,32 +1234,83 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-color-dot:first-child::after {
         display: none;
       }
-      
+
       .gp-modal-actions {
-        display: flex;
-        justify-content: flex-end;
-        width: var(--gp-content-width);
-        max-width: 100%;
-        margin-left: auto;
-        margin-right: auto;
-        margin-top: 4px;
+        display: grid;
+        grid-template-columns: var(--gp-action-width) var(--gp-action-width) 1fr var(--gp-action-width);
+        align-items: center;
+        column-gap: 10px;
+        width: 100%;
+        margin-top: 6px;
+      }
+      .gp-modal-tools {
+        display: contents;
+      }
+      .gp-action-spacer {
+        min-width: 0;
+      }
+      .gp-primary,
+      .gp-tool-button {
+        width: var(--gp-action-width);
+        height: var(--gp-action-height);
+        border-radius: 16px 14px 14px 16px;
+        font-family: var(--gp-font);
+        letter-spacing: 0;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        box-shadow: none;
+        -webkit-font-smoothing: antialiased;
+        -webkit-text-stroke: 0 transparent;
+        text-shadow: none;
+        paint-order: normal;
+      }
+      .gp-tool-button {
+        padding: 0 12px;
+        border: 1px solid var(--gp-border);
+        background: var(--gp-hover);
+        color: var(--gp-fg-muted);
+        font-size: 13px;
+        font-weight: 700;
+        gap: 9px;
+        transition: background var(--gp-transition), border-color var(--gp-transition), color var(--gp-transition);
+      }
+      .gp-tool-button:first-child {
+        margin-left: 0;
+      }
+      .gp-tool-button:hover {
+        background: var(--gp-hover);
+        border-color: var(--gp-border);
+        color: var(--gp-fg);
+      }
+      .gp-tool-button svg {
+        width: 20px;
+        height: 20px;
+        fill: none;
+        stroke: currentColor;
+        stroke-width: 2.35;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        flex: 0 0 20px;
+        display: block;
+      }
+      .gp-tool-button span {
+        display: inline-block;
+        line-height: 1;
+        -webkit-text-stroke: 0 transparent;
+        -webkit-text-fill-color: currentColor;
+        text-shadow: none;
+        paint-order: normal;
       }
       .gp-primary {
         background: var(--gp-focus);
         color: var(--gp-on-accent);
         border: 1px solid var(--gp-focus);
         padding: 0 22px;
-        border-radius: var(--gp-radius-lg);
-        cursor: pointer;
-        font-family: var(--gp-font);
         font-size: 15px;
         font-weight: 800;
-        letter-spacing: 0;
-        -webkit-font-smoothing: antialiased;
-        box-shadow: none;
         transition: background var(--gp-transition), border-color var(--gp-transition), transform var(--gp-transition);
-        height: 46px;
-        min-width: 156px;
         overflow: hidden;
       }
       .gp-primary:hover {
@@ -1310,7 +1349,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         justify-content: space-between;
         gap: 12px;
         padding: 6px 12px; /* Tighter padding */
-        border-radius: var(--gp-radius); /* Inner: 20 - 6 ~= 14 */
+        border-radius: var(--gp-radius);
         cursor: pointer;
         font-size: 14px;
         font-weight: 500;
@@ -1323,11 +1362,29 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transform: none;
       }
       .gp-menu-item.danger { color: #b3261e; }
-      
+      .gp-project-menu {
+        padding: 8px;
+      }
+      .gp-project-menu .gp-menu-item {
+        min-height: 44px;
+        padding: 0 18px;
+        border-radius: calc(var(--gp-radius-xl) - 8px);
+        font-size: 14px;
+        font-weight: 600;
+      }
+
       /* Chat menu item with icons */
+      .gp-chat-menu {
+        padding: 8px;
+      }
       .gp-chat-menu .gp-menu-item {
         justify-content: flex-start;
         gap: 10px;
+        min-height: 44px;
+        padding: 0 18px;
+        border-radius: calc(var(--gp-radius-xl) - 8px);
+        font-size: 14px;
+        font-weight: 600;
       }
       .gp-chat-menu .gp-menu-item svg {
         width: 18px;
@@ -1337,7 +1394,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-chat-menu .gp-menu-item span {
         flex: 1;
       }
-      
+
       /* Submenu trigger arrow */
       .gp-submenu-arrow {
         width: 16px;
@@ -1345,7 +1402,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         margin-left: auto;
         opacity: 0.6;
       }
-      
+
       /* Submenu panel */
       .gp-submenu {
         position: fixed;
@@ -1354,7 +1411,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border-radius: var(--gp-radius-lg);
         box-shadow: 0 8px 20px rgba(60, 64, 67, 0.18);
         border: 1px solid var(--gp-border);
-        padding: 4px;
+        padding: 6px;
         display: none;
         z-index: 2147483647;
         font-family: var(--gp-font);
@@ -1362,9 +1419,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-submenu .gp-menu-item {
         justify-content: flex-start;
         gap: 8px;
-        padding: 6px 10px;
+        min-height: 36px;
+        padding: 0 12px;
         font-size: 13px;
-        border-radius: var(--gp-radius-sm);
+        border-radius: calc(var(--gp-radius-lg) - 6px);
       }
       .gp-submenu .gp-menu-item svg {
         width: 16px;
@@ -1420,18 +1478,29 @@ function createModal(layer: HTMLElement) {
           `;
     }
   ).join('')}
-      </div>
+        </div>
       <div class="gp-template-row" data-gp-template-row>
-        ${ICON_OPTIONS.map(
-    (icon) => `
-            <button class="gp-template-chip" type="button" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}" title="${icon.label}" aria-label="${icon.label}" aria-pressed="false">
-              ${renderIconSvg(icon.id)}
-            </button>
-          `
-  ).join('')}
+        ${getModalIconRows().map((row) => `
+          <div class="gp-template-row-group">
+            ${row.map((icon) => `
+              <button class="gp-template-chip" type="button" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}" title="${icon.label}" aria-label="${icon.label}" aria-pressed="false">
+                ${renderIconSvg(icon.id)}
+              </button>
+            `).join('')}
+          </div>
+        `).join('')}
       </div>
       <div class="gp-modal-actions">
-        <button class="gp-primary" data-gp-action="confirm" disabled>Create Project</button>
+        <div class="gp-modal-tools" aria-label="Project data tools">
+          <button class="gp-tool-button" type="button" data-gp-action="backup" title="Backup projects and prompts">
+            ${BACKUP_ICON}<span>Backup</span>
+          </button>
+          <button class="gp-tool-button" type="button" data-gp-action="restore" title="Restore from backup file">
+            ${RESTORE_ICON}<span>Restore</span>
+          </button>
+        </div>
+        <div class="gp-action-spacer" aria-hidden="true"></div>
+        <button class="gp-primary" data-gp-action="confirm" disabled>Done</button>
       </div>
     </div>
   `;
@@ -1446,8 +1515,6 @@ function createModal(layer: HTMLElement) {
     if (confirm) confirm.textContent = config.confirmLabel;
     if (input) input.value = config.name;
     if (templateRow) templateRow.style.display = config.showIcons ? 'flex' : 'none';
-    const popover = backdrop.querySelector<HTMLElement>('[data-gp-icon-popover]');
-    if (popover) popover.style.display = 'none';
     backdrop.style.display = 'flex';
   }
 
@@ -1469,7 +1536,7 @@ function createModal(layer: HTMLElement) {
 
 function createProjectMenu(layer: HTMLElement) {
   const menu = document.createElement('div');
-  menu.className = 'gp-menu';
+  menu.className = 'gp-menu gp-project-menu';
   layer.appendChild(menu);
 
   let callbacks: { onEdit: () => void; onDelete: () => void } | null = null;

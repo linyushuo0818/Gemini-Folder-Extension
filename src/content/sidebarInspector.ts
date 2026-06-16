@@ -1,4 +1,4 @@
-type NodeSummary = {
+﻿type NodeSummary = {
   path: string;
   tag: string;
   role: string | null;
@@ -40,7 +40,7 @@ declare global {
   }
 }
 
-const INSPECTOR_VERSION = '0.1.67';
+const INSPECTOR_VERSION = '2.0.0';
 const REQUEST_EVENT = 'gp-sidebar-inspection-request';
 const RESPONSE_EVENT = 'gp-sidebar-inspection-response';
 const MAX_TEXT = 140;

@@ -1,4 +1,4 @@
-import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
+﻿import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
 import { runtimeSendMessage } from '../shared/webext';
 import {
   findChatRowElement,
@@ -17,9 +17,11 @@ import { installSidebarInspector } from './sidebarInspector';
 import { createProjectsPanel } from './ui/projectsPanel';
 import { initChatGPT } from './chatgpt';
 
-const BUILD_MARKER = '2026-06-14-minimal-rewrite-v067';
+const BUILD_MARKER = '2.0.0';
 const HIDDEN_ATTR = 'data-gp-native-hidden';
 const RESCAN_DELAY_MS = 350;
+const PANEL_READY_RETRY_MS = 120;
+const PANEL_READY_RETRY_LIMIT = 12;
 const MIN_EXPANDED_SIDEBAR_WIDTH = 180;
 
 const state: RuntimeState = {
@@ -44,6 +46,7 @@ let rootObserver: MutationObserver | null = null;
 let sidebarObserver: MutationObserver | null = null;
 let chatsObserver: MutationObserver | null = null;
 let rescanTimer: number | null = null;
+let pendingPanelRetryCount = 0;
 let lastRenderKey = '';
 let chatMenuAttached = false;
 
@@ -114,7 +117,14 @@ function rescanSidebar() {
     chatsList = null;
   }
 
-  if (!ensurePanel()) return;
+  if (!ensurePanel()) {
+    if (pendingPanelRetryCount < PANEL_READY_RETRY_LIMIT) {
+      pendingPanelRetryCount += 1;
+      scheduleRescan(PANEL_READY_RETRY_MS);
+    }
+    return;
+  }
+  pendingPanelRetryCount = 0;
   ensureChatsList();
   syncNativeChatsFromDom();
   applyNativeChatVisibility();
@@ -126,12 +136,10 @@ function ensurePanel() {
   if (!isExpandedSidebar(sidebarRoot)) return false;
   const chats = findChatsSection(sidebarRoot);
   if (!chats) {
-    cleanupInjectedProjects();
     return false;
   }
   const nativeChatsList = findChatsListContainer(chats);
   if (!nativeChatsList) {
-    cleanupInjectedProjects();
     return false;
   }
   const gems = findGemsSection(sidebarRoot);
@@ -385,7 +393,7 @@ function findNativeLinkByConversationId(conversationId: string): HTMLAnchorEleme
 function normalizeTitle(value: string): string {
   return value
     .replace(/\s+/g, ' ')
-    .replace(/\s*(?:Pinned|已置顶|置顶)\s*$/i, '')
+    .replace(/\s*(?:Pinned|宸茬疆椤秥缃《)\s*$/i, '')
     .trim();
 }
 
