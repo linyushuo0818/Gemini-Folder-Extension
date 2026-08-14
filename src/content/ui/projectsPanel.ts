@@ -1540,6 +1540,7 @@ function createProjectMenu(layer: HTMLElement) {
   layer.appendChild(menu);
 
   let callbacks: { onEdit: () => void; onDelete: () => void } | null = null;
+  let openedAt = 0;
 
   function open(anchorRect: DOMRect, _project: Project, nextCallbacks: { onEdit: () => void; onDelete: () => void }) {
     callbacks = nextCallbacks;
@@ -1552,6 +1553,7 @@ function createProjectMenu(layer: HTMLElement) {
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
     menu.style.display = 'block';
+    openedAt = performance.now();
   }
 
   function close() {
@@ -1570,7 +1572,11 @@ function createProjectMenu(layer: HTMLElement) {
   });
 
   document.addEventListener('click', (event) => {
-    if (!menu.contains(event.target as Node)) {
+    // A click originating in the panel is retargeted to the Shadow DOM host
+    // before it reaches document. Ignore the opening click, then use the
+    // composed path so later clicks inside the overlay remain distinguishable.
+    if (performance.now() - openedAt < 50) return;
+    if (!event.composedPath().includes(menu)) {
       close();
     }
   });
@@ -1596,6 +1602,7 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[]) {
   } | null = null;
   let currentProjectId: string | null = null;
   let currentProjectName: string = '';
+  let openedAt = 0;
 
   function open(
     anchorRect: DOMRect,
@@ -1652,6 +1659,7 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[]) {
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
     menu.style.display = 'block';
+    openedAt = performance.now();
 
     // 子菜单悬停显示
     const trigger = menu.querySelector('.gp-submenu-trigger');
@@ -1698,7 +1706,8 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[]) {
   });
 
   document.addEventListener('click', (event) => {
-    if (!menu.contains(event.target as Node)) {
+    if (performance.now() - openedAt < 50) return;
+    if (!event.composedPath().includes(menu)) {
       close();
     }
   });

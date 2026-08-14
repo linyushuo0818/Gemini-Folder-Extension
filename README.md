@@ -27,7 +27,7 @@ Download the latest zip from the [GitHub Releases](https://github.com/linyushuo0
 
 For the current release, use:
 
-- `gemini-projects-2.0.0-webstore-*.zip`
+- `gemini-projects-2.0.2-webstore-*.zip`
 
 ## Install Manually
 
@@ -48,6 +48,19 @@ Gemini Projects is designed for Chrome and Chromium-based browsers.
 - Gemini itself still runs on Google's website, so Gemini account activity is governed by Google's own policies.
 
 ## Current Version
+
+### v2.0.2
+
+- Fixed sidebar jitter caused by Projects being mounted beside Gemini's native navigation.
+- Updated chat-history detection for Gemini's current Chat and Spark sidebar layout.
+- Kept Projects visible when Recents is collapsed or the account has no chat history.
+- Restored Projects reliably after switching from Spark back to Chat.
+- Fixed duplicated response-fold controls and Project/chat menus that closed immediately.
+
+### v2.0.1
+
+- Narrowed website access to Gemini only for Chrome Web Store compliance.
+- Removed unused ChatGPT and legacy ChatGPT host access from the extension manifest.
 
 ### v2.0.0
 

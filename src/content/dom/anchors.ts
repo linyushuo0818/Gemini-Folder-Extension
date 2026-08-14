@@ -145,11 +145,17 @@ function findSectionByTexts(root: HTMLElement, labels: string[]): HTMLElement | 
   for (const element of visibleElements) {
     const normalized = normalizeText(element.textContent);
     if (isPrimaryNavAction(normalized)) continue;
-    if (normalized.length <= 48 && targets.some((target) => normalized.includes(target))) {
+    if (normalized.length <= 48 && targets.some((target) => includesStandaloneLabel(normalized, target))) {
       return element;
     }
   }
   return null;
+}
+
+function includesStandaloneLabel(text: string, label: string): boolean {
+  if (text === label) return true;
+  if (/[^\x00-\x7f]/.test(label)) return text.includes(label);
+  return text.startsWith(`${label} `) || text.endsWith(` ${label}`) || text.includes(` ${label} `);
 }
 
 function isPrimaryNavAction(normalizedText: string): boolean {
@@ -213,11 +219,22 @@ export function findChatsSection(root: HTMLElement): HTMLElement | null {
     return byText;
   }
 
+  // Newer Gemini builds keep an empty chat-history region in the sidebar even
+  // before any conversation links have rendered. Prefer that stable structural
+  // anchor so "Search chats" is never mistaken for the history section.
+  const chatHistory = root.querySelector<HTMLElement>('.chat-history');
+  if (chatHistory) {
+    return chatHistory;
+  }
+
   const toggles = Array.from(root.querySelectorAll<HTMLElement>('[data-test-id="expandable-section-toggle"], button[aria-label]'));
   const chatLabels = mergeLabels(labels.chatsPrimary, labels.chatsFallback);
   for (const toggle of toggles) {
     const label = toggle.getAttribute('aria-label') || '';
     const text = toggle.textContent || '';
+    if (isPrimaryNavAction(normalizeText(label)) || isPrimaryNavAction(normalizeText(text))) {
+      continue;
+    }
     if (includesAnyLabel(label, chatLabels) || includesAnyLabel(text, chatLabels)) {
       return toggle;
     }
@@ -399,6 +416,30 @@ function getStableProjectsInsertion(
   root: HTMLElement,
   chatsSection: HTMLElement | null
 ): { parent: HTMLElement; insertBefore: Element | null } {
+  const scroller = root.querySelector<HTMLElement>('infinite-scroller');
+  if (scroller) {
+    const history = root.querySelector<HTMLElement>('.chat-history');
+    const chatAnchor = getDirectChildWithin(scroller, chatsSection) || getDirectChildWithin(scroller, history);
+    const bottomGradient = Array.from(scroller.children).find((child) =>
+      child.classList.contains('bottom-gradient-container')
+    ) || null;
+
+    // Projects is an independent extension feature. Keep it as a direct child
+    // of the stable scroll region so collapsing/removing Recents cannot hide it.
+    return {
+      parent: scroller,
+      insertBefore: chatAnchor || bottomGradient
+    };
+  }
+
+  const overflowContainer = root.querySelector<HTMLElement>('.overflow-container');
+  if (overflowContainer) {
+    const desktopControls = Array.from(overflowContainer.children).find((child) =>
+      child.matches('mat-action-list.desktop-controls, .desktop-controls')
+    ) || null;
+    return { parent: overflowContainer, insertBefore: desktopControls };
+  }
+
   if (!chatsSection || chatsSection === root) {
     return { parent: root, insertBefore: null };
   }
@@ -424,6 +465,15 @@ function getStableProjectsInsertion(
     parent: directChild?.parentElement === root ? root : chatsSection.parentElement || root,
     insertBefore: directChild?.parentElement === root ? directChild : chatsSection
   };
+}
+
+function getDirectChildWithin(container: HTMLElement, element: HTMLElement | null): HTMLElement | null {
+  if (!element || !container.contains(element)) return null;
+  let current = element;
+  while (current.parentElement && current.parentElement !== container) {
+    current = current.parentElement;
+  }
+  return current.parentElement === container ? current : null;
 }
 
 function extractIdFromPath(pathname: string): string | null {

@@ -27,7 +27,7 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 
 当前版本对应文件：
 
-- `gemini-projects-2.0.0-webstore-*.zip`
+- `gemini-projects-2.0.2-webstore-*.zip`
 
 ## 手动安装
 
@@ -48,6 +48,19 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 - Gemini 本身仍运行在 Google 网站中，Gemini 账号和服务行为以 Google 的政策为准。
 
 ## 当前版本
+
+### v2.0.2
+
+- 修复 Projects 错误挂载在 Gemini 原生导航外侧导致的侧栏抽搐。
+- 适配 Gemini 当前 Chat 与 Spark 侧栏结构，改进聊天记录区域识别。
+- 在 Recents 折叠或账号没有聊天记录时仍保持 Projects 可见。
+- 修复从 Spark 切回 Chat 后 Projects 消失的问题。
+- 修复回复折叠按钮重复，以及项目/聊天菜单打开后立即关闭的问题。
+
+### v2.0.1
+
+- 将网站访问范围收窄为仅 Gemini，以符合 Chrome Web Store 的最小权限要求。
+- 从扩展清单中移除未使用的 ChatGPT 与旧版 ChatGPT 域名权限。
 
 ### v2.0.0
 

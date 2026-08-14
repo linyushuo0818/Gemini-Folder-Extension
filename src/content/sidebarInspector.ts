@@ -40,7 +40,7 @@ declare global {
   }
 }
 
-const INSPECTOR_VERSION = '2.0.0';
+const INSPECTOR_VERSION = '2.0.2';
 const REQUEST_EVENT = 'gp-sidebar-inspection-request';
 const RESPONSE_EVENT = 'gp-sidebar-inspection-response';
 const MAX_TEXT = 140;

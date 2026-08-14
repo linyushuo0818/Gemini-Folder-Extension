@@ -1,15 +1,13 @@
 {
     "manifest_version": 3,
     "name": "Gemini Projects",
-    "version": "2.0.0",
+    "version": "2.0.2",
     "description": "Group Gemini chats into local Projects.",
     "permissions": [
         "storage"
     ],
     "host_permissions": [
-        "https://gemini.google.com/*",
-        "https://chatgpt.com/*",
-        "https://chat.openai.com/*"
+        "https://gemini.google.com/*"
     ],
     "background": {
         "service_worker": "background.js",
@@ -28,9 +26,7 @@
         },
         {
             "matches": [
-                "https://gemini.google.com/*",
-                "https://chatgpt.com/*",
-                "https://chat.openai.com/*"
+                "https://gemini.google.com/*"
             ],
             "js": [
                 "content.js"

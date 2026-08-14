@@ -17,7 +17,7 @@ import { installSidebarInspector } from './sidebarInspector';
 import { createProjectsPanel } from './ui/projectsPanel';
 import { initChatGPT } from './chatgpt';
 
-const BUILD_MARKER = '2.0.0';
+const BUILD_MARKER = '2.0.2';
 const HIDDEN_ATTR = 'data-gp-native-hidden';
 const RESCAN_DELAY_MS = 350;
 const PANEL_READY_RETRY_MS = 120;
@@ -39,6 +39,7 @@ const state: RuntimeState = {
 };
 
 let panel: ReturnType<typeof createProjectsPanel> | null = null;
+let panelHost: HTMLElement | null = null;
 let sidebarRoot: HTMLElement | null = null;
 let chatsHeader: HTMLElement | null = null;
 let chatsList: HTMLElement | null = null;
@@ -49,6 +50,7 @@ let rescanTimer: number | null = null;
 let pendingPanelRetryCount = 0;
 let lastRenderKey = '';
 let chatMenuAttached = false;
+let chatMenuOverlayShadow: ShadowRoot | null = null;
 
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
   return runtimeSendMessage<BackgroundResponse>(message);
@@ -91,7 +93,15 @@ function observeDocumentForSidebar() {
 }
 
 function scheduleRescan(delay = RESCAN_DELAY_MS) {
-  if (rescanTimer !== null) window.clearTimeout(rescanTimer);
+  // Gemini continuously mutates parts of the page (streaming state, badges,
+  // focus helpers, etc.). Restarting the timer for every mutation can starve
+  // the sidebar scan forever, leaving Projects absent on an otherwise ready
+  // page. Keep the first scheduled scan; only an explicit immediate rescan
+  // is allowed to pre-empt a delayed one.
+  if (rescanTimer !== null) {
+    if (delay > 0) return;
+    window.clearTimeout(rescanTimer);
+  }
   rescanTimer = window.setTimeout(() => {
     rescanTimer = null;
     runStage('rescanSidebar', rescanSidebar);
@@ -99,6 +109,11 @@ function scheduleRescan(delay = RESCAN_DELAY_MS) {
 }
 
 function rescanSidebar() {
+  if (isSparkSurface()) {
+    cleanupInjectedProjects();
+    return;
+  }
+
   const nextSidebar = findSidebarRoot();
   if (!nextSidebar) {
     if (pendingPanelRetryCount < PANEL_READY_RETRY_LIMIT) {
@@ -121,6 +136,7 @@ function rescanSidebar() {
     sidebarObserver = new MutationObserver(() => scheduleRescan());
     sidebarObserver.observe(sidebarRoot, { childList: true, subtree: true, characterData: true });
     panel = null;
+    panelHost = null;
     chatsList = null;
     pendingPanelRetryCount = 0;
   }
@@ -154,13 +170,10 @@ function ensurePanel() {
   if (!sidebarRoot) return false;
   if (!isExpandedSidebar(sidebarRoot)) return false;
   const chats = findChatsSection(sidebarRoot);
-  if (!chats) {
-    return false;
-  }
   const gems = findGemsSection(sidebarRoot);
-  const { shadow, overlayShadow } = injectProjectsSection(sidebarRoot, gems, chats);
+  const { host, shadow, overlayShadow } = injectProjectsSection(sidebarRoot, gems, chats);
 
-  if (!panel) {
+  if (!panel || panelHost !== host) {
     panel = createProjectsPanel({
       shadow,
       overlayShadow,
@@ -171,9 +184,14 @@ function ensurePanel() {
       onRemoveChatFromProject: (conversationId) => handleMoveChat(conversationId, null),
       onMoveChatToProject: (conversationId, projectId) => handleMoveChat(conversationId, projectId)
     });
+    panelHost = host;
+    // Gemini replaces the sidebar's internal scroll region when switching
+    // between Chat and Spark while preserving the outer bard-sidenav node.
+    // A new host always needs an initial render even when state is unchanged.
+    lastRenderKey = '';
   }
 
-  if (!chatMenuAttached) {
+  if (!chatMenuAttached || chatMenuOverlayShadow !== overlayShadow) {
     attachChatMenuEnhancer({
       overlayShadow,
       getProjects: () => state.projects,
@@ -186,6 +204,7 @@ function ensurePanel() {
       onCreateProject: () => panel?.openCreateModal()
     });
     chatMenuAttached = true;
+    chatMenuOverlayShadow = overlayShadow;
   }
   return true;
 }
@@ -439,8 +458,14 @@ function isExpandedSidebar(sidebar: HTMLElement): boolean {
   return true;
 }
 
+function isSparkSurface(): boolean {
+  return window.location.pathname === '/spark' || window.location.pathname.startsWith('/spark/');
+}
+
 function cleanupInjectedProjects() {
   panel = null;
+  panelHost = null;
+  chatMenuOverlayShadow = null;
   chatsList = null;
   state.nativeConversationIds = new Set();
   state.nativeChatsReady = false;

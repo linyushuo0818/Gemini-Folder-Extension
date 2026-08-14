@@ -206,6 +206,12 @@ function collectCandidates(): ResponseCandidate[] {
 
   const candidates: ResponseCandidate[] = [];
   for (const root of rootSet) {
+    // Gemini's current response DOM matches both the outer <model-response>
+    // and nested content nodes whose class names also contain "model-response".
+    // Keep the outermost candidate so one response receives one toggle button.
+    if (Array.from(rootSet).some((other) => other !== root && other.contains(root))) {
+      continue;
+    }
     if (!isUsableNode(root)) {
       continue;
     }
