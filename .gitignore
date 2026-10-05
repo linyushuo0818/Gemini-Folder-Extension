@@ -31,3 +31,17 @@ Thumbs.db
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+
+# Private local configuration and browser/test data
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.crx
+*.ldb
+*.jsonl
+chrome-profile*/
+test-results/
+playwright-report/
+coverage/

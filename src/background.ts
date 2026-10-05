@@ -100,6 +100,7 @@ function exportProjectJson(state: StoredState, projectId: string): BackgroundRes
       name: project.name,
       icon: project.icon,
       color: project.color ?? null,
+      isPinned: project.isPinned === true,
       createdAt: project.createdAt,
       updatedAt: project.updatedAt,
       sortIndex: project.sortIndex
@@ -135,6 +136,20 @@ async function handleMessage(message: BackgroundRequest): Promise<BackgroundResp
     case 'renameProject':
       await persist(renameProject(state, message.projectId, message.name));
       return { ok: true, state };
+    case 'setProjectPinned': {
+      const project = state.projects.find((item) => item.id === message.projectId);
+      if (!project) return { ok: false, error: 'Project not found' };
+      const nextState = {
+        ...state,
+        projects: state.projects.map((item) => item.id === project.id
+          ? { ...item, isPinned: message.isPinned, updatedAt: Date.now() }
+          : item)
+      };
+      // 写入成功后再替换缓存，避免失败时显示未保存的置顶状态。
+      await saveState(nextState);
+      cachedState = nextState;
+      return { ok: true, state: nextState };
+    }
     case 'deleteProject':
       await persist(deleteProject(state, message.projectId));
       return { ok: true, state };

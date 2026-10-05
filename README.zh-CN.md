@@ -1,4 +1,4 @@
-# Gemini Projects
+# Gemini Folders — Projects & Prompt Library
 
 给 Gemini 添加本地 Projects 和 Prompt Library。
 
@@ -17,6 +17,7 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 - 从 Project 中移除聊天，但不删除原始 Gemini 聊天
 - 当某个 Project 聊天已在手机或其他设备上从 Gemini 历史记录中删除时，会显示缺失状态
 - 为 Project 选择图标和颜色
+- 在紧凑的 Project 菜单中置顶、编辑或删除项目；置顶项目刷新后仍排在前面，取消置顶后恢复原来的排序位置
 - 备份和恢复本地 Projects 与提示词数据
 - 保存、搜索、编辑和复用常用提示词
 - 数据保存在浏览器本地存储中
@@ -27,7 +28,7 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 
 当前版本对应文件：
 
-- `gemini-projects-2.0.2-webstore-*.zip`
+- `gemini-projects-2.0.4-webstore-*.zip`
 
 ## 手动安装
 
@@ -47,7 +48,22 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 - 扩展不会主动上传你的 Projects、提示词或聊天整理数据。
 - Gemini 本身仍运行在 Google 网站中，Gemini 账号和服务行为以 Google 的政策为准。
 
+## 构建与打包
+
+依次运行 `npm ci`、`npm run lint` 和 `npm run package:store`。打包使用 Node.js，macOS/Linux 需要系统 `zip` 工具，Windows 使用 PowerShell。发布 ZIP 只包含清单引用的运行脚本和图标，不包含 source map、未使用的历史脚本、个人数据或开发笔记。生成文件保存在 `release/`，不提交到源码仓库。
+
 ## 当前版本
+
+### v2.0.4
+
+- 新增持久化项目置顶，并为紧凑项目菜单加入操作图标。
+- 聊天操作菜单和项目列表按文字自适应宽度，限制在窗口内，大列表支持滚动。
+- 修复回复折叠按钮重复写入 DOM 导致的空闲扫描循环。
+
+### v2.0.3
+
+- 扩展更名为 `Gemini Folders — Projects & Prompt Library`。
+- 将与商店一致的 Conversation Index 图标接入 Chrome 工具栏和扩展管理页面。
 
 ### v2.0.2
 

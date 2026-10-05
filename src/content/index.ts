@@ -178,6 +178,7 @@ function ensurePanel() {
       shadow,
       overlayShadow,
       onSaveProject: handleSaveProject,
+      onToggleProjectPin: handleToggleProjectPin,
       onToggleProjectExpand: handleToggleProjectExpand,
       onDeleteProject: handleDeleteProject,
       onToggleCollapse: handleToggleCollapse,
@@ -379,6 +380,14 @@ function handleToggleProjectExpand(projectId: string) {
   renderPanelIfChanged(true);
 }
 
+async function handleToggleProjectPin(projectId: string, isPinned: boolean) {
+  const response = await sendMessage({ type: 'setProjectPinned', projectId, isPinned });
+  if (!response.ok) throw new Error(response.error);
+  if (!response.state) throw new Error('Project state was not returned');
+  state.projects = response.state.projects;
+  renderPanelIfChanged(true);
+}
+
 function handleToggleCollapse(collapsed: boolean) {
   state.uiPrefs.projectsCollapsed = collapsed;
   sendMessage({ type: 'updateUiPrefs', prefs: { projectsCollapsed: collapsed } }).catch(() => undefined);
@@ -500,7 +509,7 @@ function renderPanelIfChanged(force = false) {
 
 function getRenderKey(): string {
   const projects = state.projects
-    .map((project) => `${project.id}:${project.name}:${project.icon}:${project.color || ''}:${project.sortIndex}`)
+    .map((project) => `${project.id}:${project.name}:${project.icon}:${project.color || ''}:${project.sortIndex}:${project.isPinned === true}`)
     .join('|');
   const chats = Array.from(state.chatIndex.values())
     .filter((chat) => chat.projectId)

@@ -7,6 +7,7 @@ interface ProjectsPanelOptions {
   shadow: ShadowRoot;
   overlayShadow: ShadowRoot;
   onSaveProject: (project: Project) => void;
+  onToggleProjectPin: (projectId: string, isPinned: boolean) => Promise<void>;
   onToggleProjectExpand: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onToggleCollapse: (collapsed: boolean) => void;
@@ -16,6 +17,17 @@ interface ProjectsPanelOptions {
 
 type ModalMode = 'create' | 'edit';
 const PANEL_COLLAPSE_ANIMATION_MS = 190;
+
+const PROJECT_ACTION_PATHS = {
+  pin: '<path d="M9 3h6v5l3 4v3H6v-3l3-4V3Z"/><path d="M12 15v6"/>',
+  unpin: '<path d="m3 3 18 18M9 3h6v5l3 4v3h-3M9 9l-3 3v3h5M12 15v6"/>',
+  edit: '<path d="m16 4 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15l-1 6Z"/>',
+  delete: '<path d="M3 6h18M9 6V3h6v3M5 6l1 14h12l1-14M10 10v6M14 10v6"/>'
+};
+
+function renderProjectActionIcon(action: keyof typeof PROJECT_ACTION_PATHS): string {
+  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PROJECT_ACTION_PATHS[action]}</svg>`;
+}
 
 export function createProjectsPanel(options: ProjectsPanelOptions) {
   const panelRoot = ensurePanelRoot(options.shadow);
@@ -349,6 +361,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         name,
         icon: modalSelectedIcon,
         color: modalSelectedColor,
+        isPinned: modalMode === 'edit' ? modalProject?.isPinned === true : false,
         createdAt: modalMode === 'create' ? now : (modalProject?.createdAt || now),
         updatedAt: now,
         sortIndex: modalMode === 'create' ? now : (modalProject?.sortIndex || now)
@@ -390,6 +403,15 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
   function openProjectMenu(project: Project, anchorRect: DOMRect) {
     projectMenu.open(anchorRect, project, {
+      onTogglePin: async () => {
+        const isPinned = !project.isPinned;
+        await options.onToggleProjectPin(project.id, isPinned);
+        showToast(isPinned ? 'Project pinned' : 'Project unpinned');
+      },
+      onPinError: (error) => {
+        console.warn('[Gemini Projects] Pin update failed', error);
+        showToast('Could not update project pin. Please try again.');
+      },
       onEdit: () => openEditModal(project),
       onDelete: () => options.onDeleteProject(project.id)
     });
@@ -450,7 +472,9 @@ export function renderProjectsSection(
   nativeConversationIds: Set<string> = new Set(),
   nativeChatsReady = false
 ): string {
-  const sorted = [...projects].sort((a, b) => a.sortIndex - b.sortIndex);
+  const sorted = [...projects].sort((a, b) =>
+    Number(b.isPinned === true) - Number(a.isPinned === true) || a.sortIndex - b.sortIndex
+  );
   if (!sorted.length) {
     return ''; // No placeholder when empty, cleaner look
   }
@@ -495,6 +519,7 @@ export function renderProjectsSection(
           <div class="gp-row gp-project-row ${isExpanded ? 'active' : ''}" data-gp-action="toggle-project">
             <span class="gp-icon">${renderIconSvg(project.icon, project.color)}</span>
             <span class="gp-label">${escapeHtml(project.name)}</span>
+            ${project.isPinned ? `<span class="gp-project-pin" role="img" aria-label="Pinned project" title="Pinned project">${renderProjectActionIcon('pin')}</span>` : ''}
             <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
           </div>
           ${chatRows}
@@ -678,6 +703,17 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
 
       .gp-new .gp-icon {
         color: #3c4043;
+      }
+
+      .gp-project-pin {
+        display: flex;
+        align-items: center;
+        flex-shrink: 0;
+        color: var(--gp-fg-muted);
+      }
+      .gp-project-pin svg {
+        width: 14px;
+        height: 14px;
       }
 
       .gp-icon {
@@ -1363,28 +1399,64 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-menu-item.danger { color: #b3261e; }
       .gp-project-menu {
+        width: max-content;
+        min-width: 0;
+        max-width: calc(100vw - 16px);
+        box-sizing: border-box;
         padding: 8px;
+        border-radius: 20px;
       }
       .gp-project-menu .gp-menu-item {
-        min-height: 44px;
-        padding: 0 18px;
-        border-radius: calc(var(--gp-radius-xl) - 8px);
+        width: 100%;
+        min-height: 36px;
+        justify-content: flex-start;
+        gap: 10px;
+        padding: 0 12px;
+        border: 0;
+        background: transparent;
+        box-sizing: border-box;
+        border-radius: 12px;
+        font-family: inherit;
+        text-align: left;
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 500;
+      }
+      .gp-project-menu .gp-menu-item svg {
+        flex: 0 0 18px;
+      }
+      .gp-project-menu .gp-menu-item:hover,
+      .gp-project-menu .gp-menu-item:focus-visible {
+        background: var(--gp-hover);
+      }
+      .gp-project-menu .gp-menu-item:focus-visible {
+        outline: 2px solid var(--gp-focus);
+        outline-offset: -2px;
+      }
+      .gp-project-menu .gp-menu-item:disabled {
+        cursor: wait;
+        opacity: 0.6;
+      }
+      :host(.dark) .gp-project-menu .gp-menu-item.danger {
+        color: #f2b8b5;
       }
 
       /* Chat menu item with icons */
       .gp-chat-menu {
+        width: max-content;
+        min-width: 0;
+        max-width: calc(100vw - 16px);
+        box-sizing: border-box;
         padding: 8px;
+        border-radius: 20px;
       }
       .gp-chat-menu .gp-menu-item {
         justify-content: flex-start;
         gap: 10px;
-        min-height: 44px;
-        padding: 0 18px;
-        border-radius: calc(var(--gp-radius-xl) - 8px);
+        min-height: 36px;
+        padding: 0 12px;
+        border-radius: 12px;
         font-size: 14px;
-        font-weight: 600;
+        font-weight: 500;
       }
       .gp-chat-menu .gp-menu-item svg {
         width: 18px;
@@ -1392,7 +1464,14 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         flex-shrink: 0;
       }
       .gp-chat-menu .gp-menu-item span {
-        flex: 1;
+        flex: 1 1 auto;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+      .gp-chat-menu .gp-submenu-arrow {
+        flex: 0 0 16px;
+        width: 16px;
+        height: 16px;
       }
 
       /* Submenu trigger arrow */
@@ -1406,27 +1485,32 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       /* Submenu panel */
       .gp-submenu {
         position: fixed;
-        min-width: 180px;
+        width: max-content;
+        min-width: 0;
+        max-width: calc(100vw - 16px);
+        max-height: calc(100vh - 16px);
+        overflow-y: auto;
+        box-sizing: border-box;
         background: var(--gp-surface);
-        border-radius: var(--gp-radius-lg);
+        border-radius: 20px;
         box-shadow: 0 8px 20px rgba(60, 64, 67, 0.18);
         border: 1px solid var(--gp-border);
-        padding: 6px;
+        padding: 8px;
         display: none;
         z-index: 2147483647;
         font-family: var(--gp-font);
       }
       .gp-submenu .gp-menu-item {
         justify-content: flex-start;
-        gap: 8px;
+        gap: 10px;
         min-height: 36px;
         padding: 0 12px;
-        font-size: 13px;
-        border-radius: calc(var(--gp-radius-lg) - 6px);
+        font-size: 14px;
+        border-radius: 12px;
       }
       .gp-submenu .gp-menu-item svg {
-        width: 16px;
-        height: 16px;
+        width: 18px;
+        height: 18px;
       }
       .gp-toast {
         position: fixed;
@@ -1537,38 +1621,86 @@ function createModal(layer: HTMLElement) {
 function createProjectMenu(layer: HTMLElement) {
   const menu = document.createElement('div');
   menu.className = 'gp-menu gp-project-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Project actions');
   layer.appendChild(menu);
 
-  let callbacks: { onEdit: () => void; onDelete: () => void } | null = null;
+  type ProjectMenuCallbacks = {
+    onTogglePin: () => Promise<void>;
+    onPinError: (error: unknown) => void;
+    onEdit: () => void;
+    onDelete: () => void;
+  };
+  let callbacks: ProjectMenuCallbacks | null = null;
   let openedAt = 0;
+  let pinPending = false;
 
-  function open(anchorRect: DOMRect, _project: Project, nextCallbacks: { onEdit: () => void; onDelete: () => void }) {
+  function open(anchorRect: DOMRect, project: Project, nextCallbacks: ProjectMenuCallbacks) {
+    if (pinPending) return;
     callbacks = nextCallbacks;
     menu.innerHTML = `
-      <div class="gp-menu-item" data-gp-menu="edit">Edit Project</div>
-      <div class="gp-menu-item danger" data-gp-menu="delete">Delete Project</div>
+      <button type="button" role="menuitem" class="gp-menu-item" data-gp-menu="pin">${renderProjectActionIcon(project.isPinned ? 'unpin' : 'pin')}<span>${project.isPinned ? 'Unpin' : 'Pin'}</span></button>
+      <button type="button" role="menuitem" class="gp-menu-item" data-gp-menu="edit">${renderProjectActionIcon('edit')}<span>Edit</span></button>
+      <button type="button" role="menuitem" class="gp-menu-item danger" data-gp-menu="delete">${renderProjectActionIcon('delete')}<span>Delete</span></button>
     `;
-    const left = Math.min(anchorRect.left, window.innerWidth - 220);
-    const top = anchorRect.bottom + 6;
+    menu.style.display = 'block';
+    const { width, height } = menu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - width - 8));
+    const preferredTop = anchorRect.bottom + 6;
+    const top = Math.max(8, Math.min(
+      preferredTop + height <= window.innerHeight - 8 ? preferredTop : anchorRect.top - height - 6,
+      window.innerHeight - height - 8
+    ));
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
-    menu.style.display = 'block';
     openedAt = performance.now();
+    menu.querySelector<HTMLButtonElement>('[data-gp-menu]')?.focus();
   }
 
   function close() {
     menu.style.display = 'none';
   }
 
-  menu.addEventListener('click', (event) => {
+  menu.addEventListener('click', async (event) => {
     const target = (event.target as HTMLElement).closest('[data-gp-menu]') as HTMLElement | null;
-    if (!target || !callbacks) {
+    if (!target || !callbacks || pinPending) {
       return;
     }
     const action = target.dataset.gpMenu;
+    if (action === 'pin') {
+      const activeCallbacks = callbacks;
+      const label = target.querySelector('span')!;
+      const originalLabel = label.textContent;
+      pinPending = true;
+      menu.setAttribute('aria-busy', 'true');
+      menu.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = true; });
+      label.textContent = originalLabel === 'Unpin' ? 'Unpinning…' : 'Pinning…';
+      try {
+        await activeCallbacks.onTogglePin();
+        close();
+      } catch (error) {
+        activeCallbacks.onPinError(error);
+      } finally {
+        pinPending = false;
+        menu.removeAttribute('aria-busy');
+        label.textContent = originalLabel;
+        menu.querySelectorAll<HTMLButtonElement>('button').forEach((button) => { button.disabled = false; });
+      }
+      return;
+    }
     if (action === 'edit') callbacks.onEdit();
     if (action === 'delete') callbacks.onDelete();
     close();
+  });
+
+  menu.addEventListener('keydown', (event) => {
+    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || pinPending) return;
+    event.preventDefault();
+    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[data-gp-menu]'));
+    const current = items.indexOf(event.target as HTMLButtonElement);
+    const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[index]?.focus();
   });
 
   document.addEventListener('click', (event) => {
@@ -1653,12 +1785,17 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[]) {
       ` : ''}
     `;
 
-    // 定位菜单
-    const left = Math.min(anchorRect.left, window.innerWidth - 240);
-    const top = anchorRect.bottom + 6;
+    // 显示后按实际内容尺寸定位，不再依赖固定宽度。
+    menu.style.display = 'block';
+    const menuRect = menu.getBoundingClientRect();
+    const left = Math.max(8, Math.min(anchorRect.left, window.innerWidth - menuRect.width - 8));
+    const preferredTop = anchorRect.bottom + 6;
+    const top = Math.max(8, Math.min(
+      preferredTop + menuRect.height <= window.innerHeight - 8 ? preferredTop : anchorRect.top - menuRect.height - 6,
+      window.innerHeight - menuRect.height - 8
+    ));
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
-    menu.style.display = 'block';
     openedAt = performance.now();
 
     // 子菜单悬停显示
@@ -1668,8 +1805,16 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[]) {
       trigger.addEventListener('mouseenter', () => {
         submenu.style.display = 'block';
         const triggerRect = trigger.getBoundingClientRect();
-        submenu.style.left = `${triggerRect.right - 4}px`;
-        submenu.style.top = `${triggerRect.top}px`;
+        const submenuRect = submenu.getBoundingClientRect();
+        const preferredLeft = triggerRect.right - 4;
+        const submenuLeft = Math.max(8, Math.min(
+          preferredLeft + submenuRect.width <= window.innerWidth - 8
+            ? preferredLeft : triggerRect.left - submenuRect.width + 4,
+          window.innerWidth - submenuRect.width - 8
+        ));
+        const submenuTop = Math.max(8, Math.min(triggerRect.top, window.innerHeight - submenuRect.height - 8));
+        submenu.style.left = `${submenuLeft}px`;
+        submenu.style.top = `${submenuTop}px`;
       });
       trigger.addEventListener('mouseleave', (e) => {
         const related = (e as MouseEvent).relatedTarget as HTMLElement | null;

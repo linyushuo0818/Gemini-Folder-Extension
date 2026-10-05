@@ -1,4 +1,4 @@
-# Gemini Projects
+# Gemini Folders — Projects & Prompt Library
 
 Add local Projects and a Prompt Library to Gemini.
 
@@ -17,6 +17,7 @@ It also includes a local Prompt Library, so you can save prompts you reuse often
 - Remove a chat from a Project without deleting the original Gemini chat
 - See when a Project chat is missing because it was deleted from Gemini history on another device
 - Choose Project icons and colors
+- Use the compact Project menu to pin, edit, or delete a Project. Pinned Projects stay above other Projects after reload; unpinning restores their original order.
 - Back up and restore your local Projects and prompts
 - Save, search, edit, and reuse prompts from a local Prompt Library
 - Keep your organization data in browser-local storage
@@ -27,7 +28,7 @@ Download the latest zip from the [GitHub Releases](https://github.com/linyushuo0
 
 For the current release, use:
 
-- `gemini-projects-2.0.2-webstore-*.zip`
+- `gemini-projects-2.0.4-webstore-*.zip`
 
 ## Install Manually
 
@@ -47,7 +48,22 @@ Gemini Projects is designed for Chrome and Chromium-based browsers.
 - The extension does not proactively upload your Projects, prompts, or chat organization data.
 - Gemini itself still runs on Google's website, so Gemini account activity is governed by Google's own policies.
 
+## Build and package
+
+Run `npm ci`, `npm run lint`, then `npm run package:store`. Packaging uses Node.js and the system `zip` utility on macOS/Linux, or PowerShell on Windows. The release ZIP contains only manifest-referenced runtime scripts and icons; source maps, unused legacy scripts, local data and development notes are excluded. Generated files stay under `release/` and are not committed.
+
 ## Current Version
+
+### v2.0.4
+
+- Added persistent Project pinning and compact Project menus with action icons.
+- Made chat action menus and Project destinations fit their labels, with viewport bounds and scrolling for large lists.
+- Fixed an idle response-folding scan loop caused by repeated DOM writes.
+
+### v2.0.3
+
+- Renamed the extension to `Gemini Folders — Projects & Prompt Library`.
+- Added the Conversation Index icon to the Chrome toolbar and extension management page, matching the store listing.
 
 ### v2.0.2
 

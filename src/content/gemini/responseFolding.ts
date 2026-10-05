@@ -327,13 +327,14 @@ function applyCollapsedState(content: HTMLElement, button: HTMLButtonElement, co
   const labels = getLabels();
   if (collapsed) {
     content.classList.add(COLLAPSED_CLASS);
-    button.textContent = '+';
+    // 相同的 textContent 赋值也会产生 childList 变更，触发下一帧重复扫描。
+    if (button.textContent !== '+') button.textContent = '+';
     button.title = labels.expand;
     button.setAttribute('aria-label', labels.expand);
     button.setAttribute('aria-expanded', 'false');
   } else {
     content.classList.remove(COLLAPSED_CLASS);
-    button.textContent = '-';
+    if (button.textContent !== '-') button.textContent = '-';
     button.title = labels.collapse;
     button.setAttribute('aria-label', labels.collapse);
     button.setAttribute('aria-expanded', 'true');

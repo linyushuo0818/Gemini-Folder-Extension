@@ -35,6 +35,7 @@ export interface Project {
   name: string;
   icon: ProjectIcon;
   color?: string;
+  isPinned?: boolean;
   createdAt: number;
   updatedAt: number;
   sortIndex: number;
@@ -80,6 +81,7 @@ export type BackgroundRequest =
   | { type: 'getState' }
   | { type: 'upsertProject'; project: Project }
   | { type: 'renameProject'; projectId: string; name: string }
+  | { type: 'setProjectPinned'; projectId: string; isPinned: boolean }
   | { type: 'deleteProject'; projectId: string }
   | { type: 'moveChat'; conversationId: string; projectId: string | null }
   | { type: 'upsertChatRefs'; chats: ChatRef[] }
