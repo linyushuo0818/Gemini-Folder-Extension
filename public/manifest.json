@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
-    "name": "Gemini Folders — Projects & Prompt Library",
-    "version": "2.0.4",
+    "name": "Projects for Gemini™: Projects and Prompt Manager",
+    "version": "2.0.6",
     "description": "Group Gemini chats into local Projects.",
     "permissions": [
         "storage"
@@ -35,7 +35,7 @@
         }
     ],
     "action": {
-        "default_title": "Gemini Folders — Projects & Prompt Library",
+        "default_title": "Projects for Gemini™: Projects and Prompt Manager",
         "default_icon": {
             "16": "icons/icon-16.png",
             "32": "icons/icon-32.png",

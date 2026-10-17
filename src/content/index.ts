@@ -1,4 +1,4 @@
-﻿import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
+import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
 import { runtimeSendMessage } from '../shared/webext';
 import {
   findChatRowElement,
@@ -17,7 +17,7 @@ import { installSidebarInspector } from './sidebarInspector';
 import { createProjectsPanel } from './ui/projectsPanel';
 import { initChatGPT } from './chatgpt';
 
-const BUILD_MARKER = '2.0.2';
+const BUILD_MARKER = '2.0.6';
 const HIDDEN_ATTR = 'data-gp-native-hidden';
 const RESCAN_DELAY_MS = 350;
 const PANEL_READY_RETRY_MS = 120;

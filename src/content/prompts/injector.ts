@@ -1,4 +1,4 @@
-﻿
+
 const PROMPT_BTN_ATTR = 'data-gp-prompt-btn';
 const PROMPT_BTN_ID = 'gp-prompt-btn';
 const TOOL_HINTS = ['tools', '\u5de5\u5177'];
@@ -82,10 +82,12 @@ function hasUploadHint(el: HTMLElement): boolean {
 }
 
 function isIgnoredControl(el: HTMLElement): boolean {
+    if (el.closest('gem-segmented-button, gem-segmented-button-group, [role="tablist"]')) return true;
     const label = elementLabel(el);
     const text = elementVisibleText(el);
     const nodeType = normalize(el.getAttribute('data-node-type'));
     const tag = normalize(el.tagName);
+    if (['chat', 'task', '聊天', '任务'].includes(text)) return true;
     if (containsAnyHint(label, MIC_HINTS) || containsAnyHint(text, MIC_HINTS)) return true;
     if (containsAnyHint(label, SPEED_HINTS) || containsAnyHint(text, SPEED_HINTS)) return true;
     if (containsAnyHint(label, THINKING_HINTS) || containsAnyHint(text, THINKING_HINTS)) return true;
@@ -202,6 +204,12 @@ function collectComposerControls(composer: HTMLElement): HTMLElement[] {
 }
 
 function findToolsAnchorByText(composer: HTMLElement): HTMLElement | undefined {
+    // 新版的模式切换与输入工具栏距离很近，先用输入区结构定位上传/工具入口。
+    const composerRoot = findComposerRoot(composer);
+    const toolbarTools = Array.from(composerRoot.querySelectorAll<HTMLElement>(
+        'simplified-input-menu button, .leading-actions-wrapper button'
+    )).find((el) => isVisibleElement(el) && !isIgnoredControl(el) && (hasToolHint(el) || hasUploadHint(el)));
+    if (toolbarTools) return toolbarTools;
     const globalTools = Array.from(document.querySelectorAll<HTMLElement>('button, [role="button"]'))
         .map((el) => el.closest<HTMLElement>('button, [role="button"]') || el)
         .filter(
@@ -217,6 +225,7 @@ function findToolsAnchorByText(composer: HTMLElement): HTMLElement | undefined {
             const text = elementVisibleText(el);
             const className = normalize(el.className);
             const hasExactToolSignal =
+                hasToolHint(el) ||
                 label === 'tools' ||
                 label === '\u5de5\u5177' ||
                 className.includes('toolbox-drawer-button');
@@ -248,7 +257,8 @@ function findToolsAnchorByText(composer: HTMLElement): HTMLElement | undefined {
         const text = elementVisibleText(el);
         const className = normalize(el.className);
         const hasExactToolSignal =
-            label === 'tools' ||
+            hasToolHint(el) ||
+                label === 'tools' ||
             label === '\u5de5\u5177' ||
             className.includes('toolbox-drawer-button');
         const hasLooseToolSignal = text === 'tools' || text === '\u5de5\u5177' || /\btools\b/.test(text) || text.includes('\u5de5\u5177');
@@ -365,23 +375,36 @@ function findAnchorNearComposer(composer: HTMLElement): HTMLElement | undefined 
     return pickBestAnchor(uniqHinted, composer) || pickLeftSideFallbackAnchor(uniq, composer);
 }
 
-function isDarkTheme(): boolean {
-    const bodyClasses = document.body?.className || '';
-    const htmlClasses = document.documentElement?.className || '';
-    const classes = `${bodyClasses} ${htmlClasses}`;
-    if (/\b(light|theme-light)\b/.test(classes)) return false;
-    if (/\b(dark|theme-dark|dark-theme)\b/.test(classes)) return true;
-
-    const sample = [document.body, document.documentElement]
-        .map((node) => (node ? getComputedStyle(node).backgroundColor : ''))
-        .find((c) => c && c !== 'transparent');
-    if (!sample) return false;
-
-    const rgb = sample.match(/\d+(\.\d+)?/g);
-    if (!rgb || rgb.length < 3) return false;
-    const [r, g, b] = rgb.slice(0, 3).map(Number);
-    const luminance = (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255;
-    return luminance < 0.45;
+function ensurePromptButtonStyle() {
+    if (document.getElementById('gp-prompt-button-style')) return;
+    const style = document.createElement('style');
+    style.id = 'gp-prompt-button-style';
+    // 原生伪类不依赖注入时的主题，也不会因鼠标事件漏发而丢失圆形反馈。
+    style.textContent = `
+      #gp-prompt-btn {
+        color: var(--gem-sys-color--on-surface, var(--bard-color-on-surface, inherit)) !important;
+        background-color: transparent !important;
+        box-shadow: none !important;
+        outline: none !important;
+        transition: background-color .18s ease, box-shadow .18s ease !important;
+      }
+      #gp-prompt-btn:hover {
+        background-color: color-mix(in srgb, currentColor 14%, transparent) !important;
+        box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 5%, transparent) !important;
+      }
+      #gp-prompt-btn:active {
+        background-color: color-mix(in srgb, currentColor 20%, transparent) !important;
+      }
+      #gp-prompt-btn:focus-visible {
+        background-color: color-mix(in srgb, currentColor 14%, transparent) !important;
+        outline: 2px solid currentColor !important;
+        outline-offset: 2px !important;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #gp-prompt-btn { transition: none !important; }
+      }
+    `;
+    document.head.appendChild(style);
 }
 
 export function injectPromptButton(onClick: () => void) {
@@ -394,7 +417,7 @@ function startObserver() {
     if (observer) return;
     observer = new MutationObserver((mutations) => {
         // Only try inject if something relevant changed, or just throttle
-        const shouldCheck = mutations.some(m => m.type === 'childList' && m.addedNodes.length > 0);
+        const shouldCheck = mutations.some(m => m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0));
         if (shouldCheck) {
             tryInject();
         }
@@ -403,13 +426,14 @@ function startObserver() {
 }
 
 function tryInject() {
-    if (currentButton && document.body.contains(currentButton)) {
-        return;
-    }
-
     const composer = findComposer();
-    if (!composer) {
-        return;
+    if (!composer) return;
+    if (currentButton && document.body.contains(currentButton)) {
+        const root = findComposerRoot(composer);
+        if (root.contains(currentButton) && !currentButton.closest('gem-segmented-button, gem-segmented-button-group, [role="tablist"]')) return;
+        // Gemini 可能保留旧节点但把输入区换走，避免入口留在模式切换或旧输入区中。
+        currentButton.remove();
+        currentButton = null;
     }
 
     const anchorButton = findToolsAnchorByText(composer) || findAnchorNearComposer(composer);
@@ -491,9 +515,7 @@ function createAndInjectButton(container: HTMLElement, sibling: Element) {
     btn.style.setProperty('max-height', height, 'important');
     btn.style.setProperty('border-radius', '50%', 'important');
     btn.style.setProperty('border', 'none', 'important');
-    btn.style.setProperty('background-color', 'transparent', 'important');
-    btn.style.setProperty('transition', 'background-color 140ms ease', 'important');
-    btn.style.setProperty('outline', 'none', 'important');
+    ensurePromptButtonStyle();
 
     // Create our icon
     const iconSpan = document.createElement('span');
@@ -518,22 +540,6 @@ function createAndInjectButton(container: HTMLElement, sibling: Element) {
     btn.appendChild(iconSpan);
 
     btn.style.opacity = '1';
-
-    const hoverBg = isDarkTheme() ? 'rgba(255, 255, 255, 0.10)' : 'rgba(31, 31, 31, 0.06)';
-    const pressBg = isDarkTheme() ? 'rgba(255, 255, 255, 0.14)' : '#f1f3f4';
-
-    btn.addEventListener('mouseenter', () => {
-        btn.style.setProperty('background-color', hoverBg, 'important');
-    });
-    btn.addEventListener('mouseleave', () => {
-        btn.style.setProperty('background-color', 'transparent', 'important');
-    });
-    btn.addEventListener('mousedown', () => {
-        btn.style.setProperty('background-color', pressBg, 'important');
-    });
-    btn.addEventListener('mouseup', () => {
-        btn.style.setProperty('background-color', hoverBg, 'important');
-    });
 
     // Events
     btn.onclick = (e) => {

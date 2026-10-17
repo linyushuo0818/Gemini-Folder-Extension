@@ -1,4 +1,4 @@
-# Gemini Folders — Projects & Prompt Library
+# Projects for Gemini™: Projects and Prompt Manager
 
 Add local Projects and a Prompt Library to Gemini.
 
@@ -28,7 +28,7 @@ Download the latest zip from the [GitHub Releases](https://github.com/linyushuo0
 
 For the current release, use:
 
-- `gemini-projects-2.0.4-webstore-*.zip`
+- `gemini-projects-2.0.6-webstore-*.zip`
 
 ## Install Manually
 
@@ -52,7 +52,18 @@ Gemini Projects is designed for Chrome and Chromium-based browsers.
 
 Run `npm ci`, `npm run lint`, then `npm run package:store`. Packaging uses Node.js and the system `zip` utility on macOS/Linux, or PowerShell on Windows. The release ZIP contains only manifest-referenced runtime scripts and icons; source maps, unused legacy scripts, local data and development notes are excluded. Generated files stay under `release/` and are not committed.
 
+For local testing, build first and load the folder containing the generated `manifest.json`. In this development workspace, the built runtime is synchronized to the sibling `chrome/` folder. Disable the Web Store installation before enabling the unpacked build to avoid duplicate injections. The two extension IDs have separate local storage; disabling the store build preserves its data. After local validation, create a separate upload ZIP with `npm run package:store`.
+
+The Prompt Library uses the color roles, typography scale, and form structure from the [MCP Apps for Claude UI kit](https://www.figma.com/community/file/1597641111449594397/mcp-apps-for-claude): 14px body text, 40px inputs, 36px buttons, and 16px textarea padding. Forms use the Primary surface with separate container, control, and secondary-button border strengths. Fonts use system fallbacks when Anthropic Sans Text or JetBrains Mono is unavailable; no font files are bundled. Peer headings in the library, prompt editors, and project dialogs share the same 24px system-serif type with weight 600. The unified serif headings and 28px panel, 16px row, and 12px control corners are project adaptations rather than the kit's default desktop component specifications.
+
 ## Current Version
+
+### v2.0.6
+
+- Fixed the Prompt Library entry being inserted into Gemini's relocated Chat/Task switch during initial page rendering. The input toolbar's Upload & tools control is now preferred, and mode switches are excluded.
+- Refreshed the Prompt Library and editor with neutral light/dark surfaces, unified stronger serif headings, generous concentric corners and equal button insets, full two-line previews, an explicit New Prompt action, keyboard focus states, and save feedback. Peer headings in new/edit prompt and new/edit project dialogs share the same typography.
+- Switched the entry button to native, theme-aware hover styling and added a subtle surface and border to the edit control.
+- Kept the picker within the viewport when its search results or window size change.
 
 ### v2.0.4
 

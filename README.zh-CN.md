@@ -1,4 +1,4 @@
-# Gemini Folders — Projects & Prompt Library
+# Projects for Gemini™: Projects and Prompt Manager
 
 给 Gemini 添加本地 Projects 和 Prompt Library。
 
@@ -28,7 +28,7 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 
 当前版本对应文件：
 
-- `gemini-projects-2.0.4-webstore-*.zip`
+- `gemini-projects-2.0.6-webstore-*.zip`
 
 ## 手动安装
 
@@ -53,6 +53,13 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 依次运行 `npm ci`、`npm run lint` 和 `npm run package:store`。打包使用 Node.js，macOS/Linux 需要系统 `zip` 工具，Windows 使用 PowerShell。发布 ZIP 只包含清单引用的运行脚本和图标，不包含 source map、未使用的历史脚本、个人数据或开发笔记。生成文件保存在 `release/`，不提交到源码仓库。
 
 ## 当前版本
+
+### v2.0.6
+
+- 修复新版 Gemini 首次渲染时，Prompt Library 入口被误插到 Chat / Task 切换区的问题：优先识别输入工具栏中的 Upload & tools，并排除模式切换按钮。
+- 翻新 Prompt Library 与编辑器：亮暗中性色面板、统一加重的衬线主标题、等距留白与较大的同心圆角、完整的两行预览、明确的新建按钮、键盘焦点与保存反馈。同级的新建／编辑提示词及新建／编辑项目弹窗共用主标题样式。
+- 入口使用随当前主题变化的原生 hover 圆形背景，编辑按钮增加轻微的底色与边框。
+- 搜索结果或窗口尺寸变化时，面板保持在可见视口内。
 
 ### v2.0.4
 
@@ -91,3 +98,9 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 ## 说明
 
 Gemini Projects 是非官方扩展，与 Google 或 Gemini 官方无关。
+
+## 本地测试流程
+
+先构建，再加载包含生成的 `manifest.json` 的目录。本开发工作区将构建结果同步到相邻的 `chrome/` 文件夹；测试前停用商店版，仅启用该本地版，避免双重注入。两者扩展 ID 不同，本地存储相互独立；停用商店版会保留其原有数据。完成本地验证后，再运行 `npm run package:store` 生成独立上传 ZIP。
+
+Prompt Library 的颜色、文字层级和表单结构参考 [MCP Apps for Claude UI Kit](https://www.figma.com/community/file/1597641111449594397/mcp-apps-for-claude)：正文 14px、输入框高 40px、按钮高 36px，文本域内边距 16px；表单使用 Primary 背景，并区分容器、控件和次级按钮的边框强度。Anthropic Sans Text 和 JetBrains Mono 不可用时使用系统回退字体，扩展不附带字体文件。Prompt Library、新建／编辑提示词和新建／编辑项目的同级主标题共用 24px、字重 600 的 Iowan Old Style、Palatino 或 Georgia 等本机衬线字体。统一衬线主标题、28px 面板、16px 列表行和 12px 操作控件圆角是本项目的视觉调整，并非 UI Kit 默认桌面组件规格。

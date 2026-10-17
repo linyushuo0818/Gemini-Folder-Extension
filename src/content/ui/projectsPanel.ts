@@ -2,6 +2,7 @@
 import { exportAllData, triggerImport } from '../../shared/backup';
 import { runtimeSendMessage } from '../../shared/webext';
 import { ICON_OPTIONS, COLOR_OPTIONS, IconOption, getIconLabel, renderIconSvg } from './icons';
+import { PANEL_TITLE_FONT_STACK, PANEL_TITLE_TYPOGRAPHY } from './typography';
 
 interface ProjectsPanelOptions {
   shadow: ShadowRoot;
@@ -1006,7 +1007,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         font-family: inherit;
         color: var(--gp-fg, #1f1f1f);
         --gp-font: "Google Sans Flex", "Google Sans", "Helvetica Neue", "Segoe UI", Roboto, Arial, sans-serif;
-        --gp-font-serif: var(--gp-font);
+        --gp-font-serif: ${PANEL_TITLE_FONT_STACK};
         --gp-fg: #1f1f1f;
         --gp-fg-muted: #5f6368;
         --gp-muted: #747775;
@@ -1101,10 +1102,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         color: var(--gp-fg);
       }
       .gp-modal-header [data-gp-modal-title] {
-        font-family: var(--gp-font);
-        font-weight: 800;
+        ${PANEL_TITLE_TYPOGRAPHY}
         font-style: normal;
-        letter-spacing: 0;
         text-rendering: optimizeLegibility;
         -webkit-font-smoothing: antialiased;
       }
