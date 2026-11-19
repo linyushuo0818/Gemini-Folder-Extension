@@ -1,9 +1,10 @@
 import { storageLocalGet, storageLocalSet } from '../../shared/webext';
 import { getConversationId } from '../dom/anchors';
+import { PILL_RADIUS } from '../ui/radii';
+import { observeGeminiTheme } from '../ui/theme';
 
 const STYLE_ID = 'gp-response-fold-style';
 const FEATURE_ENABLED_KEY = 'gp_feature_response_folding_enabled';
-const FEATURE_TRIPPED_KEY = 'gp_feature_response_folding_tripped';
 const FOLDS_KEY = 'gp_gemini_response_folds_v1';
 
 const ROOT_CLASS = 'gp-rf-root';
@@ -18,6 +19,7 @@ const DEFAULT_COLLAPSED_HEIGHT = 220;
 const DEFAULT_MAX_REMEMBERED = 1200;
 const DEFAULT_ERROR_THRESHOLD = 3;
 const PERSIST_DELAY_MS = 180;
+const SCAN_THROTTLE_MS = 220;
 
 const RESPONSE_ROOT_SELECTORS = [
   'main model-response',
@@ -70,7 +72,8 @@ interface RuntimeState {
   observedRoots: Set<HTMLElement>;
   contentByRoot: WeakMap<HTMLElement, HTMLElement>;
   observer: MutationObserver | null;
-  rafId: number | null;
+  stopThemeObserver: (() => void) | null;
+  scanTimerId: number | null;
   persistTimerId: number | null;
   initialized: boolean;
   tripped: boolean;
@@ -86,7 +89,8 @@ const runtime: RuntimeState = {
   observedRoots: new Set<HTMLElement>(),
   contentByRoot: new WeakMap<HTMLElement, HTMLElement>(),
   observer: null,
-  rafId: null,
+  stopThemeObserver: null,
+  scanTimerId: null,
   persistTimerId: null,
   initialized: false,
   tripped: false,
@@ -105,25 +109,23 @@ export function initGeminiResponseFolding(options: ResponseFoldingOptions = {}):
   if (typeof options.errorThreshold === 'number') runtime.errorThreshold = options.errorThreshold;
 
   void guardedAsync('bootstrap', async () => {
-    const gate = await readFeatureGate();
-    if (!gate.enabled || gate.tripped) {
+    const enabled = await readFeatureEnabled();
+    if (!enabled) {
       return;
     }
     ensureStyles();
     await loadFoldState();
     startObservers();
-    scheduleScan();
+    scheduleScan(0);
   });
 }
 
-async function readFeatureGate(): Promise<{ enabled: boolean; tripped: boolean }> {
+async function readFeatureEnabled(): Promise<boolean> {
   try {
-    const result = await storageLocalGet<Record<string, unknown>>([FEATURE_ENABLED_KEY, FEATURE_TRIPPED_KEY]);
-    const enabled = result?.[FEATURE_ENABLED_KEY] !== false;
-    const tripped = result?.[FEATURE_TRIPPED_KEY] === true;
-    return { enabled, tripped };
+    const result = await storageLocalGet<Record<string, unknown>>([FEATURE_ENABLED_KEY]);
+    return result?.[FEATURE_ENABLED_KEY] !== false;
   } catch {
-    return { enabled: true, tripped: false };
+    return true;
   }
 }
 
@@ -132,10 +134,24 @@ function startObservers(): void {
     return;
   }
 
-  runtime.observer = new MutationObserver(() => {
-    scheduleScan();
+  runtime.stopThemeObserver = observeGeminiTheme((theme) => {
+    document.documentElement.dataset.gpRfTheme = theme;
   });
-  runtime.observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+
+  runtime.observer = new MutationObserver((mutations) => {
+    const relevant = mutations.some((mutation) => {
+      if (mutation.target instanceof HTMLElement) {
+        if (mutation.target.closest(EXCLUDED_ROOT_SELECTOR) || mutation.target.classList.contains(BUTTON_CLASS)) {
+          return false;
+        }
+      }
+      return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
+    });
+    if (relevant) {
+      scheduleScan();
+    }
+  });
+  runtime.observer.observe(document.body, { childList: true, subtree: true });
 
   window.addEventListener('resize', onPassiveSignal, { passive: true });
   window.addEventListener('popstate', onPassiveSignal);
@@ -146,21 +162,22 @@ function onPassiveSignal(): void {
   scheduleScan();
 }
 
-function scheduleScan(): void {
+function scheduleScan(delay = SCAN_THROTTLE_MS): void {
   if (runtime.tripped) {
     return;
   }
-  if (runtime.rafId !== null) {
-    return;
+  if (runtime.scanTimerId !== null) {
+    if (delay > 0) return;
+    window.clearTimeout(runtime.scanTimerId);
   }
 
-  runtime.rafId = window.requestAnimationFrame(() => {
-    runtime.rafId = null;
+  runtime.scanTimerId = window.setTimeout(() => {
+    runtime.scanTimerId = null;
     void guardedAsync('scan', async () => {
       renderResponseFolding();
       runtime.consecutiveErrors = 0;
     });
-  });
+  }, delay);
 }
 
 function renderResponseFolding(): void {
@@ -488,18 +505,12 @@ async function tripCircuit(stage: string, error: unknown): Promise<void> {
     return;
   }
 
+  // 熔断仅作用于当前页面会话，刷新后可自动恢复，避免偶发异常永久关闭功能。
   runtime.tripped = true;
   stopRuntime();
   removeInjectedUi();
   removeStyle();
 
-  try {
-    await storageLocalSet({ [FEATURE_TRIPPED_KEY]: true });
-  } catch {
-    // Ignore storage errors while tripping.
-  }
-
-  // eslint-disable-next-line no-console
   console.error(`[gp-response-folding] circuit tripped at ${stage}`, error);
 }
 
@@ -509,9 +520,12 @@ function stopRuntime(): void {
     runtime.observer = null;
   }
 
-  if (runtime.rafId !== null) {
-    window.cancelAnimationFrame(runtime.rafId);
-    runtime.rafId = null;
+  runtime.stopThemeObserver?.();
+  runtime.stopThemeObserver = null;
+
+  if (runtime.scanTimerId !== null) {
+    window.clearTimeout(runtime.scanTimerId);
+    runtime.scanTimerId = null;
   }
 
   if (runtime.persistTimerId !== null) {
@@ -585,10 +599,10 @@ function ensureStyles(): void {
       right: 8px;
       width: 22px;
       height: 22px;
-      border-radius: 999px;
-      border: 1px solid rgba(60, 64, 67, 0.24);
-      background: rgba(255, 255, 255, 0.92);
-      color: rgba(32, 33, 36, 0.9);
+      border-radius: ${PILL_RADIUS};
+      border: 1px solid rgb(31 30 29 / .22);
+      background: rgb(255 255 255 / .92);
+      color: #141413;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
@@ -600,21 +614,19 @@ function ensureStyles(): void {
     }
 
     .${BUTTON_CLASS}:hover {
-      background: rgba(255, 255, 255, 1);
-      box-shadow: 0 2px 7px rgba(0, 0, 0, 0.18);
+      background: #faf9f5;
+      box-shadow: 0 2px 7px rgba(20, 20, 19, 0.16);
     }
 
-    @media (prefers-color-scheme: dark) {
-      .${BUTTON_CLASS} {
-        border-color: rgba(232, 234, 237, 0.2);
-        background: rgba(32, 33, 36, 0.92);
-        color: rgba(232, 234, 237, 0.9);
-      }
+    :root[data-gp-rf-theme="dark"] .${BUTTON_CLASS} {
+      border-color: rgb(222 220 209 / .22);
+      background: rgb(48 48 46 / .92);
+      color: #faf9f5;
+    }
 
-      .${BUTTON_CLASS}:hover {
-        background: rgba(32, 33, 36, 1);
-        box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42);
-      }
+    :root[data-gp-rf-theme="dark"] .${BUTTON_CLASS}:hover {
+      background: #3d3d3a;
+      box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42);
     }
   `;
   document.head.appendChild(style);

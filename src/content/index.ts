@@ -1,10 +1,10 @@
 import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
-import { runtimeSendMessage } from '../shared/webext';
+import { migrateState, STORAGE_KEY } from '../shared/storage';
+import { runtimeSendMessage, webext } from '../shared/webext';
 import {
   findChatRowElement,
   findChatsListContainer,
   findChatsSection,
-  findGemsSection,
   findSidebarRoot,
   getConversationId,
   getConversationIdFromChatRow,
@@ -13,11 +13,9 @@ import {
 import { attachChatMenuEnhancer } from './dom/menus';
 import { initGeminiResponseFolding } from './gemini/responseFolding';
 import * as prompts from './prompts';
-import { installSidebarInspector } from './sidebarInspector';
 import { createProjectsPanel } from './ui/projectsPanel';
-import { initChatGPT } from './chatgpt';
 
-const BUILD_MARKER = '2.0.6';
+const BUILD_MARKER = webext.runtime?.getManifest?.()?.version || '2.0.7';
 const HIDDEN_ATTR = 'data-gp-native-hidden';
 const RESCAN_DELAY_MS = 350;
 const PANEL_READY_RETRY_MS = 120;
@@ -30,6 +28,7 @@ const state: RuntimeState = {
   expandedProjectIds: new Set(),
   nativeConversationIds: new Set(),
   nativeChatsReady: false,
+  activeConversationId: getConversationId(window.location.href),
   ui: {
     createModalOpen: false,
     contextMenuOpen: false,
@@ -41,7 +40,6 @@ const state: RuntimeState = {
 let panel: ReturnType<typeof createProjectsPanel> | null = null;
 let panelHost: HTMLElement | null = null;
 let sidebarRoot: HTMLElement | null = null;
-let chatsHeader: HTMLElement | null = null;
 let chatsList: HTMLElement | null = null;
 let rootObserver: MutationObserver | null = null;
 let sidebarObserver: MutationObserver | null = null;
@@ -49,7 +47,6 @@ let chatsObserver: MutationObserver | null = null;
 let rescanTimer: number | null = null;
 let pendingPanelRetryCount = 0;
 let lastRenderKey = '';
-let chatMenuAttached = false;
 let chatMenuOverlayShadow: ShadowRoot | null = null;
 
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
@@ -59,14 +56,9 @@ function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
 async function bootstrap() {
   document.documentElement.setAttribute('data-gp-build', BUILD_MARKER);
 
-  if (window.location.hostname.includes('chatgpt.com') || window.location.hostname.includes('openai.com')) {
-    initChatGPT();
-    return;
-  }
-
-  installSidebarInspector();
   installNativeHideStyle();
   await loadInitialState();
+  installStorageSync();
   observeDocumentForSidebar();
   installLifecycleRescans();
   runStage('responseFolding', () => initGeminiResponseFolding());
@@ -85,19 +77,47 @@ async function loadInitialState() {
   }
 }
 
+// 监听 storage 变更，保证多标签页和备份恢复后状态实时同步。
+function installStorageSync() {
+  webext.storage?.onChanged?.addListener((
+    changes: Record<string, chrome.storage.StorageChange>,
+    area: string
+  ) => {
+    if (area !== 'local' || !changes[STORAGE_KEY]) return;
+    const next = migrateState(changes[STORAGE_KEY].newValue);
+    state.projects = next.projects;
+    state.chatIndex = new Map(Object.entries(next.chatIndex));
+    state.uiPrefs = next.uiPrefs || { projectsCollapsed: false };
+    applyNativeChatVisibility();
+    renderPanelIfChanged();
+  });
+}
+
 function observeDocumentForSidebar() {
   rootObserver?.disconnect();
-  rootObserver = new MutationObserver(() => scheduleRescan());
-  rootObserver.observe(document.body, { childList: true, subtree: true, characterData: true });
+  rootObserver = new MutationObserver((mutations) => {
+    const hasRelevantChange = mutations.some((mutation) => {
+      if (mutation.target instanceof HTMLElement) {
+        if (mutation.target.closest('#gemini-projects-host, #gemini-projects-overlay, #gp-prompt-picker-root')) {
+          return false;
+        }
+        // 流式输出在 main 区域频繁增删子节点，不影响侧栏结构时跳过。
+        if (sidebarRoot && sidebarRoot.isConnected && mutation.target.closest('main, [role="main"]')) {
+          return false;
+        }
+      }
+      return mutation.addedNodes.length > 0 || mutation.removedNodes.length > 0;
+    });
+    if (hasRelevantChange) {
+      scheduleRescan();
+    }
+  });
+  rootObserver.observe(document.body, { childList: true, subtree: true });
   scheduleRescan(0);
 }
 
 function scheduleRescan(delay = RESCAN_DELAY_MS) {
-  // Gemini continuously mutates parts of the page (streaming state, badges,
-  // focus helpers, etc.). Restarting the timer for every mutation can starve
-  // the sidebar scan forever, leaving Projects absent on an otherwise ready
-  // page. Keep the first scheduled scan; only an explicit immediate rescan
-  // is allowed to pre-empt a delayed one.
+  // 保留已调度的首次扫描，避免高频 DOM 变更导致扫描被无限推迟；仅立即扫描允许抢占。
   if (rescanTimer !== null) {
     if (delay > 0) return;
     window.clearTimeout(rescanTimer);
@@ -109,6 +129,8 @@ function scheduleRescan(delay = RESCAN_DELAY_MS) {
 }
 
 function rescanSidebar() {
+  state.activeConversationId = getConversationId(window.location.href);
+
   if (isSparkSurface()) {
     cleanupInjectedProjects();
     return;
@@ -133,8 +155,14 @@ function rescanSidebar() {
   if (sidebarRoot !== nextSidebar) {
     sidebarRoot = nextSidebar;
     sidebarObserver?.disconnect();
-    sidebarObserver = new MutationObserver(() => scheduleRescan());
-    sidebarObserver.observe(sidebarRoot, { childList: true, subtree: true, characterData: true });
+    sidebarObserver = new MutationObserver((mutations) => {
+      const relevant = mutations.some((mutation) =>
+        !(mutation.target instanceof HTMLElement && mutation.target.closest('#gemini-projects-host'))
+      );
+      if (relevant) scheduleRescan();
+    });
+    sidebarObserver.observe(sidebarRoot, { childList: true, subtree: true });
+    panel?.destroy();
     panel = null;
     panelHost = null;
     chatsList = null;
@@ -170,10 +198,10 @@ function ensurePanel() {
   if (!sidebarRoot) return false;
   if (!isExpandedSidebar(sidebarRoot)) return false;
   const chats = findChatsSection(sidebarRoot);
-  const gems = findGemsSection(sidebarRoot);
-  const { host, shadow, overlayShadow } = injectProjectsSection(sidebarRoot, gems, chats);
+  const { host, shadow, overlayShadow } = injectProjectsSection(sidebarRoot, chats);
 
   if (!panel || panelHost !== host) {
+    panel?.destroy();
     panel = createProjectsPanel({
       shadow,
       overlayShadow,
@@ -186,13 +214,12 @@ function ensurePanel() {
       onMoveChatToProject: (conversationId, projectId) => handleMoveChat(conversationId, projectId)
     });
     panelHost = host;
-    // Gemini replaces the sidebar's internal scroll region when switching
-    // between Chat and Spark while preserving the outer bard-sidenav node.
-    // A new host always needs an initial render even when state is unchanged.
+    // Gemini 在 Chat 与 Spark 间切换时会替换内部滚动区但保留外层 bard-sidenav，
+    // 新挂载的宿主必须强制渲染首帧。
     lastRenderKey = '';
   }
 
-  if (!chatMenuAttached || chatMenuOverlayShadow !== overlayShadow) {
+  if (chatMenuOverlayShadow !== overlayShadow) {
     attachChatMenuEnhancer({
       overlayShadow,
       getProjects: () => state.projects,
@@ -204,7 +231,6 @@ function ensurePanel() {
       },
       onCreateProject: () => panel?.openCreateModal()
     });
-    chatMenuAttached = true;
     chatMenuOverlayShadow = overlayShadow;
   }
   return true;
@@ -214,12 +240,10 @@ function ensureChatsList() {
   if (!sidebarRoot) return;
   const header = findChatsSection(sidebarRoot);
   if (!header) {
-    chatsHeader = null;
     chatsList = null;
     chatsObserver?.disconnect();
     return;
   }
-  chatsHeader = header;
 
   const list = findChatsListContainer(header);
   if (!list) {
@@ -366,7 +390,8 @@ function getSafeNativeChatRow(
 
 async function handleSaveProject(project: Project) {
   const response = await sendMessage({ type: 'upsertProject', project });
-  if (!response.ok || !response.state) return;
+  if (!response.ok) throw new Error(response.error);
+  if (!response.state) throw new Error('Project state was not returned');
   state.projects = response.state.projects;
   renderPanelIfChanged(true);
 }
@@ -446,7 +471,7 @@ function findNativeLinkByConversationId(conversationId: string): HTMLAnchorEleme
 function normalizeTitle(value: string): string {
   return value
     .replace(/\s+/g, ' ')
-    .replace(/\s*(?:Pinned|宸茬疆椤秥缃《)\s*$/i, '')
+    .replace(/\s*(?:Pinned|已置顶|置顶)\s*$/i, '')
     .trim();
 }
 
@@ -472,10 +497,13 @@ function isSparkSurface(): boolean {
 }
 
 function cleanupInjectedProjects() {
+  panel?.destroy();
   panel = null;
   panelHost = null;
   chatMenuOverlayShadow = null;
   chatsList = null;
+  chatsObserver?.disconnect();
+  chatsObserver = null;
   state.nativeConversationIds = new Set();
   state.nativeChatsReady = false;
   lastRenderKey = '';
@@ -514,12 +542,15 @@ function getRenderKey(): string {
   const chats = Array.from(state.chatIndex.values())
     .filter((chat) => chat.projectId)
     .map((chat) => {
-      const missing = state.nativeChatsReady && !state.nativeConversationIds.has(chat.conversationId);
+      const missing =
+        state.nativeChatsReady &&
+        chat.conversationId !== state.activeConversationId &&
+        !state.nativeConversationIds.has(chat.conversationId);
       return `${chat.conversationId}:${chat.title}:${chat.projectId}:${chat.lastUrl || ''}:${chat.updatedAt}:${missing}`;
     })
     .sort()
     .join('|');
-  return `${state.uiPrefs.projectsCollapsed}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;
+  return `${state.activeConversationId || ''}|${state.uiPrefs.projectsCollapsed}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

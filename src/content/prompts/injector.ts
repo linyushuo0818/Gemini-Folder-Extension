@@ -1,4 +1,4 @@
-
+import { CIRCLE_RADIUS } from '../ui/radii';
 const PROMPT_BTN_ATTR = 'data-gp-prompt-btn';
 const PROMPT_BTN_ID = 'gp-prompt-btn';
 const TOOL_HINTS = ['tools', '\u5de5\u5177'];
@@ -25,11 +25,8 @@ const PROMPT_ICON_SVG = `
 let observer: MutationObserver | null = null;
 let currentButton: HTMLElement | null = null;
 let onClickHandler: (() => void) | null = null;
-
-function log(...args: any[]) {
-    // eslint-disable-next-line no-console
-    console.log('[GP Prompts]', ...args);
-}
+let injectTimer: number | null = null;
+const INJECT_THROTTLE_MS = 160;
 
 function normalize(value: string | null | undefined): string {
     return (value || '').trim().toLowerCase();
@@ -180,27 +177,6 @@ function isLikelyComposerToolbarButton(anchor: HTMLElement, composer: HTMLElemen
     const withinVertical = centerY >= cr.top - 8 && centerY <= cr.bottom + 44;
     const sensibleSize = ar.width <= 320 && ar.height <= 96;
     return withinHorizontal && withinVertical && sensibleSize;
-}
-
-function collectComposerControls(composer: HTMLElement): HTMLElement[] {
-    const root = findComposerRoot(composer);
-    const selectors = 'button, [role="button"], [mat-icon-button], [mat-button]';
-    const raw = Array.from(root.querySelectorAll<HTMLElement>(selectors));
-    const normalized = raw
-        .map((el) => {
-            const interactive = el.closest<HTMLElement>('button, [role="button"], [mat-icon-button], [mat-button]');
-            return interactive || el;
-        })
-        .filter(
-            (el) =>
-                isVisibleElement(el) &&
-                !isOversizedAnchor(el) &&
-                !isInSidebar(el) &&
-                isNearComposer(el, composer) &&
-                isLikelyComposerToolbarButton(el, composer) &&
-                !isIgnoredControl(el)
-        );
-    return uniqueElements(normalized);
 }
 
 function findToolsAnchorByText(composer: HTMLElement): HTMLElement | undefined {
@@ -413,13 +389,26 @@ export function injectPromptButton(onClick: () => void) {
     tryInject();
 }
 
+function scheduleTryInject() {
+    if (injectTimer !== null) return;
+    injectTimer = window.setTimeout(() => {
+        injectTimer = null;
+        tryInject();
+    }, INJECT_THROTTLE_MS);
+}
+
 function startObserver() {
     if (observer) return;
     observer = new MutationObserver((mutations) => {
-        // Only try inject if something relevant changed, or just throttle
-        const shouldCheck = mutations.some(m => m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0));
+        if (currentButton && currentButton.isConnected) {
+            const composer = findComposer();
+            if (composer && findComposerRoot(composer).contains(currentButton)) {
+                return;
+            }
+        }
+        const shouldCheck = mutations.some((m) => m.type === 'childList' && (m.addedNodes.length > 0 || m.removedNodes.length > 0));
         if (shouldCheck) {
-            tryInject();
+            scheduleTryInject();
         }
     });
     observer.observe(document.body, { childList: true, subtree: true });
@@ -446,15 +435,12 @@ function tryInject() {
     const anchorCenterX = anchorRect.left + anchorRect.width / 2;
     const composerMidX = composerRect.left + composerRect.width / 2;
     if (anchorCenterX > composerMidX + 16) {
-        log('Skip right-side anchor for prompt button:', anchorButton);
         return;
     }
 
     const insertion = resolveInsertionTarget(composer, anchorButton);
     const targetContainer = insertion.container || findComposerRoot(composer);
     if (!targetContainer) return;
-
-    log('Found anchor:', anchorButton, 'Container:', targetContainer);
 
     createAndInjectButton(targetContainer, insertion.sibling);
 }
@@ -513,7 +499,7 @@ function createAndInjectButton(container: HTMLElement, sibling: Element) {
     btn.style.setProperty('min-height', height, 'important');
     btn.style.setProperty('max-width', width, 'important');
     btn.style.setProperty('max-height', height, 'important');
-    btn.style.setProperty('border-radius', '50%', 'important');
+    btn.style.setProperty('border-radius', CIRCLE_RADIUS, 'important');
     btn.style.setProperty('border', 'none', 'important');
     ensurePromptButtonStyle();
 
@@ -553,6 +539,5 @@ function createAndInjectButton(container: HTMLElement, sibling: Element) {
         container.appendChild(btn);
     }
     currentButton = btn;
-    log('Injected button');
 }
 

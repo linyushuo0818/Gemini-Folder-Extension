@@ -1,7 +1,7 @@
-// 鎵╁睍鏈湴鏁版嵁鐨勫浠?鎭㈠宸ュ叿銆?// 杩欓噷涓嶄緷璧?shared/storage.ts锛岄伩鍏嶈鎵撹繘鍏变韩 chunk锛?// 浠庤€岃Е鍙?content script 鍙樻垚 ESM 瀵艰嚧鍦?Chrome 涓け鏁堛€?
+// 扩展本地数据的备份与恢复工具。
+import { normalizeProjectsState, STORAGE_KEY as PROJECTS_KEY } from './storage';
 import { storageLocalGet, storageLocalSet } from './webext';
 
-const PROJECTS_KEY = 'gemini_projects_v1';
 const PROMPTS_KEY = 'gp_prompts_store';
 const BACKUP_VERSION = 1;
 
@@ -18,6 +18,39 @@ function buildFilename(): string {
   const mm = String(date.getMonth() + 1).padStart(2, '0');
   const dd = String(date.getDate()).padStart(2, '0');
   return `gemini-projects-backup-${yyyy}-${mm}-${dd}.json`;
+}
+
+function normalizePromptsBackup(raw: unknown): { prompts: Record<string, unknown>; version: number } | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const candidate = raw as { prompts?: unknown; version?: unknown };
+  if (!candidate.prompts || typeof candidate.prompts !== 'object' || Array.isArray(candidate.prompts)) {
+    return null;
+  }
+
+  const sanitized: Record<string, unknown> = {};
+  const now = Date.now();
+  for (const [key, item] of Object.entries(candidate.prompts as Record<string, unknown>)) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) continue;
+    const entry = item as Record<string, unknown>;
+    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : key;
+    const title = typeof entry.title === 'string' ? entry.title.trim() : '';
+    const content = typeof entry.content === 'string' ? entry.content : '';
+    if (!id || !title || !content.trim()) continue;
+    sanitized[id] = {
+      id,
+      title,
+      content,
+      createdAt: typeof entry.createdAt === 'number' && Number.isFinite(entry.createdAt) ? entry.createdAt : now,
+      updatedAt: typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt) ? entry.updatedAt : now,
+      usageCount: typeof entry.usageCount === 'number' && Number.isFinite(entry.usageCount) ? entry.usageCount : 0,
+      lastUsedAt: typeof entry.lastUsedAt === 'number' && Number.isFinite(entry.lastUsedAt) ? entry.lastUsedAt : 0
+    };
+  }
+
+  return {
+    prompts: sanitized,
+    version: typeof candidate.version === 'number' && Number.isFinite(candidate.version) ? candidate.version : 1
+  };
 }
 
 export async function exportAllData(): Promise<void> {
@@ -42,9 +75,9 @@ export async function exportAllData(): Promise<void> {
 
 function parseBackupText(text: string): BackupData | null {
   const data = JSON.parse(text) as BackupData;
-  if (!data || typeof data !== 'object') return null;
+  if (!data || typeof data !== 'object' || Array.isArray(data)) return null;
   if (typeof data.version !== 'number') return null;
-  if (data.version > BACKUP_VERSION) return null;
+  if (data.version > BACKUP_VERSION || data.version < 1) return null;
   return data;
 }
 
@@ -57,11 +90,20 @@ export async function importData(file: File): Promise<{ success: boolean; messag
     }
 
     const updates: Record<string, unknown> = {};
-    if (data.projects !== null && data.projects !== void 0) {
-      updates[PROJECTS_KEY] = data.projects;
+    if (data.projects !== null && data.projects !== undefined) {
+      const normalizedProjects = normalizeProjectsState(data.projects);
+      if (!normalizedProjects) {
+        return { success: false, message: 'Backup projects data is invalid or incompatible.' };
+      }
+      updates[PROJECTS_KEY] = normalizedProjects;
     }
-    if (data.prompts !== null && data.prompts !== void 0) {
-      updates[PROMPTS_KEY] = data.prompts;
+
+    if (data.prompts !== null && data.prompts !== undefined) {
+      const normalizedPrompts = normalizePromptsBackup(data.prompts);
+      if (!normalizedPrompts) {
+        return { success: false, message: 'Backup prompts data is invalid or incompatible.' };
+      }
+      updates[PROMPTS_KEY] = normalizedPrompts;
     }
 
     if (!Object.keys(updates).length) {
@@ -76,7 +118,6 @@ export async function importData(file: File): Promise<{ success: boolean; messag
         : 'Restore completed.'
     };
   } catch (error) {
-    // eslint-disable-next-line no-console
     console.error('[Backup] import failed', error);
     return { success: false, message: 'Failed to read or parse the backup file.' };
   }
@@ -96,4 +137,3 @@ export function triggerImport(
   };
   input.click();
 }
-

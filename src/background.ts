@@ -1,76 +1,83 @@
 import { BackgroundRequest, BackgroundResponse, ChatRef, Project, StoredState } from './shared/types';
-import { createEmptyState, loadState, saveState } from './shared/storage';
+import { createEmptyState, loadState, migrateState, saveState, STORAGE_KEY } from './shared/storage';
 import { webext } from './shared/webext';
 
 let cachedState: StoredState | null = null;
 let loadPromise: Promise<StoredState> | null = null;
+let mutationTail: Promise<void> = Promise.resolve();
 
 async function getState(): Promise<StoredState> {
   if (cachedState) {
     return cachedState;
   }
   if (!loadPromise) {
-    loadPromise = loadState().catch(() => createEmptyState());
+    loadPromise = loadState()
+      .catch(() => createEmptyState())
+      .finally(() => {
+        loadPromise = null;
+      });
   }
   cachedState = await loadPromise;
   return cachedState;
 }
 
-async function persist(state: StoredState): Promise<void> {
-  cachedState = state;
-  await saveState(state);
+// 串行化写入，避免多标签页或高频同步消息并发覆盖状态。
+function runSerialized<T>(task: () => Promise<T>): Promise<T> {
+  const next = mutationTail.then(task, task);
+  mutationTail = next.then(() => undefined, () => undefined);
+  return next;
 }
 
-function upsertProject(state: StoredState, project: Project): StoredState {
-  const idx = state.projects.findIndex((item) => item.id === project.id);
-  if (idx >= 0) {
-    state.projects[idx] = {
-      ...state.projects[idx],
-      ...project,
-      updatedAt: project.updatedAt ?? Date.now()
-    };
-  } else {
-    state.projects.push(project);
+async function commitState(nextState: StoredState): Promise<StoredState> {
+  await saveState(nextState);
+  cachedState = nextState;
+  return nextState;
+}
+
+function buildUpsertProjectState(state: StoredState, project: Project): StoredState {
+  const exists = state.projects.some((item) => item.id === project.id);
+  const projects = exists
+    ? state.projects.map((item) =>
+        item.id === project.id
+          ? { ...item, ...project, updatedAt: project.updatedAt ?? Date.now() }
+          : item
+      )
+    : [...state.projects, project];
+  return { ...state, projects };
+}
+
+function buildDeleteProjectState(state: StoredState, projectId: string): StoredState {
+  const projects = state.projects.filter((item) => item.id !== projectId);
+  const chatIndex: Record<string, ChatRef> = {};
+  for (const [key, chat] of Object.entries(state.chatIndex)) {
+    chatIndex[key] = chat.projectId === projectId ? { ...chat, projectId: null } : chat;
   }
-  return state;
+  return { ...state, projects, chatIndex };
 }
 
-function renameProject(state: StoredState, projectId: string, name: string): StoredState {
-  const project = state.projects.find((item) => item.id === projectId);
-  if (project) {
-    project.name = name;
-    project.updatedAt = Date.now();
-  }
-  return state;
-}
-
-function deleteProject(state: StoredState, projectId: string): StoredState {
-  state.projects = state.projects.filter((item) => item.id !== projectId);
-  Object.values(state.chatIndex).forEach((chat) => {
-    if (chat.projectId === projectId) {
-      chat.projectId = null;
-    }
-  });
-  return state;
-}
-
-function moveChat(state: StoredState, conversationId: string, projectId: string | null): StoredState {
+function buildMoveChatState(state: StoredState, conversationId: string, projectId: string | null): StoredState {
   const existing = state.chatIndex[conversationId];
-  state.chatIndex[conversationId] = {
-    conversationId,
-    title: existing?.title ?? '',
-    isPinned: existing?.isPinned ?? false,
-    projectId,
-    updatedAt: Date.now(),
-    lastUrl: existing?.lastUrl
+  return {
+    ...state,
+    chatIndex: {
+      ...state.chatIndex,
+      [conversationId]: {
+        conversationId,
+        title: existing?.title ?? '',
+        isPinned: existing?.isPinned ?? false,
+        projectId,
+        updatedAt: Date.now(),
+        lastUrl: existing?.lastUrl
+      }
+    }
   };
-  return state;
 }
 
-function upsertChatRefs(state: StoredState, chats: ChatRef[]): StoredState {
-  chats.forEach((chat) => {
-    const existing = state.chatIndex[chat.conversationId];
-    state.chatIndex[chat.conversationId] = {
+function buildUpsertChatRefsState(state: StoredState, chats: ChatRef[]): StoredState {
+  const chatIndex: Record<string, ChatRef> = { ...state.chatIndex };
+  for (const chat of chats) {
+    const existing = chatIndex[chat.conversationId];
+    chatIndex[chat.conversationId] = {
       conversationId: chat.conversationId,
       title: chat.title || existing?.title || '',
       isPinned: typeof chat.isPinned === 'boolean' ? chat.isPinned : (existing?.isPinned ?? false),
@@ -78,97 +85,79 @@ function upsertChatRefs(state: StoredState, chats: ChatRef[]): StoredState {
       updatedAt: chat.updatedAt ?? existing?.updatedAt ?? Date.now(),
       lastUrl: chat.lastUrl ?? existing?.lastUrl
     };
-  });
-  return state;
-}
-
-function sanitizeFilename(name: string): string {
-  return name.replace(/[^a-zA-Z0-9-_]+/g, '_').replace(/^_+|_+$/g, '') || 'project';
-}
-
-function exportProjectJson(state: StoredState, projectId: string): BackgroundResponse {
-  const project = state.projects.find((item) => item.id === projectId);
-  if (!project) {
-    return { ok: false, error: 'Project not found' };
   }
-  const chats = Object.values(state.chatIndex)
-    .filter((chat) => chat.projectId === project.id)
-    .map((chat) => ({ conversationId: chat.conversationId, title: chat.title }));
-  const payload = {
-    project: {
-      id: project.id,
-      name: project.name,
-      icon: project.icon,
-      color: project.color ?? null,
-      isPinned: project.isPinned === true,
-      createdAt: project.createdAt,
-      updatedAt: project.updatedAt,
-      sortIndex: project.sortIndex
-    },
-    chats
-  };
-  const json = JSON.stringify(payload, null, 2);
-  const filename = `${sanitizeFilename(project.name)}.json`;
-  return { ok: true, json, filename };
+  return { ...state, chatIndex };
 }
 
-function updateUiPrefs(state: StoredState, prefs: Partial<StoredState['uiPrefs']>): StoredState {
-  state.uiPrefs = { ...state.uiPrefs, ...prefs };
-  return state;
+function buildUpdateUiPrefsState(state: StoredState, prefs: Partial<StoredState['uiPrefs']>): StoredState {
+  return {
+    ...state,
+    uiPrefs: { ...state.uiPrefs, ...prefs }
+  };
 }
 
 async function handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
-  switch (message.type) {
-    case 'refreshStateCache': {
+  if (message.type === 'getState') {
+    const state = await getState();
+    return { ok: true, state };
+  }
+
+  return runSerialized<BackgroundResponse>(async () => {
+    if (message.type === 'refreshStateCache') {
       cachedState = await loadState().catch(() => createEmptyState());
       return { ok: true, state: cachedState };
     }
-  }
 
-  const state = await getState();
+    const state = await getState();
 
-  switch (message.type) {
-    case 'getState':
-      return { ok: true, state };
-    case 'upsertProject':
-      await persist(upsertProject(state, message.project));
-      return { ok: true, state };
-    case 'renameProject':
-      await persist(renameProject(state, message.projectId, message.name));
-      return { ok: true, state };
-    case 'setProjectPinned': {
-      const project = state.projects.find((item) => item.id === message.projectId);
-      if (!project) return { ok: false, error: 'Project not found' };
-      const nextState = {
-        ...state,
-        projects: state.projects.map((item) => item.id === project.id
-          ? { ...item, isPinned: message.isPinned, updatedAt: Date.now() }
-          : item)
-      };
-      // 写入成功后再替换缓存，避免失败时显示未保存的置顶状态。
-      await saveState(nextState);
-      cachedState = nextState;
-      return { ok: true, state: nextState };
+    switch (message.type) {
+      case 'upsertProject': {
+        const nextState = await commitState(buildUpsertProjectState(state, message.project));
+        return { ok: true, state: nextState };
+      }
+      case 'setProjectPinned': {
+        const project = state.projects.find((item) => item.id === message.projectId);
+        if (!project) return { ok: false, error: 'Project not found' };
+        const nextState = await commitState({
+          ...state,
+          projects: state.projects.map((item) =>
+            item.id === project.id
+              ? { ...item, isPinned: message.isPinned, updatedAt: Date.now() }
+              : item
+          )
+        });
+        return { ok: true, state: nextState };
+      }
+      case 'deleteProject': {
+        const nextState = await commitState(buildDeleteProjectState(state, message.projectId));
+        return { ok: true, state: nextState };
+      }
+      case 'moveChat': {
+        const nextState = await commitState(buildMoveChatState(state, message.conversationId, message.projectId));
+        return { ok: true, state: nextState };
+      }
+      case 'upsertChatRefs': {
+        const nextState = await commitState(buildUpsertChatRefsState(state, message.chats));
+        return { ok: true, state: nextState };
+      }
+      case 'updateUiPrefs': {
+        const nextState = await commitState(buildUpdateUiPrefsState(state, message.prefs));
+        return { ok: true, state: nextState };
+      }
+      default:
+        return { ok: false, error: 'Unknown message type' };
     }
-    case 'deleteProject':
-      await persist(deleteProject(state, message.projectId));
-      return { ok: true, state };
-    case 'moveChat':
-      await persist(moveChat(state, message.conversationId, message.projectId));
-      return { ok: true, state };
-    case 'upsertChatRefs':
-      await persist(upsertChatRefs(state, message.chats));
-      return { ok: true, state };
-    case 'exportProject': {
-      return exportProjectJson(state, message.projectId);
-    }
-    case 'updateUiPrefs':
-      await persist(updateUiPrefs(state, message.prefs));
-      return { ok: true, state };
-    default:
-      return { ok: false, error: 'Unknown message type' };
-  }
+  });
 }
+
+webext.storage?.onChanged?.addListener((
+  changes: Record<string, chrome.storage.StorageChange>,
+  area: string
+) => {
+  if (area === 'local' && changes[STORAGE_KEY]) {
+    cachedState = migrateState(changes[STORAGE_KEY].newValue);
+  }
+});
 
 webext.runtime.onMessage.addListener((
   message: BackgroundRequest,
@@ -180,4 +169,3 @@ webext.runtime.onMessage.addListener((
     .catch((error: Error) => sendResponse({ ok: false, error: error.message }));
   return true;
 });
-

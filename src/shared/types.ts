@@ -73,6 +73,7 @@ export interface RuntimeState {
   expandedProjectIds: Set<string>;
   nativeConversationIds: Set<string>;
   nativeChatsReady: boolean;
+  activeConversationId: string | null;
   ui: UiState;
   uiPrefs: UiPrefs;
 }
@@ -80,15 +81,13 @@ export interface RuntimeState {
 export type BackgroundRequest =
   | { type: 'getState' }
   | { type: 'upsertProject'; project: Project }
-  | { type: 'renameProject'; projectId: string; name: string }
   | { type: 'setProjectPinned'; projectId: string; isPinned: boolean }
   | { type: 'deleteProject'; projectId: string }
   | { type: 'moveChat'; conversationId: string; projectId: string | null }
   | { type: 'upsertChatRefs'; chats: ChatRef[] }
-  | { type: 'exportProject'; projectId: string }
   | { type: 'updateUiPrefs'; prefs: Partial<UiPrefs> }
   | { type: 'refreshStateCache' };
 
 export type BackgroundResponse =
-  | { ok: true; state?: StoredState; json?: string; filename?: string }
+  | { ok: true; state?: StoredState }
   | { ok: false; error: string };

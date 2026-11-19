@@ -1,10 +1,10 @@
 ﻿const PROJECTS_HOST_ID = 'gemini-projects-host';
 const OVERLAY_HOST_ID = 'gemini-projects-overlay';
-const GEMS_SECTION_LABELS_EN = ['Gem', 'Gems'];
-const CHATS_SECTION_LABELS_EN = ['Chats', 'Recent', 'Recents', 'Recent chats'];
-const SIDEBAR_LANDMARK_LABELS_EN = ['New chat', 'Search chats', 'Gems', 'Notebooks', 'Recents'];
-const GEMS_SECTION_LABELS_ZH = ['\u5b9d\u77f3', '\u6211\u7684 Gem', '\u6211\u7684 Gems'];
-const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929\u8bb0\u5f55', '\u6700\u8fd1', '\u6700\u8fd1\u804a\u5929', '\u6700\u8fd1\u5bf9\u8bdd'];
+const GEMS_SECTION_LABELS_EN = ['Gem', 'Gems', 'Notebooks'];
+const CHATS_SECTION_LABELS_EN = ['Chats', 'Recent', 'Recents', 'Recent chats', 'All'];
+const SIDEBAR_LANDMARK_LABELS_EN = ['New chat', 'Search chats', 'Gems', 'Notebooks', 'Recents', 'Library'];
+const GEMS_SECTION_LABELS_ZH = ['\u5b9d\u77f3', '\u6211\u7684 Gem', '\u6211\u7684 Gems', '\u7b14\u8bb0\u672c'];
+const CHATS_SECTION_LABELS_ZH = ['\u804a\u5929\u8bb0\u5f55', '\u6700\u8fd1', '\u6700\u8fd1\u804a\u5929', '\u6700\u8fd1\u5bf9\u8bdd', '\u5168\u90e8'];
 const SIDEBAR_LANDMARK_LABELS_ZH = ['\u65b0\u5bf9\u8bdd', '\u641c\u7d22\u804a\u5929', '\u641c\u7d22\u5bf9\u8bdd', '\u6211\u7684 Gem', '\u7b14\u8bb0\u672c', '\u6700\u8fd1'];
 
 function normalizeText(value: string | null): string {
@@ -13,7 +13,7 @@ function normalizeText(value: string | null): string {
 
 function includesAnyLabel(text: string, labels: string[]): boolean {
   const normalized = normalizeText(text);
-  return labels.some((label) => normalized.includes(normalizeText(label)));
+  return labels.some((label) => includesStandaloneLabel(normalized, normalizeText(label)));
 }
 
 function isZhLanguage(lang: string): boolean {
@@ -99,7 +99,7 @@ function getElementPath(element: Element): string {
   while (current && current !== document.documentElement) {
     const parent: HTMLElement | null = current.parentElement;
     const index = parent ? Array.from(parent.children).indexOf(current) + 1 : 1;
-    parts.unshift(`${current.tagName.toLowerCase()}:nth-of-type(${index})`);
+    parts.unshift(`${current.tagName.toLowerCase()}:nth-child(${index})`);
     current = parent;
   }
   return parts.join(' > ');
@@ -207,24 +207,17 @@ function findSidebarByLandmarks(): HTMLElement | null {
     .sort((a, b) => a.area - b.area)[0].element;
 }
 
-export function findGemsSection(root: HTMLElement): HTMLElement | null {
-  const labels = getSectionLabelGroups();
-  return findSectionByTexts(root, labels.gemsPrimary) || findSectionByTexts(root, labels.gemsFallback);
-}
-
 export function findChatsSection(root: HTMLElement): HTMLElement | null {
+  // 优先匹配结构锚点 .chat-history，避免文本标签变化（如 Recents -> All）导致误定位。
+  const chatHistory = root.querySelector<HTMLElement>('.chat-history');
+  if (chatHistory) {
+    return chatHistory;
+  }
+
   const labels = getSectionLabelGroups();
   const byText = findSectionByTexts(root, labels.chatsPrimary) || findSectionByTexts(root, labels.chatsFallback);
   if (byText) {
     return byText;
-  }
-
-  // Newer Gemini builds keep an empty chat-history region in the sidebar even
-  // before any conversation links have rendered. Prefer that stable structural
-  // anchor so "Search chats" is never mistaken for the history section.
-  const chatHistory = root.querySelector<HTMLElement>('.chat-history');
-  if (chatHistory) {
-    return chatHistory;
   }
 
   const toggles = Array.from(root.querySelectorAll<HTMLElement>('[data-test-id="expandable-section-toggle"], button[aria-label]'));
@@ -369,7 +362,6 @@ function ensureOverlayHost(): { host: HTMLElement; shadow: ShadowRoot } {
 
 export function injectProjectsSection(
   root: HTMLElement,
-  gemsSection: HTMLElement | null,
   chatsSection: HTMLElement | null
 ): { host: HTMLElement; shadow: ShadowRoot; overlayShadow: ShadowRoot } {
   let host = document.getElementById(PROJECTS_HOST_ID) as HTMLElement | null;

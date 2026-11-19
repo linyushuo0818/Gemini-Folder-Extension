@@ -152,8 +152,8 @@ export const ICON_OPTIONS: IconOption[] = [
   },
   {
     id: 'world',
-    label: 'Global',
-    svg: '<circle cx="12" cy="12" r="10"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/><path d="M2 12h20"/>'
+    label: 'Explore',
+    svg: '<circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/>'
   },
   {
     id: 'paw',
@@ -174,8 +174,8 @@ export const ICON_OPTIONS: IconOption[] = [
   },
   {
     id: 'clover',
-    label: 'Luck',
-    svg: '<path d="M12 7.5a4.5 4.5 0 1 1 4.5 4.5M12 7.5A4.5 4.5 0 1 0 7.5 12M12 7.5V9m-4.5 3a4.5 4.5 0 1 0 4.5 4.5M7.5 12H9m7.5 0a4.5 4.5 0 1 1-4.5 4.5m4.5-4.5H15m-3 4.5V15"/><circle cx="12" cy="12" r="3"/>'
+    label: 'Ideas',
+    svg: '<path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/>'
   },
   {
     id: 'heart',
@@ -190,6 +190,14 @@ export const ICON_OPTIONS: IconOption[] = [
 ];
 
 /**
+ * 将默认黑色（#1f1f1f）规范化为 currentColor，保证深浅模式下都清晰可见。
+ */
+export function resolveProjectIconColor(color?: string): string | undefined {
+  if (!color) return undefined;
+  return color.trim().toLowerCase() === '#1f1f1f' ? undefined : color;
+}
+
+/**
  * 渲染图标 SVG
  * @param iconId 图标 ID
  * @param colorOverride 颜色覆盖（可选）
@@ -197,7 +205,7 @@ export const ICON_OPTIONS: IconOption[] = [
  */
 export function renderIconSvg(iconId: ProjectIcon, colorOverride?: string): string {
   const option = ICON_OPTIONS.find((item) => item.id === iconId) || ICON_OPTIONS[0];
-  const color = colorOverride || 'currentColor';
+  const color = resolveProjectIconColor(colorOverride) || 'currentColor';
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" 
          fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">

@@ -1,4 +1,5 @@
-﻿import { Project } from '../../shared/types';
+﻿import { showSurface, hideSurface, setSurfaceOrigin } from '../ui/motion';
+import { Project } from '../../shared/types';
 import {
   findChatsListContainer,
   findChatsSection,
@@ -8,64 +9,17 @@ import {
   getConversationIdFromChatRow
 } from './anchors';
 import { renderIconSvg } from '../ui/icons';
+import { PILL_RADIUS } from '../ui/radii';
+import { resolveGeminiTheme } from '../ui/theme';
 
-const DEBUG = false;
 const ACTIVE_ROW_ATTR = 'data-gp-active-row';
 const ACTIVE_ROW_ID_ATTR = 'data-gp-conversation-id';
 const MENU_ITEM_ATTR = 'data-gp-item';
-const MENU_DIVIDER_ATTR = 'data-gp-divider';
 const MENU_OBSERVER_ATTR = 'data-gp-menu-observer';
 const MENU_TOKENS = ['share conversation', 'share', 'pin', 'rename', 'delete', '分享', '置顶', '重命名', '删除'];
 const PIN_ACTION_TOKENS = ['pin', '置顶', '置頂', '固定'];
 const RENAME_ACTION_TOKENS = ['rename', '重命名', '重新命名'];
 const DELETE_ACTION_TOKENS = ['delete', '删除', '刪除'];
-
-interface MenuTheme {
-  fontFamily: string;
-  fontSize: string;
-  fontWeight: string;
-  color: string;
-  lineHeight: string;
-  background: string;
-  borderRadius: string;
-  boxShadow: string;
-  border: string;
-  hover: string;
-  divider: string;
-  itemRadius: string;
-  itemPadding: string;
-  itemHeight: string;
-  backdropFilter?: string;
-}
-
-const DEFAULT_MENU_THEME: MenuTheme = {
-  fontFamily: '"Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif',
-  fontSize: '14px',
-  fontWeight: '500',
-  color: '#1f1f1f',
-  lineHeight: '20px',
-  background: '#ffffff',
-  borderRadius: '20px',
-  boxShadow: '0 8px 20px rgba(60, 64, 67, 0.18), 0 1px 3px rgba(60, 64, 67, 0.16)',
-  border: '1px solid rgba(60, 64, 67, 0.12)',
-  hover: '#f1f3f4',
-  divider: 'rgba(60, 64, 67, 0.12)',
-  itemRadius: '14px',
-  itemPadding: '4px 12px',
-  itemHeight: 'auto'
-};
-
-const DARK_MENU_THEME: MenuTheme = {
-  ...DEFAULT_MENU_THEME,
-  background: '#202124',
-  color: '#e8eaed',
-  border: '1px solid rgba(232, 234, 237, 0.16)',
-  boxShadow: '0 24px 52px rgba(0, 0, 0, 0.45), 0 1px 3px rgba(0, 0, 0, 0.36)',
-  hover: 'rgba(255, 255, 255, 0.08)',
-  divider: 'rgba(232, 234, 237, 0.16)'
-};
-
-let currentMenuTheme: MenuTheme = { ...DEFAULT_MENU_THEME };
 
 interface ChatMenuEnhancerOptions {
   overlayShadow: ShadowRoot;
@@ -85,26 +39,6 @@ let menuObserver: MutationObserver | null = null;
 let submenuElement: HTMLElement | null = null;
 let closeTimer: number | null = null;
 let activeMoveItem: HTMLElement | null = null;
-
-function log(...args: unknown[]) {
-  if (DEBUG) {
-    // eslint-disable-next-line no-console
-    console.log('[gp-menu]', ...args);
-  }
-}
-
-function describeEl(el: HTMLElement | null): string {
-  if (!el) return 'null';
-  const label = el.getAttribute('aria-label') || '';
-  const role = el.getAttribute('role') || '';
-  const text = (el.textContent || '').trim().slice(0, 24);
-  return `${el.tagName.toLowerCase()} role=${role} label=${label} text="${text}"`;
-}
-
-function menuRectInfo(el: HTMLElement): string {
-  const rect = el.getBoundingClientRect();
-  return `${Math.round(rect.left)},${Math.round(rect.top)} ${Math.round(rect.width)}x${Math.round(rect.height)}`;
-}
 
 function hasMenuToken(container: HTMLElement, tokens: string[]): boolean {
   const nodes = container.querySelectorAll<HTMLElement>('div, button, [role="menuitem"]');
@@ -172,14 +106,14 @@ function setActiveRow(row: HTMLElement | null) {
   activeRowTimeout = window.setTimeout(() => clearActiveRow(), 2000);
 }
 
-log('menus.ts debug enabled');
-
 export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions) {
   const moveMenu = createMoveMenu(options);
   openMoveMenuHandler = (anchor, conversationId, item) => {
     moveMenu.setActiveItem(item);
     moveMenu.open(anchor, conversationId);
   };
+  closeMoveMenuHandler = () => moveMenu.startCloseTimer();
+  keepMoveMenuOpenHandler = () => moveMenu.cancelCloseTimer();
 
   if (listenersAttached) {
     return null;
@@ -190,42 +124,21 @@ export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions) {
     'pointerdown',
     (event) => {
       const target = event.target as HTMLElement | null;
-      if (!target) return;
-      const inSidebar = !!target.closest('nav, aside, [role="navigation"], [role="complementary"]');
-      if (inSidebar) {
-        log('pointerdown', describeEl(target));
-      }
-      if (!isChatKebabButton(target)) {
-        if (inSidebar) {
-          log('not a kebab', describeEl(target.closest('button,[role="button"],div,[aria-label]') as HTMLElement));
-        }
-        return;
-      }
+      if (!target || !isChatKebabButton(target)) return;
 
-      cleanupMenuArtifacts('new menu');
+      cleanupMenuArtifacts();
 
       const row = findChatRowFromTarget(target);
       setActiveRow(row);
-      log('kebab click captured');
       const conversationId = getConversationIdFromActiveRow(target);
-      log('conversationId', conversationId);
-      if (!conversationId) {
-        log('conversationId missing at click');
-      } else if (row) {
+      if (conversationId && row) {
         row.setAttribute(ACTIVE_ROW_ID_ATTR, conversationId);
       }
 
       waitForMenuRoot(target).then((menuRoot) => {
-        if (!menuRoot) {
-          log('menu root not found');
-          return;
-        }
-        log('menuRoot found:', menuRoot.tagName.toLowerCase(), 'rect=', menuRectInfo(menuRoot), 'hits=', countMenuTokens(menuRoot, MENU_TOKENS));
+        if (!menuRoot) return;
         const resolvedId = conversationId || getConversationIdFromActiveRow(target);
-        if (!resolvedId) {
-          log('conversationId missing at inject time');
-          return;
-        }
+        if (!resolvedId) return;
         tryInjectWithRetries(menuRoot, resolvedId, target, 0);
       });
     },
@@ -233,28 +146,31 @@ export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions) {
   );
 
   document.addEventListener('click', (event) => {
+    const path = event.composedPath();
     const target = event.target as HTMLElement | null;
     if (!target) return;
 
-    const inSubmenu = submenuElement?.contains(target) ?? false;
-    const inMenu = currentMenuRoot?.contains(target) ?? false;
+    const inSubmenu = !!submenuElement && path.includes(submenuElement);
+    const inMenu = !!currentMenuRoot && (path.includes(currentMenuRoot) || currentMenuRoot.contains(target));
     const isKebab = isChatKebabButton(target);
 
     if (!inSubmenu && !inMenu && !isKebab) {
-      cleanupMenuArtifacts('outside click');
+      cleanupMenuArtifacts();
     }
   });
 
-  document.addEventListener('scroll', () => cleanupMenuArtifacts('scroll'), true);
+  document.addEventListener('scroll', () => cleanupMenuArtifacts(), true);
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
-      cleanupMenuArtifacts('esc');
+      cleanupMenuArtifacts();
     }
   });
 
   return () => {
     listenersAttached = false;
     openMoveMenuHandler = null;
+    closeMoveMenuHandler = null;
+    keepMoveMenuOpenHandler = null;
   };
 }
 
@@ -362,7 +278,7 @@ function collectSearchRoots(): (Document | ShadowRoot)[] {
   let current = walker.currentNode as Element | null;
   while (current) {
     const element = current as HTMLElement;
-    if (element.shadowRoot) {
+    if (element.shadowRoot && element.id !== 'gemini-projects-overlay' && element.id !== 'gp-prompt-picker-root') {
       roots.push(element.shadowRoot);
     }
     current = walker.nextNode() as Element | null;
@@ -485,13 +401,7 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
   }
   currentMenuRoot = menuRoot;
 
-  // Clean stale items outside menuRoot
   queryAllInRoots(`[${MENU_ITEM_ATTR}="move-to-project"]`).forEach((node) => {
-    if (!menuRoot.contains(node)) {
-      node.remove();
-    }
-  });
-  queryAllInRoots(`[${MENU_DIVIDER_ATTR}="move-to-project"]`).forEach((node) => {
     if (!menuRoot.contains(node)) {
       node.remove();
     }
@@ -507,25 +417,13 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
     return false;
   }
 
-  // Divider removed as per user request
-
   const item = document.createElement('div');
   item.setAttribute('role', 'menuitem');
   item.setAttribute(MENU_ITEM_ATTR, 'move-to-project');
 
-  // ========================================
-  // PIXEL-PERFECT NATIVE ALIGNMENT
-  // Extracted from DevTools:
-  // - Native button: 280 × 40, padding: 0 12px
-  // - Icon: 20 × 20
-  // - Font: 14px "Google Sans Flex", weight 500
-  // ========================================
-
   item.style.display = 'flex';
   item.style.alignItems = 'center';
   item.style.gap = '12px';
-
-  // Force styles with !important to override potential host conflicts
   item.style.setProperty('height', '32px', 'important');
   item.style.setProperty('min-height', '32px', 'important');
   item.style.setProperty('max-height', '32px', 'important');
@@ -533,9 +431,8 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
   item.style.setProperty('margin', '2px 0', 'important');
   item.style.setProperty('box-sizing', 'border-box', 'important');
   item.style.setProperty('cursor', 'pointer', 'important');
-  item.style.setProperty('border-radius', '8px', 'important');
+  item.style.setProperty('border-radius', PILL_RADIUS, 'important');
   item.style.setProperty('background', 'transparent', 'important');
-  // Use inherit to match native menu text color (Auto Dark Mode)
   item.style.setProperty('color', 'inherit', 'important');
   item.style.setProperty('border', 'none', 'important');
   item.style.setProperty('outline', 'none', 'important');
@@ -578,14 +475,14 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
   item.appendChild(arrow);
 
   item.addEventListener('mouseenter', () => {
-    const isDark = document.body.classList.contains('dark') || document.body.classList.contains('dark-theme');
-    item.style.background = (isDark ? DARK_MENU_THEME : DEFAULT_MENU_THEME).hover;
+    const hoverBg = resolveGeminiTheme() === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#f1f3f4';
+    item.style.setProperty('background', hoverBg, 'important');
     keepMoveMenuOpenHandler?.();
     openMoveMenuHandler?.(item.getBoundingClientRect(), conversationId, item);
   });
 
   item.addEventListener('mouseleave', () => {
-    item.style.background = 'transparent';
+    item.style.setProperty('background', 'transparent', 'important');
     closeMoveMenuHandler?.();
   });
 
@@ -600,19 +497,11 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
     insertParent.appendChild(item);
   }
 
-  const menuRect = menuRoot.getBoundingClientRect();
-  const itemRect = item.getBoundingClientRect();
-  log('menuRoot rect=', `${Math.round(menuRect.left)},${Math.round(menuRect.top)} ${Math.round(menuRect.width)}x${Math.round(menuRect.height)}`);
-  log('injected item height=', Math.round(itemRect.height), 'rect=', `${Math.round(itemRect.left)},${Math.round(itemRect.top)} ${Math.round(itemRect.width)}x${Math.round(itemRect.height)}`);
-
   const ok = validateInjection(item, container);
-  log('injected ok:', `inRoot=${menuRoot.contains(item)}`, `overlap=${ok.overlap.toFixed(2)}`, `container=${describeEl(container)}`);
-
   if (!ok.passed) {
     item.remove();
     return false;
   }
-
 
   observeMenuRoot(menuRoot, conversationId);
   return true;
@@ -653,13 +542,12 @@ function observeMenuRoot(menuRoot: HTMLElement, conversationId: string) {
     if (!document.contains(menuRoot) || !isMenuRootVisible(menuRoot)) {
       menuObserver?.disconnect();
       menuRoot.removeAttribute(MENU_OBSERVER_ATTR);
-      cleanupMenuArtifacts('menu root gone');
+      cleanupMenuArtifacts();
       return;
     }
     const exists = menuRoot.querySelector(`[${MENU_ITEM_ATTR}="move-to-project"]`);
     if (!exists && reinjectCount < 3) {
       reinjectCount += 1;
-      log('reinjected (observer) count=', reinjectCount);
       injectMoveToProject(menuRoot, conversationId);
     }
   });
@@ -727,23 +615,85 @@ function countMenuTokens(container: HTMLElement, tokens: string[]): number {
   return count;
 }
 
+function ensureSubmenuStyles(shadow: ShadowRoot) {
+  if (shadow.querySelector('style[data-gp="move-submenu"]')) return;
+  const style = document.createElement('style');
+  style.dataset.gp = 'move-submenu';
+  style.textContent = `
+    .gp-move-menu {
+      position: fixed;
+      min-width: 220px;
+      max-width: calc(100vw - 16px);
+      max-height: calc(100vh - 16px);
+      overflow-y: auto;
+      box-sizing: border-box;
+      padding: var(--gp-menu-inset, 8px);
+      border-radius: var(--gp-radius-menu, 27px);
+      background: var(--gp-surface, #ffffff);
+      color: var(--gp-fg, #141413);
+      border: 1px solid var(--gp-border, rgb(31 30 29 / .15));
+      box-shadow: var(--gp-shadow, 0 24px 64px #14141324, 0 4px 12px #1414130a);
+      font-family: var(--gp-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
+      font-size: 14px;
+      font-weight: 500;
+      line-height: 20px;
+      display: none;
+      pointer-events: auto;
+      z-index: 2147483647;
+    }
+    .gp-move-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-height: var(--gp-menu-item-height, 36px);
+      padding: 0 12px;
+      border-radius: var(--gp-radius-pill, ${PILL_RADIUS});
+      box-sizing: border-box;
+      cursor: pointer;
+      color: var(--gp-fg, #141413);
+      transition: background-color var(--gp-transition, .18s ease);
+    }
+    .gp-move-item:hover {
+      background: var(--gp-bg-hover, #f5f4ed);
+    }
+    .gp-move-item svg {
+      width: 18px;
+      height: 18px;
+      flex: 0 0 18px;
+    }
+    .gp-move-item span {
+      flex: 1 1 auto;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .gp-move-divider {
+      height: 1px;
+      background: var(--gp-border, rgb(31 30 29 / .15));
+      margin: 4px 8px;
+    }
+  `;
+  shadow.appendChild(style);
+}
+
 function createMoveMenu(options: ChatMenuEnhancerOptions) {
+  function getOverlayLayer(): HTMLElement {
+    ensureSubmenuStyles(options.overlayShadow);
+    const layer = options.overlayShadow.getElementById('gp-overlay-layer') as HTMLElement | null;
+    return layer || (options.overlayShadow as unknown as HTMLElement);
+  }
+
   function ensureSubmenu(): HTMLElement {
-    if (submenuElement && document.contains(submenuElement)) {
-      applySubmenuTheme(submenuElement);
+    const layer = getOverlayLayer();
+    if (submenuElement && layer.contains(submenuElement)) {
       return submenuElement;
     }
+    submenuElement?.remove();
     submenuElement = document.createElement('div');
     submenuElement.className = 'gp-move-menu';
-    submenuElement.style.position = 'fixed';
-    submenuElement.style.minWidth = '220px';
-    applySubmenuTheme(submenuElement);
-    submenuElement.style.padding = '6px';
-    submenuElement.style.display = 'none';
-    submenuElement.style.pointerEvents = 'auto';
-    submenuElement.style.zIndex = '2147483647';
+    submenuElement.setAttribute('role', 'menu');
 
-    // Auto-close handling on submenu itself
     submenuElement.addEventListener('mouseenter', () => {
       cancelCloseTimer();
     });
@@ -751,48 +701,8 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
       startCloseTimer();
     });
 
-    document.body.appendChild(submenuElement);
+    layer.appendChild(submenuElement);
     return submenuElement;
-  }
-
-  function applySubmenuTheme(menu: HTMLElement) {
-    // Detect Dark Mode
-    const isDark = document.body.classList.contains('dark-theme') ||
-      document.body.classList.contains('dark');
-
-    const theme = isDark ? DARK_MENU_THEME : DEFAULT_MENU_THEME;
-    // Update global currentMenuTheme for buildMenu usage
-    currentMenuTheme = { ...theme };
-
-    // Enforce Premium Glass Theme for the submenu container
-    menu.style.background = theme.background;
-    menu.style.backdropFilter = theme.backdropFilter || '';
-    // (menu.style as any).webkitBackdropFilter = DEFAULT_MENU_THEME.backdropFilter || ''; // Removed to fix lint
-    menu.style.borderRadius = theme.borderRadius;
-    menu.style.boxShadow = theme.boxShadow;
-    menu.style.border = theme.border;
-
-    // Use captured font metrics to ensure readable scale, but prefer our premium font stack
-    menu.style.fontFamily = theme.fontFamily;
-    menu.style.fontSize = theme.fontSize; // Match size
-    menu.style.fontWeight = theme.fontWeight;
-    menu.style.color = theme.color;
-
-    // Animation for open
-    menu.style.transformOrigin = 'top left';
-    menu.style.animation = 'gp-scale-in 0.18s cubic-bezier(0.2, 0, 0.13, 1.5)';
-
-    if (!document.getElementById('gp-submenu-styles')) {
-      const style = document.createElement('style');
-      style.id = 'gp-submenu-styles';
-      style.textContent = `
-        @keyframes gp-scale-in {
-          from { opacity: 0; transform: scale(0.95); }
-          to { opacity: 1; transform: scale(1); }
-        }
-      `;
-      document.head.appendChild(style);
-    }
   }
 
   function buildMenu(conversationId: string) {
@@ -800,99 +710,52 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
     const currentProjectId = options.getChatProjectId(conversationId);
 
     const items = [
-      `<div class="gp-move-item secondary" data-gp-move="new">${renderIconSvg('default', '#5f6368')}<span>New Project</span></div>`,
+      `<div class="gp-move-item secondary" data-gp-move="new">${renderIconSvg('default')}<span>New Project</span></div>`,
       '<div class="gp-move-divider"></div>',
       ...projects.map(
         (project) =>
-          `<div class="gp-move-item" data-gp-move="${project.id}">${renderIconSvg(project.icon, project.color || '#5f6368')}<span>${escapeHtml(project.name)}</span></div>`
+          `<div class="gp-move-item" data-gp-move="${project.id}">${renderIconSvg(project.icon, project.color)}<span>${escapeHtml(project.name)}</span></div>`
       )
     ];
 
     if (currentProjectId) {
       items.push('<div class="gp-move-divider"></div>');
-      items.push('<div class="gp-move-item" data-gp-move="remove">Remove from Project</div>');
+      items.push('<div class="gp-move-item" data-gp-move="remove"><span>Remove from Project</span></div>');
     }
 
     const menu = ensureSubmenu();
     menu.innerHTML = items.join('');
-
-    menu.querySelectorAll<HTMLElement>('.gp-move-item').forEach((item) => {
-      item.style.display = 'flex';
-      item.style.alignItems = 'center';
-      item.style.gap = '12px';
-      item.style.padding = currentMenuTheme.itemPadding;
-      // item.style.height = DEFAULT_MENU_THEME.itemHeight; // Removed fixed height
-      item.style.minHeight = '32px'; // Compact
-      item.style.borderRadius = currentMenuTheme.itemRadius;
-      item.style.cursor = 'pointer';
-      item.style.fontSize = currentMenuTheme.fontSize;
-      item.style.fontWeight = currentMenuTheme.fontWeight;
-      item.style.color = currentMenuTheme.color;
-      item.style.lineHeight = currentMenuTheme.lineHeight;
-      item.style.fontFamily = currentMenuTheme.fontFamily;
-      item.style.transition = 'all 0.18s ease';
-      item.addEventListener('mouseenter', () => {
-        item.style.background = currentMenuTheme.hover;
-        // item.style.transform = 'scale(1.02)'; // Removed pop effect to fix radius alignment
-      });
-      item.addEventListener('mouseleave', () => {
-        item.style.background = 'transparent';
-        item.style.transform = 'none';
-      });
-    });
-
-    menu.querySelectorAll<HTMLElement>('.gp-move-divider').forEach((item) => {
-      item.style.height = '1px';
-      item.style.background = currentMenuTheme.divider;
-      item.style.margin = '4px 6px';
-    });
-
-    menu.querySelectorAll<SVGElement>('.gp-move-item svg').forEach((icon) => {
-      icon.setAttribute('width', '18');
-      icon.setAttribute('height', '18');
-    });
   }
 
   function open(anchorRect: DOMRect, conversationId: string) {
     const menu = ensureSubmenu();
     buildMenu(conversationId);
 
-    // 1. Prepare for measurement (visible in layout, hidden from user)
     menu.style.display = 'block';
     menu.style.visibility = 'hidden';
     menu.style.left = '0px';
     menu.style.top = '0px';
 
-    // 2. Wait for next frame to ensure layout stability (fix for "drift" issue)
     requestAnimationFrame(() => {
-      if (!menu.isConnected) return; // Menu closed during wait
+      if (!menu.isConnected) return;
 
-      const menuWidth = 240; // match minWidth
+      const menuWidth = menu.offsetWidth;
       const height = menu.offsetHeight;
-
-      // 3. Calculate position
-      // Gap 0 for seamless transition
       const left = anchorRect.right + menuWidth > window.innerWidth
         ? anchorRect.left - menuWidth
         : anchorRect.right;
 
-      // Vertical alignment: Top-align by default, Bottom-align if overflow
       const padding = 8;
       let top = anchorRect.top;
-
       if (top + height + padding > window.innerHeight) {
-        // If overflows bottom, align bottom to viewport bottom (minus padding)
         top = window.innerHeight - height - padding;
       }
-      // Also check top overflow just in case
       top = Math.max(padding, top);
 
       menu.style.left = `${Math.max(8, left)}px`;
       menu.style.top = `${top}px`;
-      menu.style.visibility = 'visible'; // Show final result
-
-      const rect = menu.getBoundingClientRect();
-      log('submenu opened (stable)', Math.round(rect.left), Math.round(rect.top), 'size=', Math.round(rect.width), 'x', Math.round(rect.height));
+      menu.style.visibility = 'visible';
+      showSurface(menu, 'menu', 'block', () => setSurfaceOrigin(menu, anchorRect, Math.max(8, left), top));
     });
 
     menu.onclick = (event) => {
@@ -901,24 +764,25 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
       const action = target.dataset.gpMove;
       if (action === 'new') {
         options.onCreateProject();
-        cleanupMenuArtifacts('submenu new');
+        cleanupMenuArtifacts();
         return;
       }
       if (action === 'remove') {
         options.onMoveChat(conversationId, null);
-        cleanupMenuArtifacts('submenu remove');
+        cleanupMenuArtifacts();
         return;
       }
       options.onMoveChat(conversationId, action || null);
-      cleanupMenuArtifacts('submenu select');
+      cleanupMenuArtifacts();
     };
     document.addEventListener('mousemove', onDocMouseMove, true);
   }
 
   function close() {
     if (submenuElement) {
-      submenuElement.remove();
+      const closingMenu = submenuElement;
       submenuElement = null;
+      hideSurface(closingMenu, () => closingMenu.remove());
     }
     document.removeEventListener('mousemove', onDocMouseMove, true);
     activeMoveItem = null;
@@ -926,11 +790,10 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
 
   function onDocMouseMove(e: MouseEvent) {
     if (!submenuElement || !activeMoveItem) return;
-    const target = e.target as Node;
-    const inSubmenu = submenuElement.contains(target);
-    const inItem = activeMoveItem.contains(target);
+    const path = e.composedPath();
+    const inSubmenu = path.includes(submenuElement);
+    const inItem = path.includes(activeMoveItem);
 
-    // If we are strictly outside both, ensure timer is running
     if (!inSubmenu && !inItem) {
       startCloseTimer();
     } else {
@@ -938,15 +801,11 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
     }
   }
 
-  function contains(target: HTMLElement) {
-    return submenuElement?.contains(target) ?? false;
-  }
-
   function startCloseTimer() {
     if (closeTimer) clearTimeout(closeTimer);
     closeTimer = window.setTimeout(() => {
       close();
-    }, 200); // 200ms grace period
+    }, 200);
   }
 
   function cancelCloseTimer() {
@@ -956,25 +815,21 @@ function createMoveMenu(options: ChatMenuEnhancerOptions) {
     }
   }
 
-  // Expose setActiveItem for mouse tracking
   function setActiveItem(item: HTMLElement) {
     activeMoveItem = item;
   }
 
-  return { open, close, contains, startCloseTimer, cancelCloseTimer, setActiveItem };
+  return { open, close, startCloseTimer, cancelCloseTimer, setActiveItem };
 }
 
-function cleanupMenuArtifacts(reason: string) {
+function cleanupMenuArtifacts() {
   const moveItems = Array.from(queryAllInRoots(`[${MENU_ITEM_ATTR}="move-to-project"]`));
-  const dividers = Array.from(queryAllInRoots(`[${MENU_DIVIDER_ATTR}="move-to-project"]`));
   moveItems.forEach((node) => node.remove());
-  dividers.forEach((node) => node.remove());
 
-  let removedSubmenu = 0;
   if (submenuElement) {
-    submenuElement.remove();
+    const closingMenu = submenuElement;
     submenuElement = null;
-    removedSubmenu = 1;
+    hideSurface(closingMenu, () => closingMenu.remove());
   }
 
   if (menuObserver) {
@@ -986,8 +841,6 @@ function cleanupMenuArtifacts(reason: string) {
     currentMenuRoot.removeAttribute(MENU_OBSERVER_ATTR);
     currentMenuRoot = null;
   }
-
-  log('cleanup removed:', `moveItem=${moveItems.length}`, `divider=${dividers.length}`, `submenu=${removedSubmenu}`, reason);
 }
 
 function escapeHtml(value: string): string {
@@ -1035,8 +888,7 @@ function findMenuListContainer(menuRoot: HTMLElement): { container: HTMLElement;
   }
   const firstItem = items.find((item) => {
     const text = (item.textContent || '').trim();
-    if (!text) return false;
-    if (text.length > 48) return false;
+    if (!text || text.length > 48) return false;
     const rect = item.getBoundingClientRect();
     return rect.height > 20 && rect.height < 80;
   });
@@ -1044,19 +896,6 @@ function findMenuListContainer(menuRoot: HTMLElement): { container: HTMLElement;
     return { container: firstItem.parentElement };
   }
   return { container: menuRoot };
-}
-
-function pickMenuItemForStyle(container: HTMLElement): HTMLElement | null {
-  const candidates = Array.from(container.querySelectorAll<HTMLElement>('[role="menuitem"], button, div'));
-  for (const item of candidates) {
-    const text = (item.textContent || '').trim();
-    if (!text) continue;
-    const rect = item.getBoundingClientRect();
-    if (rect.height >= 28 && rect.height <= 60) {
-      return item;
-    }
-  }
-  return null;
 }
 
 function findActualMenuRoot(root: HTMLElement): HTMLElement {
@@ -1097,118 +936,7 @@ function queryAllInRoots(selector: string): HTMLElement[] {
 function tryInjectWithRetries(menuRoot: HTMLElement, conversationId: string, targetEl: HTMLElement, attempt: number) {
   const ok = injectMoveToProject(menuRoot, conversationId);
   if (ok) return;
-  if (attempt >= 2) {
-    log('inject failed after retries');
-    return;
-  }
+  if (attempt >= 2) return;
   const nextRoot = findBestMenuRoot(targetEl) || menuRoot;
   requestAnimationFrame(() => tryInjectWithRetries(nextRoot, conversationId, targetEl, attempt + 1));
-}
-
-function applySubmenuTheme(menu: HTMLElement) {
-  // Enforce Premium Glass Theme for the submenu container
-  menu.style.background = DEFAULT_MENU_THEME.background;
-  menu.style.backdropFilter = DEFAULT_MENU_THEME.backdropFilter || '';
-  menu.style.setProperty('-webkit-backdrop-filter', DEFAULT_MENU_THEME.backdropFilter || ''); // Safari support
-  menu.style.borderRadius = DEFAULT_MENU_THEME.borderRadius;
-  menu.style.boxShadow = DEFAULT_MENU_THEME.boxShadow;
-  menu.style.border = DEFAULT_MENU_THEME.border;
-
-  // Use captured font metrics to ensure readable scale, but prefer our premium font stack
-  menu.style.fontFamily = DEFAULT_MENU_THEME.fontFamily;
-  menu.style.fontSize = currentMenuTheme.fontSize; // Match size
-  menu.style.fontWeight = DEFAULT_MENU_THEME.fontWeight;
-  menu.style.color = DEFAULT_MENU_THEME.color;
-
-  // Animation for open
-  menu.style.transformOrigin = 'top left';
-  menu.style.animation = 'gp-scale-in 0.15s cubic-bezier(0.2, 0, 0.13, 1.5)';
-
-  if (!document.getElementById('gp-submenu-styles')) {
-    const style = document.createElement('style');
-    style.id = 'gp-submenu-styles';
-    style.textContent = `
-      @keyframes gp-scale-in {
-        from { opacity: 0; transform: scale(0.95); }
-        to { opacity: 1; transform: scale(1); }
-      }
-    `;
-    document.head.appendChild(style);
-  }
-}
-
-function captureMenuTheme(menuRoot: HTMLElement, styleSource: HTMLElement | null) {
-  const menuStyle = window.getComputedStyle(menuRoot);
-  const itemStyle = styleSource ? window.getComputedStyle(styleSource) : menuStyle;
-  const itemRect = styleSource ? styleSource.getBoundingClientRect() : null;
-
-  const background = normalizeColor(menuStyle.backgroundColor) || DEFAULT_MENU_THEME.background;
-  const borderRadius = normalizeRadius(menuStyle.borderRadius) || DEFAULT_MENU_THEME.borderRadius;
-  const boxShadow = menuStyle.boxShadow !== 'none' ? menuStyle.boxShadow : DEFAULT_MENU_THEME.boxShadow;
-  const border = buildBorder(menuStyle);
-  const itemRadius = normalizeRadius(itemStyle.borderRadius) || DEFAULT_MENU_THEME.itemRadius;
-  const itemPadding = normalizePadding(itemStyle) || DEFAULT_MENU_THEME.itemPadding;
-  const itemHeight = itemRect && itemRect.height > 0 ? `${Math.round(itemRect.height)}px` : DEFAULT_MENU_THEME.itemHeight;
-
-  currentMenuTheme = {
-    fontFamily: itemStyle.fontFamily || DEFAULT_MENU_THEME.fontFamily,
-    fontSize: itemStyle.fontSize || DEFAULT_MENU_THEME.fontSize,
-    fontWeight: itemStyle.fontWeight || DEFAULT_MENU_THEME.fontWeight,
-    color: normalizeColor(itemStyle.color) || DEFAULT_MENU_THEME.color,
-    lineHeight: normalizeLineHeight(itemStyle.lineHeight) || DEFAULT_MENU_THEME.lineHeight,
-    background,
-    borderRadius,
-    boxShadow,
-    border,
-    hover: DEFAULT_MENU_THEME.hover,
-    divider: DEFAULT_MENU_THEME.divider,
-    itemRadius,
-    itemPadding,
-    itemHeight
-  };
-}
-
-function normalizeColor(value: string): string {
-  if (!value) return '';
-  const normalized = value.trim().toLowerCase();
-  if (normalized === 'transparent' || normalized === 'rgba(0, 0, 0, 0)') {
-    return '';
-  }
-  return value;
-}
-
-function normalizeRadius(value: string): string {
-  if (!value) return '';
-  if (value === '0px') return '';
-  return value;
-}
-
-function normalizeLineHeight(value: string): string {
-  if (!value) return '';
-  if (value === 'normal') return '';
-  return value;
-}
-
-function normalizePadding(style: CSSStyleDeclaration): string {
-  const top = style.paddingTop;
-  const right = style.paddingRight;
-  const bottom = style.paddingBottom;
-  const left = style.paddingLeft;
-  if (!top || !right || !bottom || !left) {
-    return '';
-  }
-  if (top === '0px' && right === '0px' && bottom === '0px' && left === '0px') {
-    return '';
-  }
-  return `${top} ${right} ${bottom} ${left}`;
-}
-
-function buildBorder(style: CSSStyleDeclaration): string {
-  const width = style.borderWidth;
-  const borderStyle = style.borderStyle;
-  const color = normalizeColor(style.borderColor);
-  if (width && width !== '0px' && borderStyle && borderStyle !== 'none' && color) {
-    return `${width} ${borderStyle} ${color}`;
-  }
-  return DEFAULT_MENU_THEME.border;
 }
