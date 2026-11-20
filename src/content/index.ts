@@ -525,6 +525,9 @@ function installNativeDragHandlers() {
       .catch(showMoveError);
   });
 
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && getActiveDraggedChat()) clearDragFeedback();
+  }, true);
   document.addEventListener('dragend', clearDragFeedback);
   window.addEventListener('blur', clearDragFeedback);
 }
