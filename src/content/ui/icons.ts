@@ -1,6 +1,12 @@
 import { isProjectColor } from '../../shared/storage';
+import { ProjectIcon } from '../../shared/types';
+import { SOLID_PROJECT_ICONS } from './solidProjectIcons';
 
-﻿import { ProjectIcon } from '../../shared/types';
+export const PROJECT_ICON_RENDER_CSS = `
+  [data-gp-icon-solid],
+  :host([data-gp-solid-project-icons]) [data-gp-icon-outline] { display: none; }
+  :host([data-gp-solid-project-icons]) [data-gp-icon-solid] { display: inline; }
+`;
 
 export interface IconOption {
   id: ProjectIcon;
@@ -210,8 +216,9 @@ export function renderIconSvg(iconId: ProjectIcon, colorOverride?: string): stri
   const color = resolveProjectIconColor(colorOverride) || 'currentColor';
   return `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" 
-         fill="none" stroke="${color}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      ${option.svg}
+         stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <g data-gp-icon-outline fill="none" stroke="${color}">${option.svg}</g>
+      <g data-gp-icon-solid fill="${color}" stroke="none">${SOLID_PROJECT_ICONS[option.id]}</g>
     </svg>
   `;
 }

@@ -54,8 +54,11 @@ export interface ChatRef {
 
 export type NativeChatMetadata = Pick<ChatRef, 'conversationId' | 'title' | 'lastUrl'>;
 
+export type ProjectIconStyle = 'outline' | 'solid';
+
 export interface UiPrefs {
   projectsCollapsed: boolean;
+  projectIconStyle: ProjectIconStyle;
 }
 
 export interface StoredState {

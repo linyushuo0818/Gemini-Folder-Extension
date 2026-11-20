@@ -1,7 +1,8 @@
-import { ChatRef, Project, ProjectIcon, RuntimeState } from '../../shared/types';
+import { ChatRef, Project, ProjectIcon, ProjectIconStyle, RuntimeState } from '../../shared/types';
 import { exportAllData, triggerImport } from '../../shared/backup';
-import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg } from './icons';
+import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg, PROJECT_ICON_RENDER_CSS } from './icons';
 import { showSurface, hideSurface, setSurfaceOrigin, installMotionStyles, shouldAnimateMotion, MOTION_EASE } from './motion';
+import { PROJECT_ICON_STYLE_CSS } from './projectIconStyle';
 import { PANEL_TITLE_TYPOGRAPHY } from './typography';
 import { SURFACE_THEME_CSS } from './surfaceTheme';
 import { PANEL_GEOMETRY_CSS, RADIUS_TOKENS_CSS } from './radii';
@@ -17,6 +18,7 @@ interface ProjectsPanelOptions {
   onToggleProjectExpand: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onToggleCollapse: (collapsed: boolean) => void;
+  onSetProjectIconStyle: (style: ProjectIconStyle) => Promise<void>;
   onRemoveChatFromProject: (conversationId: string) => Promise<void>;
   onMoveChatToProject: (conversationId: string, projectId: string) => Promise<void>;
 }
@@ -63,8 +65,28 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   let structureSignature = '';
   let pinnedSnapshot = new Map<string, boolean>();
 
+  const iconStyleInputs = modal.element.querySelectorAll<HTMLInputElement>('[name="gp-project-icon-style"]');
+  function syncProjectIconStyle(style: ProjectIconStyle) {
+    const solid = style === 'solid';
+    options.shadow.host.toggleAttribute('data-gp-solid-project-icons', solid);
+    options.overlayShadow.host.toggleAttribute('data-gp-solid-project-icons', solid);
+    iconStyleInputs.forEach((input) => { input.checked = input.value === style; });
+  }
+
+  modal.element.addEventListener('change', (event) => {
+    const input = event.target;
+    if (!(input instanceof HTMLInputElement) || input.name !== 'gp-project-icon-style') return;
+    const style = input.value === 'solid' ? 'solid' : 'outline';
+    void options.onSetProjectIconStyle(style).catch((error) => {
+      console.warn('[Gemini Projects] Could not change project icon style', error);
+      syncProjectIconStyle(currentState?.uiPrefs.projectIconStyle ?? 'outline');
+      showToast('Could not change icon style. Please try again.');
+    });
+  }, { signal: lifecycleController.signal });
+
   function render(state: RuntimeState) {
     currentState = state;
+    syncProjectIconStyle(state.uiPrefs.projectIconStyle);
     const signature = JSON.stringify([
       state.projects, [...state.chatIndex.values()],
       [...state.nativeConversationIds], state.nativeChatsReady,
@@ -618,6 +640,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
     style.dataset.gp = 'panel';
     style.textContent = `
       ${RADIUS_TOKENS_CSS}
+      ${PROJECT_ICON_RENDER_CSS}
       :host {
         all: initial;
         color: var(--gp-fg, #1f1f1f);
@@ -1111,6 +1134,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
     style.dataset.gp = 'overlay';
     style.textContent = `
       ${SURFACE_THEME_CSS}
+      ${PROJECT_ICON_RENDER_CSS}
+      ${PROJECT_ICON_STYLE_CSS}
       :host {
         all: initial;
         color-scheme: light;
@@ -1637,7 +1662,19 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
         </div>
       </div>
       <div class="gp-template-row" data-gp-template-row role="group" aria-labelledby="gp-icon-label">
-        <span class="gp-choice-label" id="gp-icon-label">Icon</span>
+        <div class="gp-icon-heading">
+          <span class="gp-choice-label" id="gp-icon-label">Icon</span>
+          <div class="gp-icon-style-switcher" role="radiogroup" aria-label="Icon style for all projects">
+            <label class="gp-icon-style-option">
+              <input type="radio" name="gp-project-icon-style" value="outline" checked>
+              <span>Outline</span>
+            </label>
+            <label class="gp-icon-style-option">
+              <input type="radio" name="gp-project-icon-style" value="solid">
+              <span>Solid</span>
+            </label>
+          </div>
+        </div>
         <div class="gp-template-grid">
           ${ICON_OPTIONS.map((icon) => `
             <button class="gp-template-chip" type="button" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}" title="${icon.label}" aria-label="${icon.label}" aria-pressed="false">

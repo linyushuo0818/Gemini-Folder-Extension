@@ -36,7 +36,7 @@ export function createEmptyState(): StoredState {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     projects: [],
     chatIndex: {},
-    uiPrefs: { projectsCollapsed: false }
+    uiPrefs: { projectsCollapsed: false, projectIconStyle: 'outline' }
   };
 }
 
@@ -125,8 +125,13 @@ export function normalizeProjectsState(raw: unknown, strict = false): StoredStat
     };
   }
 
-  const uiPrefs = {
-    projectsCollapsed: raw.uiPrefs?.projectsCollapsed === true
+  const projectIconStyle = raw.uiPrefs?.projectIconStyle;
+  if (strict && projectIconStyle !== undefined && projectIconStyle !== 'outline' && projectIconStyle !== 'solid') {
+    return null;
+  }
+  const uiPrefs: StoredState['uiPrefs'] = {
+    projectsCollapsed: raw.uiPrefs?.projectsCollapsed === true,
+    projectIconStyle: projectIconStyle === 'solid' ? 'solid' : 'outline'
   };
 
   return {

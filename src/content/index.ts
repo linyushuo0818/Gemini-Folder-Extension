@@ -1,5 +1,5 @@
-import { BackgroundRequest, BackgroundResponse, NativeChatMetadata, Project, RuntimeState, StoredState } from '../shared/types';
-import { isSafeId, normalizeChatUrl, STORAGE_KEY } from '../shared/storage';
+import { BackgroundRequest, BackgroundResponse, NativeChatMetadata, Project, ProjectIconStyle, RuntimeState, StoredState } from '../shared/types';
+import { createEmptyState, isSafeId, normalizeChatUrl, STORAGE_KEY } from '../shared/storage';
 import { runtimeSendMessage, webext } from '../shared/webext';
 import {
   findChatRowElement,
@@ -37,7 +37,7 @@ const state: RuntimeState = {
     contextMenuOpen: false,
     pendingMoveConversationId: null
   },
-  uiPrefs: { projectsCollapsed: false }
+  uiPrefs: createEmptyState().uiPrefs
 };
 
 let panel: ReturnType<typeof createProjectsPanel> | null = null;
@@ -85,7 +85,7 @@ async function loadInitialState() {
     stateReady = true;
     state.projects = response.state.projects;
     state.chatIndex = new Map(Object.entries(response.state.chatIndex));
-    state.uiPrefs = response.state.uiPrefs || { projectsCollapsed: false };
+    state.uiPrefs = response.state.uiPrefs;
   } catch (error) {
     console.warn('[gemini-projects] getState failed', error);
   } finally {
@@ -105,7 +105,7 @@ function installStorageSync() {
     stateReady = true;
     state.projects = next.projects;
     state.chatIndex = new Map(Object.entries(next.chatIndex));
-    state.uiPrefs = next.uiPrefs || { projectsCollapsed: false };
+    state.uiPrefs = next.uiPrefs;
     applyNativeChatVisibility();
     renderPanelIfChanged();
   });
@@ -227,6 +227,7 @@ function ensurePanel() {
       onToggleProjectExpand: handleToggleProjectExpand,
       onDeleteProject: handleDeleteProject,
       onToggleCollapse: handleToggleCollapse,
+      onSetProjectIconStyle: handleSetProjectIconStyle,
       onRemoveChatFromProject: (conversationId) => handleMoveChat(conversationId, null),
       onMoveChatToProject: handleMoveChat
     });
@@ -407,6 +408,11 @@ function handleToggleCollapse(collapsed: boolean) {
   state.uiPrefs.projectsCollapsed = collapsed;
   sendMessage({ type: 'updateUiPrefs', prefs: { projectsCollapsed: collapsed } }).catch(() => undefined);
   renderPanelIfChanged(true);
+}
+
+async function handleSetProjectIconStyle(projectIconStyle: ProjectIconStyle) {
+  const response = await sendMessage({ type: 'updateUiPrefs', prefs: { projectIconStyle } });
+  if (!response.ok) throw new Error(response.error);
 }
 
 async function handleDeleteProject(projectId: string) {
@@ -617,7 +623,7 @@ function getRenderKey(): string {
     })
     .sort()
     .join('|');
-  return `${state.activeConversationId || ''}|${state.uiPrefs.projectsCollapsed}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;
+  return `${state.activeConversationId || ''}|${state.uiPrefs.projectsCollapsed}|${state.uiPrefs.projectIconStyle}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {
