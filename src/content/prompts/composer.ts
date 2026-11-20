@@ -1,10 +1,42 @@
 
-export function insertPrompt(text: string): boolean {
+export function getComposerPlainText(composer: HTMLElement): string {
+    if (composer instanceof HTMLTextAreaElement) {
+        return composer.value;
+    }
+    return (composer.textContent || '').replace(/[\u200B-\u200D\uFEFF]/g, '');
+}
+
+export function clearSlashTrigger(composer: HTMLElement): void {
+    if (getComposerPlainText(composer).trim() !== '/') return;
+    composer.focus();
+    if (composer instanceof HTMLTextAreaElement) {
+        composer.value = '';
+        composer.dispatchEvent(new Event('input', { bubbles: true }));
+        return;
+    }
+    const selection = window.getSelection();
+    if (selection) {
+        const range = document.createRange();
+        range.selectNodeContents(composer);
+        selection.removeAllRanges();
+        selection.addRange(range);
+    }
+    document.execCommand('delete', false);
+    if (getComposerPlainText(composer).trim() === '/') {
+        composer.textContent = '';
+    }
+    composer.dispatchEvent(new Event('input', { bubbles: true }));
+}
+
+export function insertPrompt(text: string, options?: { stripLeadingSlash?: boolean }): boolean {
     const composer = findComposer();
     if (!composer) {
-        // eslint-disable-next-line no-console
         console.error('[Gemini Projects] No composer found');
         return false;
+    }
+
+    if (options?.stripLeadingSlash) {
+        clearSlashTrigger(composer);
     }
 
     focusComposer(composer);
@@ -20,7 +52,7 @@ export function insertPrompt(text: string): boolean {
     return true;
 }
 
-function focusComposer(composer: HTMLElement) {
+export function focusComposer(composer: HTMLElement) {
     composer.focus();
     if (!composer.isContentEditable) return;
     const selection = window.getSelection();
@@ -32,7 +64,7 @@ function focusComposer(composer: HTMLElement) {
     selection.addRange(range);
 }
 
-function findComposer(): HTMLElement | null {
+export function findComposer(): HTMLElement | null {
     const active = document.activeElement as HTMLElement | null;
     if (isUsableComposer(active)) {
         return active;

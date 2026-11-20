@@ -7,6 +7,7 @@ import { PANEL_TITLE_TYPOGRAPHY } from './typography';
 import { SURFACE_THEME_CSS } from './surfaceTheme';
 import { PANEL_GEOMETRY_CSS, RADIUS_TOKENS_CSS } from './radii';
 import { observeGeminiTheme } from './theme';
+import { clearActiveDraggedChat, getActiveDraggedChat, setActiveDraggedChat } from '../dom/dragState';
 
 interface ProjectsPanelOptions {
   shadow: ShadowRoot;
@@ -208,6 +209,82 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         event.preventDefault();
         target.click();
       }
+    }, { signal: panelEventsController.signal });
+
+    const clearDropTargets = () => {
+      panelRoot.querySelectorAll<HTMLElement>('.gp-drop-target').forEach((node) => node.classList.remove('gp-drop-target'));
+    };
+
+    panelRoot.addEventListener('dragstart', (event) => {
+      const target = event.target as HTMLElement | null;
+      const chatRow = target?.closest<HTMLElement>('[data-gp-chat-id]');
+      if (!chatRow || target?.closest('[data-gp-action="chat-menu"]')) return;
+      const conversationId = chatRow.dataset.gpChatId;
+      const sourceProjectId = chatRow.dataset.gpProjectId || null;
+      if (!conversationId) return;
+
+      setActiveDraggedChat({ conversationId, sourceProjectId });
+      chatRow.classList.add('gp-dragging');
+      if (event.dataTransfer) {
+        event.dataTransfer.setData('application/x-gemini-chat-id', conversationId);
+        event.dataTransfer.effectAllowed = 'move';
+      }
+    }, { signal: panelEventsController.signal });
+
+    panelRoot.addEventListener('dragover', (event) => {
+      const dragged = getActiveDraggedChat();
+      if (!dragged) return;
+      const target = event.target as HTMLElement | null;
+      const projectEl = target?.closest<HTMLElement>('.gp-project');
+      const targetProjectId = projectEl?.dataset.gpProjectId;
+      if (!projectEl || !targetProjectId || targetProjectId === dragged.sourceProjectId) {
+        clearDropTargets();
+        return;
+      }
+
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      const row = projectEl.querySelector<HTMLElement>('.gp-project-row');
+      if (row && !row.classList.contains('gp-drop-target')) {
+        clearDropTargets();
+        row.classList.add('gp-drop-target');
+      }
+    }, { signal: panelEventsController.signal });
+
+    panelRoot.addEventListener('dragleave', (event) => {
+      const target = event.target as HTMLElement | null;
+      const projectEl = target?.closest<HTMLElement>('.gp-project');
+      const related = event.relatedTarget as Node | null;
+      if (!projectEl || !related || !projectEl.contains(related)) {
+        projectEl?.querySelector<HTMLElement>('.gp-project-row')?.classList.remove('gp-drop-target');
+      }
+    }, { signal: panelEventsController.signal });
+
+    panelRoot.addEventListener('drop', (event) => {
+      const dragged = getActiveDraggedChat();
+      clearDropTargets();
+      if (!dragged) return;
+      const target = event.target as HTMLElement | null;
+      const projectEl = target?.closest<HTMLElement>('.gp-project');
+      const targetProjectId = projectEl?.dataset.gpProjectId;
+      if (!targetProjectId || targetProjectId === dragged.sourceProjectId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      clearActiveDraggedChat();
+      panelRoot.querySelectorAll<HTMLElement>('.gp-dragging').forEach((node) => node.classList.remove('gp-dragging'));
+
+      const targetProject = state.projects.find((item) => item.id === targetProjectId);
+      options.onMoveChatToProject(dragged.conversationId, targetProjectId);
+      if (targetProject) {
+        showToast(`Moved to ${targetProject.name}`);
+      }
+    }, { signal: panelEventsController.signal });
+
+    panelRoot.addEventListener('dragend', () => {
+      clearDropTargets();
+      panelRoot.querySelectorAll<HTMLElement>('.gp-dragging').forEach((node) => node.classList.remove('gp-dragging'));
+      clearActiveDraggedChat();
     }, { signal: panelEventsController.signal });
   }
 
@@ -505,13 +582,13 @@ export function renderProjectsSection(
                 const isActive = activeConversationId !== null && chat.conversationId === activeConversationId;
                 const isMissing = nativeChatsReady && !isActive && !nativeConversationIds.has(chat.conversationId);
                 return `
-                        <div class="gp-chat-row ${isActive ? 'active' : ''} ${isMissing ? 'missing' : ''}" data-gp-chat-id="${chat.conversationId}" data-gp-project-id="${project.id}">
-                          <a class="gp-chat-link" href="${escapeHtml(chat.lastUrl || `/app/${chat.conversationId}`)}" ${isMissing ? 'title="Not in currently loaded history — click to open"' : ''}>
+                        <div class="gp-chat-row ${isActive ? 'active' : ''} ${isMissing ? 'missing' : ''}" draggable="true" data-gp-chat-id="${chat.conversationId}" data-gp-project-id="${project.id}">
+                          <a class="gp-chat-link" draggable="false" href="${escapeHtml(chat.lastUrl || `/app/${chat.conversationId}`)}" ${isMissing ? 'title="Not in currently loaded history — click to open"' : ''}>
                             <span class="gp-chat-color" aria-hidden="true"></span>
                             <span class="gp-chat-title">${escapeHtml(chat.title || 'Untitled chat')}</span>
                             ${isMissing ? '<span class="gp-chat-missing">Missing</span>' : ''}
                           </a>
-                          <button class="gp-chat-kebab" data-gp-action="chat-menu" aria-label="Chat menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                          <button class="gp-chat-kebab" draggable="false" data-gp-action="chat-menu" aria-label="Chat menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
                         </div>
                       `
               }
@@ -708,6 +785,15 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
 
       .gp-row.gp-force-hover {
         background: var(--gp-bg-hover);
+      }
+
+      .gp-row.gp-drop-target {
+        background: var(--gp-bg-active);
+        box-shadow: inset 0 0 0 1.5px var(--gp-fg-muted);
+      }
+
+      .gp-chat-row.gp-dragging {
+        opacity: 0.45;
       }
 
       /* Removed: Active state background creates visual clutter with stacked pill shapes.

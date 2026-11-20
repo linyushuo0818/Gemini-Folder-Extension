@@ -11,12 +11,14 @@ import {
   injectProjectsSection
 } from './dom/anchors';
 import { attachChatMenuEnhancer } from './dom/menus';
+import { clearActiveDraggedChat, getActiveDraggedChat, setActiveDraggedChat } from './dom/dragState';
 import { initGeminiResponseFolding } from './gemini/responseFolding';
 import * as prompts from './prompts';
 import { createProjectsPanel } from './ui/projectsPanel';
 
 const BUILD_MARKER = webext.runtime?.getManifest?.()?.version || '2.0.7';
 const HIDDEN_ATTR = 'data-gp-native-hidden';
+const DROP_UNASSIGN_ATTR = 'data-gp-drop-unassign';
 const RESCAN_DELAY_MS = 350;
 const PANEL_READY_RETRY_MS = 120;
 const PANEL_READY_RETRY_LIMIT = 40;
@@ -59,6 +61,7 @@ async function bootstrap() {
   installNativeHideStyle();
   await loadInitialState();
   installStorageSync();
+  installNativeDragHandlers();
   observeDocumentForSidebar();
   installLifecycleRescans();
   runStage('responseFolding', () => initGeminiResponseFolding());
@@ -475,11 +478,77 @@ function normalizeTitle(value: string): string {
     .trim();
 }
 
+function installNativeDragHandlers() {
+  const clearUnassignHighlight = () => {
+    chatsList?.removeAttribute(DROP_UNASSIGN_ATTR);
+  };
+
+  document.addEventListener('dragstart', (event) => {
+    if (!chatsList) return;
+    const target = event.target as HTMLElement | null;
+    if (!target || target.closest('#gemini-projects-host')) return;
+    if (!chatsList.contains(target)) return;
+
+    const link = target.closest<HTMLAnchorElement>('a[href]') || target.querySelector<HTMLAnchorElement>('a[href]');
+    const row = findChatRowElement(link || target, chatsList);
+    const conversationId = (link?.href ? getConversationId(link.href) : null) || getConversationIdFromChatRow(row);
+    if (!conversationId) return;
+
+    setActiveDraggedChat({ conversationId, sourceProjectId: null });
+    if (event.dataTransfer) {
+      event.dataTransfer.setData('application/x-gemini-chat-id', conversationId);
+      event.dataTransfer.effectAllowed = 'move';
+    }
+  });
+
+  document.addEventListener('dragover', (event) => {
+    const dragged = getActiveDraggedChat();
+    if (!dragged || !dragged.sourceProjectId || !chatsList) {
+      clearUnassignHighlight();
+      return;
+    }
+    const target = event.target as HTMLElement | null;
+    if (target && chatsList.contains(target) && !target.closest('#gemini-projects-host')) {
+      event.preventDefault();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+      chatsList.setAttribute(DROP_UNASSIGN_ATTR, 'true');
+    } else {
+      clearUnassignHighlight();
+    }
+  });
+
+  document.addEventListener('drop', (event) => {
+    const dragged = getActiveDraggedChat();
+    clearUnassignHighlight();
+    if (!dragged || !dragged.sourceProjectId || !chatsList) return;
+    const target = event.target as HTMLElement | null;
+    if (!target || !chatsList.contains(target) || target.closest('#gemini-projects-host')) return;
+
+    event.preventDefault();
+    clearActiveDraggedChat();
+    handleMoveChat(dragged.conversationId, null)
+      .then(() => panel?.showToast('Removed from project'))
+      .catch((error) => console.warn('[gemini-projects] drop unassign failed', error));
+  });
+
+  document.addEventListener('dragend', () => {
+    clearUnassignHighlight();
+    clearActiveDraggedChat();
+  });
+}
+
 function installNativeHideStyle() {
   if (document.getElementById('gp-native-hide-style')) return;
   const style = document.createElement('style');
   style.id = 'gp-native-hide-style';
-  style.textContent = `[${HIDDEN_ATTR}="true"] { display: none !important; }`;
+  style.textContent = `
+    [${HIDDEN_ATTR}="true"] { display: none !important; }
+    [${DROP_UNASSIGN_ATTR}="true"] {
+      outline: 1.5px dashed rgba(128, 128, 128, 0.45);
+      outline-offset: 2px;
+      border-radius: 12px;
+    }
+  `;
   document.documentElement.appendChild(style);
 }
 

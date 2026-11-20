@@ -1,5 +1,5 @@
 import { Prompt, promptStore } from './store';
-import { insertPrompt } from './composer';
+import { focusComposer, insertPrompt } from './composer';
 import { showSurface, hideSurface, setSurfaceOrigin } from '../ui/motion';
 import { PANEL_TITLE_TYPOGRAPHY } from '../ui/typography';
 import { SURFACE_THEME_CSS } from '../ui/surfaceTheme';
@@ -7,6 +7,11 @@ import { PANEL_GEOMETRY_CSS } from '../ui/radii';
 import { observeGeminiTheme, resolveGeminiTheme } from '../ui/theme';
 
 const PICKER_ID = 'gp-prompt-picker-root';
+
+export interface PromptPickerOpenOptions {
+  triggeredBySlash?: boolean;
+  returnComposer?: HTMLElement | null;
+}
 
 const ICONS = {
   search: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
@@ -48,6 +53,8 @@ export class PromptPicker {
   private modalDeleteConfirm = false;
   private modalDeleteTimer: number | null = null;
   private editingPrompt: Prompt | null = null;
+  private triggeredBySlash = false;
+  private returnComposer: HTMLElement | null = null;
 
   private constructor() {
     this.host = document.createElement('div');
@@ -89,8 +96,13 @@ export class PromptPicker {
         if (modalOpen) {
           this.closeModal();
         } else {
+          const composer = this.returnComposer;
           this.close();
-          document.querySelector<HTMLButtonElement>('[data-gp-prompt-btn]')?.focus();
+          if (composer?.isConnected) {
+            focusComposer(composer);
+          } else {
+            document.querySelector<HTMLButtonElement>('[data-gp-prompt-btn]')?.focus();
+          }
         }
         return;
       }
@@ -150,21 +162,23 @@ export class PromptPicker {
     return PromptPicker.instance;
   }
 
-  public toggle(rect: DOMRect) {
+  public toggle(rect: DOMRect, options?: PromptPickerOpenOptions) {
     if (this.isOpen) {
       this.close();
     } else {
-      this.open(rect);
+      this.open(rect, options);
     }
   }
 
-  public open(rect: DOMRect) {
+  public open(rect: DOMRect, options?: PromptPickerOpenOptions) {
     this.host.dataset.gpTheme = resolveGeminiTheme();
     this.isOpen = true;
     this.triggerRect = rect;
     this.selectedPromptId = null;
     this.visiblePromptIds = [];
     this.searchQuery = '';
+    this.triggeredBySlash = options?.triggeredBySlash === true;
+    this.returnComposer = options?.returnComposer ?? null;
 
     this.host.style.display = 'block';
     this.host.style.pointerEvents = 'auto';
@@ -186,6 +200,8 @@ export class PromptPicker {
 
   public close() {
     this.isOpen = false;
+    this.triggeredBySlash = false;
+    this.returnComposer = null;
     this.host.style.pointerEvents = 'none';
     const picker = this.shadow.querySelector<HTMLElement>('.picker');
     if (picker) {
@@ -198,7 +214,7 @@ export class PromptPicker {
   private updatePosition() {
     if (!this.triggerRect) return;
     const margin = 12;
-    const gap = 12;
+    const gap = 10;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
     const mobile = viewportWidth <= 720;
@@ -213,27 +229,26 @@ export class PromptPicker {
     }
 
     let left = this.triggerRect.left;
-    let top = this.triggerRect.bottom + gap;
+    let top = this.triggerRect.top - height - gap;
 
     if (mobile) {
       left = margin;
       top = viewportHeight - height - 16;
+    } else if (top >= margin) {
+      // 优先悬浮在输入区上方并左对齐入口，不遮挡当前输入框内容。
+      left = Math.max(margin, Math.min(this.triggerRect.left, viewportWidth - width - margin));
     } else {
       const rightSide = this.triggerRect.right + gap;
       const leftSide = this.triggerRect.left - width - gap;
-      const canShowRight = rightSide + width <= viewportWidth - margin;
-      const canShowLeft = leftSide >= margin;
-
-      if (canShowRight) {
+      if (rightSide + width <= viewportWidth - margin) {
         left = rightSide;
-      } else if (canShowLeft) {
+      } else if (leftSide >= margin) {
         left = leftSide;
       } else {
         const centered = this.triggerRect.left + this.triggerRect.width / 2 - width / 2;
         left = Math.max(margin, Math.min(centered, viewportWidth - width - margin));
       }
-
-      const preferredTop = this.triggerRect.top - 12;
+      const preferredTop = this.triggerRect.bottom + gap;
       top = Math.max(margin, Math.min(preferredTop, viewportHeight - height - margin));
     }
 
@@ -392,7 +407,7 @@ export class PromptPicker {
         <div class="list" id="list-container"></div>
         <div class="footer-action">
           <div class="footer-buttons">
-            <span class="footer-hint">Select to insert</span>
+            <span class="footer-hint">${/Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent) ? 'Type / or ⌥/' : 'Type / or Alt+/'}</span>
             <div class="primary-cluster">
               <button class="btn-orb btn-new" data-gp-press id="btn-primary-action" title="New Prompt">
                 ${ICONS.plus}<span>New Prompt</span>
@@ -720,7 +735,9 @@ export class PromptPicker {
   }
 
   private insertPromptContent(text: string): boolean {
-    if (insertPrompt(text)) return true;
+    const stripLeadingSlash = this.triggeredBySlash;
+    this.triggeredBySlash = false;
+    if (insertPrompt(text, { stripLeadingSlash })) return true;
     return this.insertPromptFallback(text);
   }
 
