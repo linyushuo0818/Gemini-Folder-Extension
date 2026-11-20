@@ -3,7 +3,6 @@ import { captureComposer, ComposerSession, insertPrompt, isCurrentComposer, rest
 import { showSurface, hideSurface, setSurfaceOrigin } from '../ui/motion';
 import { PANEL_TITLE_TYPOGRAPHY } from '../ui/typography';
 import { SURFACE_THEME_CSS } from '../ui/surfaceTheme';
-import { PANEL_GEOMETRY_CSS } from '../ui/radii';
 import { observeGeminiTheme, resolveGeminiTheme } from '../ui/theme';
 
 const PICKER_ID = 'gp-prompt-picker-root';
@@ -197,39 +196,40 @@ export class PromptPicker {
     const gap = 10;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const above = Math.floor(rect.top - gap - margin);
-    const below = Math.floor(viewportHeight - rect.bottom - gap - margin);
-    const placeAbove = above >= 160 || above >= below;
-    const capacity = Math.max(0, placeAbove ? above : below);
     const width = Math.max(0, Math.min(400, viewportWidth - margin * 2));
     const left = Math.round(Math.max(margin, Math.min(rect.left, viewportWidth - width - margin)));
     // 侧栏过渡只改变输入区的位置，已打开的 Picker 仍需重新锚定。
-    const geometry = [left, width, capacity, Math.round(rect.top), Math.round(rect.bottom), placeAbove].join();
+    const geometry = [left, width, viewportHeight, Math.round(rect.top), Math.round(rect.bottom)].join();
     if (geometry === this.geometry) return;
+    const widthChanged = picker.style.width !== `${width}px`;
+    if (widthChanged) picker.style.width = `${width}px`;
+    if (widthChanged || !this.geometry) this.applyDynamicHeight(picker);
     this.geometry = geometry;
-    picker.style.width = `${width}px`;
-    picker.style.maxHeight = `${capacity}px`;
-    const top = Math.max(margin, Math.round(placeAbove ? rect.top - gap - picker.offsetHeight : rect.bottom + gap));
+
+    const height = picker.offsetHeight;
+    const above = rect.top - gap - margin;
+    const below = viewportHeight - rect.bottom - gap - margin;
+    const placeAbove = height <= above || above >= below;
+    const anchoredTop = placeAbove ? rect.top - gap - height : rect.bottom + gap;
+    // 两侧都放不下时让浮层向视口内移动，只有视口高度不足时才滚动。
+    const top = Math.round(Math.max(margin, Math.min(anchoredTop, viewportHeight - margin - height)));
     this.host.style.left = `${left}px`;
     this.host.style.top = `${top}px`;
     setSurfaceOrigin(picker, rect, left, top);
   }
 
-  private applyDynamicHeight(itemCount: number) {
-    const picker = this.shadow.querySelector('.picker') as HTMLElement | null;
-    const list = this.shadow.getElementById('list-container') as HTMLElement | null;
-    if (!picker || !list) return;
-
-    const header = picker.querySelector('.header') as HTMLElement | null;
-    const footer = picker.querySelector('.footer-action') as HTMLElement | null;
-    const headerHeight = header?.offsetHeight || 74;
-    const footerHeight = footer?.offsetHeight || 56;
-    const visibleItems = Array.from(list.querySelectorAll<HTMLElement>('.item')).slice(0, 4);
-    const listTarget = itemCount <= 0 ? 120 : visibleItems.reduce((height, item) => height + item.offsetHeight + 4, 8);
-    const target = Math.min(headerHeight + footerHeight + listTarget, 640);
-    picker.style.height = `${Math.round(target)}px`;
-    this.geometry = '';
-    this.updatePosition();
+  private applyDynamicHeight(picker: HTMLElement) {
+    const header = picker.querySelector<HTMLElement>('.header')!;
+    const list = picker.querySelector<HTMLElement>('.list')!;
+    const footer = picker.querySelector<HTMLElement>('.footer-action')!;
+    const listPadding = parseFloat(getComputedStyle(list).paddingBottom);
+    const rows = Array.from(list.children).slice(0, 4);
+    const listHeight = rows.reduce((height, row) => {
+      const styles = getComputedStyle(row);
+      return height + parseFloat(styles.height) + parseFloat(styles.marginBottom);
+    }, listPadding);
+    const borders = picker.offsetHeight - picker.clientHeight;
+    picker.style.height = `${Math.ceil(header.offsetHeight + listHeight + footer.offsetHeight + borders)}px`;
   }
 
   private getStyles(): string {
@@ -247,24 +247,22 @@ export class PromptPicker {
         outline: 2px solid var(--gp-focus); outline-offset: 2px;
       }
       .picker {
-        --gp-panel-inset: 24px;
-        --gp-panel-action-height: 36px;
-        ${PANEL_GEOMETRY_CSS}
-        --gp-list-inset: var(--gp-panel-inset);
-        --gp-radius-md: var(--gp-radius-control);
         width: 400px; max-height: calc(100dvh - 24px); position: relative;
         display: flex; flex-direction: column; overflow: hidden;
         background: var(--gp-surface); color: var(--gp-fg);
-        border: var(--gp-panel-border) solid var(--gp-border);
+        border: .5px solid var(--gp-border); border-radius: var(--gp-radius-library);
         box-shadow: var(--gp-shadow);
         font-family: var(--gp-font-sans); font-size: 14px;
         --gp-motion-open: 150ms;
       }
-      .header { padding: var(--gp-panel-inset) var(--gp-panel-inset) 20px; flex-shrink: 0; }
-      .library-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; gap: 8px; }
+      .picker[data-gp-motion-state="open"]:has(+ .modal-overlay > .modal) {
+        opacity: 0; pointer-events: none; transform: scale(.97);
+      }
+      .header { padding: 16px 16px 12px; flex-shrink: 0; }
+      .library-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; gap: 8px; }
       .library-title, .modal-title { margin: 0; ${PANEL_TITLE_TYPOGRAPHY} }
       .library-count { font-size: 12px; color: var(--gp-fg-secondary); }
-      .search-row { border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-control); background: var(--gp-surface); }
+      .search-row { border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-control); background: var(--gp-surface-sunken); }
       .search-row:focus-within { border-color: var(--gp-focus); box-shadow: 0 0 0 1px var(--gp-focus); }
       .search-box { display: flex; align-items: center; height: 38px; padding: 0 12px; gap: 8px; }
       .search-icon { display: flex; color: var(--gp-fg-secondary); }
@@ -275,45 +273,46 @@ export class PromptPicker {
       .search-clear:hover { background: var(--gp-bg-hover); color: var(--gp-fg); }
       .search-clear svg { width: 14px; height: 14px; }
       .search-input::placeholder { color: var(--gp-fg-tertiary); }
-      .list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--gp-list-inset) 8px; scrollbar-width: thin; scrollbar-color: var(--gp-border) transparent; }
-      .empty-box { min-height: 100px; display: grid; place-content: center; padding: 16px; text-align: center; color: var(--gp-fg-secondary); font-size: 14px; }
-      .item { position: relative; border-radius: var(--gp-radius-md); margin-bottom: 4px; border: .5px solid transparent; transition: background var(--gp-transition); }
+      .list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 12px 8px; scrollbar-width: thin; scrollbar-color: var(--gp-border) transparent; }
+      .empty-box { min-height: 112px; display: grid; place-content: center; padding: 16px; text-align: center; color: var(--gp-fg-secondary); font-size: 14px; }
+      .item { position: relative; border-radius: var(--gp-radius-control); margin-bottom: 4px; border: .5px solid transparent; transition: background var(--gp-transition); }
       .item:hover, .item.selected, .item:focus-within { background: var(--gp-bg-active); }
       .list:has(.item:hover) .item.selected:not(:hover):not(:focus-within) { background: transparent; }
       .list:has(.item:hover) .item.selected:not(:hover):not(:focus-within) .item-actions { opacity: 0; pointer-events: none; }
-      .item-insert { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 16px; border-radius: var(--gp-radius-md); }
+      .item-insert { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 12px; border-radius: inherit; }
       .item-content { min-width: 0; }
       .item-head { display: flex; align-items: center; min-height: 24px; padding-right: 40px; margin-bottom: 4px; }
       .item-title { font-size: 14px; line-height: 19.6px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .item-preview { font-size: 14px; line-height: 19.6px; color: var(--gp-fg-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-      .item-actions { position: absolute; top: 12px; right: 12px; display: flex; opacity: 0; pointer-events: none; transition: opacity var(--gp-transition); }
+      .item-actions { position: absolute; top: 8px; right: 8px; display: flex; opacity: 0; pointer-events: none; transition: opacity var(--gp-transition); }
       .item:hover .item-actions, .item.selected .item-actions, .item:focus-within .item-actions { opacity: 1; pointer-events: auto; }
-      .item-action-btn { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: .5px solid var(--gp-border); border-radius: var(--gp-radius-circle); background: var(--gp-surface-elevated); color: var(--gp-fg-secondary); box-shadow: 0 1px 2px #0000000a; transition: background var(--gp-transition), color var(--gp-transition), box-shadow var(--gp-transition); }
-      .item-action-btn:hover { background: var(--gp-surface); color: var(--gp-fg); box-shadow: 0 2px 5px #00000014; }
+      .item-action-btn { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: .5px solid var(--gp-border); border-radius: var(--gp-radius-circle); background: var(--gp-surface); color: var(--gp-fg-secondary); box-shadow: 0 1px 2px #0000000a; transition: background var(--gp-transition), color var(--gp-transition), box-shadow var(--gp-transition); }
+      .item-action-btn:hover { background: var(--gp-bg-hover); color: var(--gp-fg); box-shadow: 0 2px 5px #00000014; }
       .item-action-btn svg { width: 16px; height: 16px; stroke-width: 1.75; }
-      .footer-action { flex-shrink: 0; padding: var(--gp-panel-action-inset); border-top: .5px solid var(--gp-border); }
+      .footer-action, .modal-footer { flex-shrink: 0; border-top: 1px solid var(--gp-border); background: var(--gp-surface-footer); }
+      .footer-action { padding: 14px 16px; }
       .footer-buttons { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
       .footer-hint { font-size: 12px; line-height: 16.8px; color: var(--gp-fg-secondary); }
       .btn-orb { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px; padding: 0 16px; border: .5px solid var(--gp-accent); border-radius: var(--gp-radius-pill); background: var(--gp-accent); color: var(--gp-accent-fg); font-size: 14px; font-weight: 600; transition: opacity var(--gp-transition); }
       .btn-orb:hover { opacity: .85; }
       .btn-orb svg { width: 16px; height: 16px; }
-      .modal-overlay { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--gp-backdrop); }
-      .modal { --gp-panel-inset: 32px; --gp-panel-top-radius: 16px; --gp-panel-action-height: 36px; ${PANEL_GEOMETRY_CSS} width: min(560px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; background: var(--gp-surface); border: var(--gp-panel-border) solid var(--gp-border); box-shadow: var(--gp-shadow); font: 14px var(--gp-font-sans); color: var(--gp-fg); }
-      .modal-header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding: var(--gp-panel-inset) var(--gp-panel-inset) 24px; }
-      .modal-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--gp-radius-circle); background: transparent; color: var(--gp-fg-secondary); }
+      .modal-overlay { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--gp-backdrop); backdrop-filter: var(--gp-backdrop-blur); }
+      .modal { --gp-panel-inset: 24px; width: min(560px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; background: var(--gp-surface); border: .5px solid var(--gp-border); border-radius: var(--gp-radius-modal); box-shadow: var(--gp-shadow); font: 14px var(--gp-font-sans); color: var(--gp-fg); }
+      .modal-header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding: var(--gp-panel-inset) var(--gp-panel-inset) 0; }
+      .modal-close { display: grid; place-items: center; flex: 0 0 32px; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--gp-radius-circle); background: transparent; color: var(--gp-fg-secondary); }
       .modal-close:hover { background: var(--gp-bg-hover); }
-      .modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 4px var(--gp-panel-inset) 20px; display: flex; flex-direction: column; gap: 20px; }
+      .modal-body { min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: var(--gp-panel-inset); display: flex; flex-direction: column; gap: 20px; }
       .modal-body > * { flex-shrink: 0; }
       .form-group { display: flex; flex-direction: column; gap: 8px; }
       .form-label { font-size: 14px; line-height: 19.6px; font-weight: 600; }
-      .form-input, .form-textarea { width: 100%; border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-control); background: var(--gp-surface); color: var(--gp-fg); padding: 10px 12px; font-size: 14px; line-height: 19.6px; }
+      .form-input, .form-textarea { width: 100%; border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-control); background: var(--gp-surface-sunken); color: var(--gp-fg); padding: 10px 12px; font-size: 14px; line-height: 19.6px; }
       .form-input { height: 40px; }
       .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--gp-focus); box-shadow: 0 0 0 1px var(--gp-focus); }
       .form-input::placeholder, .form-textarea::placeholder { color: var(--gp-fg-tertiary); }
       .form-textarea { display: block; height: clamp(120px, 28vh, 260px); resize: none; padding: 16px; }
       .content-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
       .textarea-token { color: var(--gp-fg-tertiary); font-size: 12px; white-space: nowrap; }
-      .modal-footer { flex-shrink: 0; padding: var(--gp-panel-action-inset); border-top: .5px solid var(--gp-border); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+      .modal-footer { padding: 14px var(--gp-panel-inset); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
       .modal-footer-left, .modal-footer-right { display: flex; align-items: center; gap: 8px; }
       .modal-footer-right { margin-left: auto; }
       .modal-footer .btn { white-space: nowrap; }
@@ -327,9 +326,6 @@ export class PromptPicker {
       .form-status { margin: 0; padding: 0 var(--gp-panel-inset) 12px; font-size: 12px; color: var(--gp-danger); }
       .form-status:empty { display: none; }
       @media (max-width: 400px) {
-        .modal { --gp-panel-inset: 24px; }
-        .modal-header { padding-bottom: 20px; }
-        .modal-close { flex: 0 0 32px; }
         .library-heading { flex-wrap: wrap; gap: 4px 12px; }
       }
       @media (hover: none) { .item-actions { opacity: 1; pointer-events: auto; } }
@@ -627,7 +623,8 @@ export class PromptPicker {
       if (this.loadError) empty.setAttribute('role', 'status');
       list.appendChild(empty);
       this.selectedPromptId = null;
-      this.applyDynamicHeight(0);
+      this.geometry = '';
+      this.updatePosition();
       return;
     }
 
@@ -701,7 +698,8 @@ export class PromptPicker {
         (focused?.classList.contains('item-action-btn') ? editBtn : insertButton).focus({ preventScroll: true });
       }
     });
-    this.applyDynamicHeight(displayPrompts.length);
+    this.geometry = '';
+    this.updatePosition();
   }
 
   private onSelect(prompt: Prompt, keepOpen: boolean) {

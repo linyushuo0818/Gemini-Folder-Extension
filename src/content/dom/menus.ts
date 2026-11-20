@@ -9,7 +9,7 @@ import {
   getConversationIdFromChatRow
 } from './anchors';
 import { renderIconSvg } from '../ui/icons';
-import { PILL_RADIUS } from '../ui/radii';
+import { MENU_ITEM_RADIUS } from '../ui/radii';
 import { resolveGeminiTheme } from '../ui/theme';
 
 const MENU_ITEM_ATTR = 'data-gp-item';
@@ -440,7 +440,7 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
   item.style.setProperty('margin', '0', 'important');
   item.style.setProperty('box-sizing', 'border-box', 'important');
   item.style.setProperty('cursor', 'pointer', 'important');
-  item.style.setProperty('border-radius', PILL_RADIUS, 'important');
+  item.style.setProperty('border-radius', MENU_ITEM_RADIUS, 'important');
   item.style.setProperty('background', 'transparent', 'important');
   item.style.setProperty('color', 'inherit', 'important');
   item.style.setProperty('border', 'none', 'important');
@@ -616,12 +616,12 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       max-height: calc(100vh - 16px);
       overflow-y: auto;
       box-sizing: border-box;
-      padding: var(--gp-menu-inset, 8px);
-      border-radius: var(--gp-radius-menu, 27px);
+      padding: var(--gp-menu-inset, 6px);
+      border-radius: var(--gp-radius-menu, 16px);
       background: var(--gp-surface, #ffffff);
       color: var(--gp-fg, #141413);
       border: 1px solid var(--gp-border, rgb(31 30 29 / .15));
-      box-shadow: var(--gp-shadow, 0 24px 64px #14141324, 0 4px 12px #1414130a);
+      box-shadow: var(--gp-shadow, inset 0 1px 0 rgb(255 255 255 / .72), 0 24px 64px rgb(20 20 19 / .14), 0 4px 12px rgb(20 20 19 / .04));
       font-family: var(--gp-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
       font-size: 14px;
       font-weight: 500;
@@ -636,7 +636,7 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       gap: 10px;
       min-height: var(--gp-menu-item-height, 36px);
       padding: 0 12px;
-      border-radius: var(--gp-radius-pill, ${PILL_RADIUS});
+      border-radius: var(--gp-radius-menu-item, ${MENU_ITEM_RADIUS});
       box-sizing: border-box;
       width: 100%;
       border: 0;
@@ -648,7 +648,7 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       transition: background-color var(--gp-transition, .18s ease);
     }
     .gp-move-item:hover {
-      background: var(--gp-bg-hover, #f5f4ed);
+      background: var(--gp-bg-hover, #f1efe8);
     }
     .gp-move-item:focus-visible {
       outline: 2px solid var(--gp-focus);

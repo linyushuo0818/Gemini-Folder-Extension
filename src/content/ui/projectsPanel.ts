@@ -5,7 +5,7 @@ import { showSurface, hideSurface, setSurfaceOrigin, installMotionStyles, should
 import { PROJECT_ICON_STYLE_CSS } from './projectIconStyle';
 import { PANEL_TITLE_TYPOGRAPHY } from './typography';
 import { SURFACE_THEME_CSS } from './surfaceTheme';
-import { PANEL_GEOMETRY_CSS, RADIUS_TOKENS_CSS } from './radii';
+import { RADIUS_TOKENS_CSS } from './radii';
 import { observeGeminiTheme } from './theme';
 import { moveMenuFocus } from '../dom/menus';
 import { clearActiveDraggedChat, getActiveDraggedChat, setActiveDraggedChat } from '../dom/dragState';
@@ -1147,8 +1147,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-hover-strong: var(--gp-bg-active);
         --gp-selected: var(--gp-bg-active);
         --gp-selected-border: var(--gp-control-border);
-        --gp-surface-2: var(--gp-surface-elevated);
-        --gp-input-bg: var(--gp-surface);
         --gp-on-accent: var(--gp-accent-fg);
         --gp-name-inset: 4px;
       }
@@ -1157,6 +1155,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         position: fixed;
         inset: 0;
         background: var(--gp-backdrop);
+        backdrop-filter: var(--gp-backdrop-blur);
         display: none;
         align-items: center;
         justify-content: center;
@@ -1166,9 +1165,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-icon-columns: 10;
         --gp-action-width: 124px;
         --gp-action-height: 40px;
-        --gp-panel-inset: 32px; --gp-panel-top-radius: 16px;
-        --gp-panel-action-height: var(--gp-action-height);
-        ${PANEL_GEOMETRY_CSS}
+        --gp-panel-inset: 24px;
         background: var(--gp-surface);
         box-sizing: border-box;
         width: 600px;
@@ -1176,10 +1173,9 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         max-height: calc(100dvh - 32px);
         box-shadow: var(--gp-shadow);
         border: .5px solid var(--gp-border);
-        padding: var(--gp-panel-inset) var(--gp-panel-inset) var(--gp-panel-action-inset);
+        border-radius: var(--gp-radius-modal);
         display: flex;
         flex-direction: column;
-        gap: 24px;
         overflow: hidden;
         font: 14px/1.4 var(--gp-font);
         color: var(--gp-fg);
@@ -1190,8 +1186,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-width: thin;
-        padding: 4px;
-        margin: -4px;
+        padding: var(--gp-panel-inset);
         display: flex;
         flex-direction: column;
         gap: 20px;
@@ -1211,6 +1206,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: flex;
         align-items: center;
         justify-content: space-between;
+        gap: 16px;
+        padding: var(--gp-panel-inset) var(--gp-panel-inset) 0;
         width: 100%;
         font-size: 19px;
         font-weight: 800;
@@ -1253,7 +1250,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border-radius: var(--gp-radius-control);
         padding: var(--gp-name-inset);
         position: relative;
-        background: var(--gp-input-bg);
+        background: var(--gp-surface-sunken);
         transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .gp-namebox:focus-within {
@@ -1265,7 +1262,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         height: 38px;
         border: none;
         border-radius: var(--gp-radius-name-icon);
-        background: var(--gp-input-bg);
+        background: var(--gp-surface-sunken);
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1360,9 +1357,9 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         grid-template-columns: minmax(0, var(--gp-action-width)) minmax(0, var(--gp-action-width)) 1fr minmax(0, var(--gp-action-width));
         align-items: center;
         column-gap: 8px;
-        width: calc(100% + (var(--gp-panel-inset) - var(--gp-panel-action-inset)) * 2);
-        margin-inline: calc(var(--gp-panel-action-inset) - var(--gp-panel-inset));
-        margin-top: 0;
+        padding: 14px var(--gp-panel-inset);
+        border-top: 1px solid var(--gp-border);
+        background: var(--gp-surface-footer);
       }
       .gp-modal-tools {
         display: contents;
@@ -1472,7 +1469,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         justify-content: space-between;
         gap: 12px;
         padding: 6px 12px; /* Tighter padding */
-        border-radius: var(--gp-radius-pill);
+        border-radius: var(--gp-radius-menu-item);
         cursor: pointer;
         font-size: 14px;
         font-weight: 500;
@@ -1502,7 +1499,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border: 0;
         background: transparent;
         box-sizing: border-box;
-        border-radius: var(--gp-radius-pill);
         font-family: inherit;
         text-align: left;
         font-size: 14px;
@@ -1538,7 +1534,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         gap: 10px;
         min-height: var(--gp-menu-item-height);
         padding: 0 12px;
-        border-radius: var(--gp-radius-pill);
         font-size: 14px;
         font-weight: 500;
       }
@@ -1590,7 +1585,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-height: var(--gp-menu-item-height);
         padding: 0 12px;
         font-size: 14px;
-        border-radius: var(--gp-radius-pill);
       }
       .gp-submenu .gp-menu-item svg {
         width: 18px;
@@ -1602,7 +1596,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         .gp-action-spacer { display: none; }
       }
       @media (max-width: 440px) {
-        .gp-modal { --gp-icon-columns: 6; --gp-panel-inset: 24px; gap: 20px; }
+        .gp-modal { --gp-icon-columns: 6; }
         .gp-template-grid { gap: 4px; }
         .gp-tool-button { white-space: nowrap; gap: 6px; padding: 0 6px; font-size: 12px; }
         .gp-tool-button svg { width: 16px; height: 16px; flex-basis: 16px; }
@@ -1610,8 +1604,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         .gp-color-row { gap: 0; flex-wrap: wrap; }
         .gp-color-dot { width: 32px; height: 32px; }
       }
-      @media (max-width: 360px) { .gp-modal { --gp-icon-columns: 5; --gp-panel-inset: 20px; } }
-      @media (max-height: 540px) { .gp-modal { gap: 16px; } }
+      @media (max-width: 360px) { .gp-modal { --gp-icon-columns: 5; } }
       @media (prefers-reduced-motion: reduce) { .gp-modal *, .gp-menu *, .gp-submenu * { transition: none !important; } }
       .gp-toast {
         position: fixed;

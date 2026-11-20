@@ -1,13 +1,9 @@
 // 项目弹窗 Icon 标题行与 Outline / Solid 胶囊切换器样式；沿用暖灰表面体系与克制交互。
 export const PROJECT_ICON_STYLE_CSS = `
   :host {
-    --gp-icon-switcher-bg: var(--gp-bg-hover);
-    --gp-icon-switcher-active-bg: var(--gp-surface);
     --gp-icon-switcher-active-shadow: 0 1px 2px rgb(20 20 19 / .08), 0 0 0 .5px var(--gp-border);
   }
   :host(.dark), :host([data-gp-theme="dark"]) {
-    --gp-icon-switcher-bg: var(--gp-surface-elevated);
-    --gp-icon-switcher-active-bg: var(--gp-bg-active);
     --gp-icon-switcher-active-shadow: 0 1px 2px rgb(0 0 0 / .24), 0 0 0 .5px var(--gp-border);
   }
   .gp-icon-heading {
@@ -26,7 +22,7 @@ export const PROJECT_ICON_STYLE_CSS = `
     gap: 2px;
     padding: 2px;
     border-radius: var(--gp-radius-pill);
-    background: var(--gp-icon-switcher-bg);
+    background: var(--gp-surface-sunken);
     border: 1px solid var(--gp-border);
     max-width: 100%;
     flex-shrink: 0;
@@ -74,7 +70,7 @@ export const PROJECT_ICON_STYLE_CSS = `
     color: var(--gp-fg-secondary);
   }
   .gp-icon-style-option input:checked + span {
-    background: var(--gp-icon-switcher-active-bg);
+    background: var(--gp-surface-elevated);
     color: var(--gp-fg);
     box-shadow: var(--gp-icon-switcher-active-shadow);
   }
