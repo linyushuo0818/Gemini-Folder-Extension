@@ -52,7 +52,7 @@ if (process.platform === 'win32') {
   run('powershell', ['-NoProfile', '-Command',
     `$ErrorActionPreference = 'Stop'; Compress-Archive -Path ${quote(resolve(unpacked, '*'))} -DestinationPath ${quote(archive)}`]);
 } else {
-  run('zip', ['-q', '-r', archive, '.'], unpacked);
+  run('zip', ['-X', '-q', archive, ...[...files].sort()], unpacked);
 }
 console.log(`Package: ${archive}`);
 console.log(`Runtime resources (${files.size}): ${[...files].join(', ')}`);

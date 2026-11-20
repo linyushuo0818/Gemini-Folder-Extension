@@ -29,7 +29,7 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 
 当前版本对应文件：
 
-- `gemini-projects-2.0.6-webstore-*.zip`
+- `gemini-projects-2.0.8-webstore-*.zip`
 
 ## 手动安装
 
@@ -54,6 +54,13 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 依次运行 `npm ci`、`npm run lint` 和 `npm run package:store`。打包使用 Node.js，macOS/Linux 需要系统 `zip` 工具，Windows 使用 PowerShell。发布 ZIP 只包含清单引用的运行脚本和图标，不包含 source map、未使用的历史脚本、个人数据或开发笔记。生成文件保存在 `release/`，不提交到源码仓库。
 
 ## 当前版本
+
+### v2.0.8
+
+- 新增线条与实心项目图标，颜色选择的圆环跟随色点。
+- 支持拖拽整理聊天，并完善项目菜单的键盘操作。
+- 更新提示词库快捷键，插入时保留草稿和有效选区。
+- 改进跨标签页同步，备份恢复前完整校验文件。
 
 ### v2.0.6
 

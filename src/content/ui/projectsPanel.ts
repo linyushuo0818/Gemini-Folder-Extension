@@ -1352,7 +1352,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-color-dot::before { content: ''; position: absolute; inset: 5px; border-radius: var(--gp-radius-circle); background: var(--gp-choice-color); }
       .gp-color-dot:hover { background: var(--gp-hover); }
-      .gp-color-dot.selected { border-color: var(--gp-fg); }
+      .gp-color-dot.selected { border-color: var(--gp-choice-color); }
       .gp-color-adaptive { --gp-choice-color: var(--gp-fg); }
 
       .gp-modal-actions {

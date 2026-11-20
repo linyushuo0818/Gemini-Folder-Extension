@@ -29,7 +29,7 @@ Download the latest zip from the [GitHub Releases](https://github.com/linyushuo0
 
 For the current release, use:
 
-- `gemini-projects-2.0.6-webstore-*.zip`
+- `gemini-projects-2.0.8-webstore-*.zip`
 
 ## Install Manually
 
@@ -58,6 +58,13 @@ For local testing, build first and load the folder containing the generated `man
 The Prompt Library uses the color roles, typography scale, and form structure from the [MCP Apps for Claude UI kit](https://www.figma.com/community/file/1597641111449594397/mcp-apps-for-claude): 14px body text, 40px inputs, 36px buttons, and 16px textarea padding. Forms use the Primary surface with separate container, control, and secondary-button border strengths. Fonts use system fallbacks when Anthropic Sans Text or JetBrains Mono is unavailable; no font files are bundled. Peer headings in the library, prompt editors, and project dialogs share the same 24px system-serif type with weight 600. The unified serif headings and 28px panel, 16px row, and 12px control corners are project adaptations rather than the kit's default desktop component specifications.
 
 ## Current Version
+
+### v2.0.8
+
+- Added Outline and Solid project icons and matched selected color rings to the chosen swatch.
+- Added chat drag-and-drop and keyboard navigation for project menus.
+- Updated Prompt Library shortcuts and kept drafts and selections intact when inserting prompts.
+- Improved multi-tab changes and validated backups before restoring them.
 
 ### v2.0.6
 
