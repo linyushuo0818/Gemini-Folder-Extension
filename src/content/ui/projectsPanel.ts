@@ -1174,7 +1174,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         box-shadow: var(--gp-shadow);
         border: .5px solid var(--gp-border);
         border-radius: var(--gp-radius-modal);
-        corner-shape: squircle;
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -1249,7 +1248,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 100%;
         border: 1px solid var(--gp-control-border);
         border-radius: var(--gp-radius-control);
-        corner-shape: squircle;
         padding: var(--gp-name-inset);
         position: relative;
         background: var(--gp-surface-sunken);
@@ -1359,7 +1357,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         grid-template-columns: minmax(0, var(--gp-action-width)) minmax(0, var(--gp-action-width)) 1fr minmax(0, var(--gp-action-width));
         align-items: center;
         column-gap: 8px;
-        padding: var(--gp-modal-footer-inset);
+        padding: var(--gp-modal-inset);
         border-top: 1px solid var(--gp-border);
         background: var(--gp-surface-footer);
       }
@@ -1374,8 +1372,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 100%;
         min-width: 0;
         height: var(--gp-action-height);
-        border-radius: var(--gp-radius-modal-button);
-        corner-shape: squircle;
+        border-radius: var(--gp-radius-pill);
         font-family: var(--gp-font);
         letter-spacing: 0;
         display: inline-flex;
@@ -1457,7 +1454,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-width: 220px;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-menu);
-        corner-shape: squircle;
         box-shadow: var(--gp-shadow);
         border: 1px solid var(--gp-border);
         padding: var(--gp-menu-inset);
@@ -1474,7 +1470,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         gap: 12px;
         padding: 6px 12px; /* Tighter padding */
         border-radius: var(--gp-radius-menu-item);
-        corner-shape: squircle;
         cursor: pointer;
         font-size: 14px;
         font-weight: 500;
@@ -1577,7 +1572,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         box-sizing: border-box;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-menu);
-        corner-shape: squircle;
         box-shadow: var(--gp-shadow);
         border: 1px solid var(--gp-border);
         padding: var(--gp-menu-inset);

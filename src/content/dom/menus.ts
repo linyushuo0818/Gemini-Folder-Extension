@@ -618,7 +618,6 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       box-sizing: border-box;
       padding: var(--gp-menu-inset, 6px);
       border-radius: var(--gp-radius-menu, 16px);
-      corner-shape: squircle;
       background: var(--gp-surface, #ffffff);
       color: var(--gp-fg, #141413);
       border: 1px solid var(--gp-border, rgb(31 30 29 / .15));
@@ -638,7 +637,6 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       min-height: var(--gp-menu-item-height, 36px);
       padding: 0 12px;
       border-radius: var(--gp-radius-menu-item, ${MENU_ITEM_RADIUS});
-      corner-shape: squircle;
       box-sizing: border-box;
       width: 100%;
       border: 0;
