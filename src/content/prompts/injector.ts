@@ -527,7 +527,10 @@ function createAndInjectButton(container: HTMLElement, sibling: Element) {
 
     btn.style.opacity = '1';
 
-    // Events
+    // 保留鼠标打开前 composer 的选区，键盘打开时仍可聚焦按钮。
+    btn.addEventListener('mousedown', (event) => {
+        if (event.button === 0 && findComposer()?.contains(document.activeElement)) event.preventDefault();
+    });
     btn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();

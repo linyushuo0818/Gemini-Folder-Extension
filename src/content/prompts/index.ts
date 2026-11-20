@@ -1,74 +1,69 @@
-import { findComposer, getComposerPlainText } from './composer';
+import { captureComposer, findComposer, getComposerPlainText } from './composer';
 import { injectPromptButton } from './injector';
 import { PromptPicker } from './picker';
 
 let triggersInstalled = false;
 
-function getPickerAnchorRect(composer: HTMLElement | null): DOMRect | null {
-  const btn = document.getElementById('gp-prompt-btn');
-  if (btn) {
-    const rect = btn.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return rect;
-  }
-  if (composer) {
-    const rect = composer.getBoundingClientRect();
-    if (rect.width > 0 && rect.height > 0) return rect;
-  }
-  return null;
-}
-
 function installPromptTriggers() {
   if (triggersInstalled) return;
   triggersInstalled = true;
+  let slashKeyTarget: EventTarget | null = null;
+  let pendingSlash: HTMLElement | null = null;
+  let composing = false;
 
-  // 在空白输入框键入 "/" 时自动唤起 Prompt Library，删除回退时不误触。
-  document.addEventListener('input', (event) => {
-    if (event instanceof InputEvent) {
-      if (event.isComposing || event.inputType.startsWith('delete')) return;
-    }
-    const target = event.target as HTMLElement | null;
-    if (!target || target.closest('#gp-prompt-picker-root, #gemini-projects-overlay')) return;
+  document.addEventListener('compositionstart', () => {
+    composing = true;
+    slashKeyTarget = null;
+  }, true);
+  document.addEventListener('compositionend', () => { composing = false; }, true);
 
+  document.addEventListener('beforeinput', (event) => {
+    pendingSlash = null;
+    const typedSlash = slashKeyTarget === event.target;
+    slashKeyTarget = null;
+    if (!typedSlash || !(event instanceof InputEvent) || composing || event.isComposing ||
+        event.inputType !== 'insertText' || event.data !== '/') return;
     const composer = findComposer();
-    if (!composer || (target !== composer && !composer.contains(target))) return;
-    if (getComposerPlainText(composer) !== '/') return;
-
-    const rect = getPickerAnchorRect(composer);
-    if (!rect) return;
-    PromptPicker.getInstance().open(rect, {
-      triggeredBySlash: true,
-      returnComposer: composer
-    });
+    if (composer && event.target === composer && !getComposerPlainText(composer).trim()) {
+      pendingSlash = composer;
+    }
   }, true);
 
-  // Alt+/ (macOS ⌥/) 全局唤起或关闭 Prompt Library，不与 Chrome/Gemini 原生快捷键冲突。
-  document.addEventListener('keydown', (event) => {
-    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
-    if (event.code !== 'Slash') return;
+  document.addEventListener('input', (event) => {
+    const composer = pendingSlash;
+    pendingSlash = null;
+    if (composer && event.target === composer && event instanceof InputEvent &&
+        event.inputType === 'insertText' && event.data === '/' && !event.isComposing &&
+        getComposerPlainText(composer).trim() === '/') {
+      PromptPicker.getInstance().open(captureComposer(composer, true), composer);
+    }
+  }, true);
 
+  document.addEventListener('keyup', () => { slashKeyTarget = null; }, true);
+  document.addEventListener('keydown', (event) => {
+    slashKeyTarget = event.key === '/' && !event.altKey && !event.ctrlKey && !event.metaKey &&
+      !event.isComposing && !composing ? event.target : null;
+    if (!event.altKey || event.ctrlKey || event.metaKey || event.shiftKey || event.code !== 'Slash' ||
+        event.isComposing || composing || event.keyCode === 229) return;
     const composer = findComposer();
-    const rect = getPickerAnchorRect(composer);
-    if (!rect) return;
+    if (!composer) return;
+    const target = event.composedPath()[0];
+    if (target instanceof HTMLElement && target !== composer &&
+        target.closest('input, textarea, [contenteditable="true"], [role="dialog"]') &&
+        !target.closest('.picker[aria-label="Prompt Library"]')) return;
+    const picker = PromptPicker.getInstance();
+    if (picker.isEditing()) return;
 
     event.preventDefault();
     event.stopPropagation();
-    PromptPicker.getInstance().toggle(rect, {
-      triggeredBySlash: false,
-      returnComposer: composer
-    });
+    if (!event.repeat) picker.toggle(composer, composer.contains(document.activeElement) ? composer : null);
   }, true);
 }
 
 export function bootstrap() {
   injectPromptButton(() => {
     const composer = findComposer();
-    const rect = getPickerAnchorRect(composer);
-    if (rect) {
-      PromptPicker.getInstance().toggle(rect, {
-        triggeredBySlash: false,
-        returnComposer: composer
-      });
-    }
+    if (composer) PromptPicker.getInstance().toggle(composer, document.getElementById('gp-prompt-btn'));
   });
   installPromptTriggers();
 }

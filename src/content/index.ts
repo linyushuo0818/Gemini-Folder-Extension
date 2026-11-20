@@ -1,5 +1,5 @@
-import { BackgroundRequest, BackgroundResponse, ChatRef, Project, RuntimeState } from '../shared/types';
-import { migrateState, STORAGE_KEY } from '../shared/storage';
+import { BackgroundRequest, BackgroundResponse, NativeChatMetadata, Project, RuntimeState, StoredState } from '../shared/types';
+import { isSafeId, normalizeChatUrl, STORAGE_KEY } from '../shared/storage';
 import { runtimeSendMessage, webext } from '../shared/webext';
 import {
   findChatRowElement,
@@ -18,6 +18,7 @@ import { createProjectsPanel } from './ui/projectsPanel';
 
 const BUILD_MARKER = webext.runtime?.getManifest?.()?.version || '2.0.7';
 const HIDDEN_ATTR = 'data-gp-native-hidden';
+const DRAG_SOURCE_ATTR = 'data-gp-drag-source';
 const DROP_UNASSIGN_ATTR = 'data-gp-drop-unassign';
 const RESCAN_DELAY_MS = 350;
 const PANEL_READY_RETRY_MS = 120;
@@ -50,6 +51,12 @@ let rescanTimer: number | null = null;
 let pendingPanelRetryCount = 0;
 let lastRenderKey = '';
 let chatMenuOverlayShadow: ShadowRoot | null = null;
+let detachChatMenu: (() => void) | null = null;
+let stateReady = false;
+let stateLoading = false;
+let scanPending = false;
+let unassignZone: HTMLElement | null = null;
+let nativeDragSource: HTMLElement | null = null;
 
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
   return runtimeSendMessage<BackgroundResponse>(message);
@@ -59,8 +66,8 @@ async function bootstrap() {
   document.documentElement.setAttribute('data-gp-build', BUILD_MARKER);
 
   installNativeHideStyle();
-  await loadInitialState();
   installStorageSync();
+  await loadInitialState();
   installNativeDragHandlers();
   observeDocumentForSidebar();
   installLifecycleRescans();
@@ -69,14 +76,20 @@ async function bootstrap() {
 }
 
 async function loadInitialState() {
+  if (stateReady || stateLoading) return;
+  stateLoading = true;
   try {
     const response = await withTimeout(sendMessage({ type: 'getState' }), 1800);
-    if (!response.ok || !response.state) return;
+    if (!response.ok) throw new Error(response.error);
+    if (stateReady || !response.state) return;
+    stateReady = true;
     state.projects = response.state.projects;
     state.chatIndex = new Map(Object.entries(response.state.chatIndex));
     state.uiPrefs = response.state.uiPrefs || { projectsCollapsed: false };
   } catch (error) {
-    console.warn('[gemini-projects] getState failed; starting with local empty state', error);
+    console.warn('[gemini-projects] getState failed', error);
+  } finally {
+    stateLoading = false;
   }
 }
 
@@ -87,7 +100,9 @@ function installStorageSync() {
     area: string
   ) => {
     if (area !== 'local' || !changes[STORAGE_KEY]) return;
-    const next = migrateState(changes[STORAGE_KEY].newValue);
+    const next = changes[STORAGE_KEY].newValue as StoredState | undefined;
+    if (!next) return;
+    stateReady = true;
     state.projects = next.projects;
     state.chatIndex = new Map(Object.entries(next.chatIndex));
     state.uiPrefs = next.uiPrefs || { projectsCollapsed: false };
@@ -132,6 +147,7 @@ function scheduleRescan(delay = RESCAN_DELAY_MS) {
 }
 
 function rescanSidebar() {
+  if (!stateReady) void loadInitialState().then(() => { if (stateReady) scheduleRescan(0); });
   state.activeConversationId = getConversationId(window.location.href);
 
   if (isSparkSurface()) {
@@ -141,6 +157,7 @@ function rescanSidebar() {
 
   const nextSidebar = findSidebarRoot();
   if (!nextSidebar) {
+    if (panel) cleanupInjectedProjects();
     if (pendingPanelRetryCount < PANEL_READY_RETRY_LIMIT) {
       pendingPanelRetryCount += 1;
       scheduleRescan(PANEL_READY_RETRY_MS);
@@ -156,6 +173,7 @@ function rescanSidebar() {
   }
 
   if (sidebarRoot !== nextSidebar) {
+    cleanupInjectedProjects();
     sidebarRoot = nextSidebar;
     sidebarObserver?.disconnect();
     sidebarObserver = new MutationObserver((mutations) => {
@@ -165,10 +183,6 @@ function rescanSidebar() {
       if (relevant) scheduleRescan();
     });
     sidebarObserver.observe(sidebarRoot, { childList: true, subtree: true });
-    panel?.destroy();
-    panel = null;
-    panelHost = null;
-    chatsList = null;
     pendingPanelRetryCount = 0;
   }
 
@@ -214,7 +228,7 @@ function ensurePanel() {
       onDeleteProject: handleDeleteProject,
       onToggleCollapse: handleToggleCollapse,
       onRemoveChatFromProject: (conversationId) => handleMoveChat(conversationId, null),
-      onMoveChatToProject: (conversationId, projectId) => handleMoveChat(conversationId, projectId)
+      onMoveChatToProject: handleMoveChat
     });
     panelHost = host;
     // Gemini 在 Chat 与 Spark 间切换时会替换内部滚动区但保留外层 bard-sidenav，
@@ -223,14 +237,13 @@ function ensurePanel() {
   }
 
   if (chatMenuOverlayShadow !== overlayShadow) {
-    attachChatMenuEnhancer({
+    detachChatMenu?.();
+    detachChatMenu = attachChatMenuEnhancer({
       overlayShadow,
       getProjects: () => state.projects,
       getChatProjectId: (conversationId) => state.chatIndex.get(conversationId)?.projectId ?? null,
       onMoveChat: (conversationId, projectId) => {
-        handleMoveChat(conversationId, projectId).catch((error) =>
-          console.warn('[gemini-projects] move from menu failed', error)
-        );
+        void handleMoveChat(conversationId, projectId).catch(showMoveError);
       },
       onCreateProject: () => panel?.openCreateModal()
     });
@@ -243,6 +256,7 @@ function ensureChatsList() {
   if (!sidebarRoot) return;
   const header = findChatsSection(sidebarRoot);
   if (!header) {
+    clearDragFeedback();
     chatsList = null;
     chatsObserver?.disconnect();
     return;
@@ -250,12 +264,14 @@ function ensureChatsList() {
 
   const list = findChatsListContainer(header);
   if (!list) {
+    clearDragFeedback();
     chatsList = null;
     chatsObserver?.disconnect();
     return;
   }
   if (list === chatsList) return;
 
+  if (chatsList) clearDragFeedback();
   chatsList = list;
   chatsObserver?.disconnect();
   chatsObserver = new MutationObserver((mutations) => {
@@ -273,53 +289,27 @@ function syncNativeChatsFromDom() {
     return;
   }
 
-  const updates: ChatRef[] = [];
+  const updates: NativeChatMetadata[] = [];
   const nativeConversationIds = new Set<string>();
   for (const link of collectNativeChatLinks(chatsList)) {
-    const row = findChatRowElement(link, chatsList) || link;
-    const conversationId = getConversationId(link.href) || getConversationIdFromChatRow(row);
+    const conversationId = getConversationId(link.href);
     if (!conversationId) continue;
     nativeConversationIds.add(conversationId);
 
+    const chat = readNativeMetadata(conversationId, link);
     const existing = state.chatIndex.get(conversationId);
-    const title = normalizeTitle(link.textContent || row.textContent || existing?.title || '');
-    const lastUrl = link.href || existing?.lastUrl || `/app/${conversationId}`;
-    if (!title && existing?.title) continue;
-
-    updates.push({
-      conversationId,
-      title: title || existing?.title || 'Untitled chat',
-      isPinned: existing?.isPinned ?? false,
-      projectId: existing?.projectId ?? null,
-      updatedAt: existing?.updatedAt ?? Date.now(),
-      lastUrl
-    });
+    if (existing?.title !== chat.title || existing?.lastUrl !== chat.lastUrl) updates.push(chat);
   }
   state.nativeConversationIds = nativeConversationIds;
   state.nativeChatsReady = nativeConversationIds.size > 0;
 
-  if (!updates.length) return;
-
-  let changed = false;
-  for (const chat of updates) {
-    const existing = state.chatIndex.get(chat.conversationId);
-    if (
-      existing?.title !== chat.title ||
-      existing?.lastUrl !== chat.lastUrl ||
-      existing?.projectId !== chat.projectId
-    ) {
-      changed = true;
-    }
-    state.chatIndex.set(chat.conversationId, {
-      ...chat,
-      projectId: existing?.projectId ?? chat.projectId,
-      updatedAt: existing?.updatedAt ?? Date.now()
-    });
-  }
-
-  if (changed) {
-    sendMessage({ type: 'upsertChatRefs', chats: updates }).catch(() => undefined);
-  }
+  if (!stateReady || scanPending || !updates.length) return;
+  scanPending = true;
+  void sendMessage({ type: 'upsertChatRefs', chats: updates }).then((response) => {
+    if (!response.ok) throw new Error(response.error);
+  }).catch((error) => {
+    console.warn('[gemini-projects] could not sync chat metadata', error);
+  }).finally(() => { scanPending = false; });
 }
 
 function applyNativeChatVisibility() {
@@ -358,8 +348,9 @@ function getNativeChatVisibilityTarget(
 }
 
 function collectNativeChatLinks(root: ParentNode): HTMLAnchorElement[] {
-  return Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href]')).filter((link) => {
-    if (!getConversationId(link.href)) return false;
+  return Array.from(root.querySelectorAll<HTMLAnchorElement>('a[href*="/app/"]')).filter((link) => {
+    const id = getConversationId(link.href);
+    if (!isSafeId(id) || !normalizeChatUrl(link.href, id)) return false;
     if (link.closest('#gemini-projects-host')) return false;
     return true;
   });
@@ -375,6 +366,8 @@ function getSafeNativeChatRow(
   if (!row.contains(link)) return null;
   if (row.contains(document.getElementById('gemini-projects-host'))) return null;
   if (row.querySelectorAll<HTMLAnchorElement>('a[href*="/app/"]').length !== 1) return null;
+  // 隐藏后的行没有布局尺寸，后续扫描继续使用已验证过的同一行。
+  if (row.hasAttribute(HIDDEN_ATTR)) return row;
 
   const rect = row.getBoundingClientRect();
   const listRect = listRoot.getBoundingClientRect();
@@ -383,7 +376,7 @@ function getSafeNativeChatRow(
 
   const tag = row.tagName.toLowerCase();
   const role = row.getAttribute('role') || '';
-  if (tag === 'li' || role === 'listitem') return row;
+  if (tag === 'li' || tag === 'gem-nav-list-item' || role === 'listitem') return row;
 
   const parentConversationCount = row.parentElement
     ? collectNativeChatLinks(row.parentElement).length
@@ -391,12 +384,9 @@ function getSafeNativeChatRow(
   return parentConversationCount > 1 ? row : null;
 }
 
-async function handleSaveProject(project: Project) {
-  const response = await sendMessage({ type: 'upsertProject', project });
+async function handleSaveProject(project: Project, editing: boolean) {
+  const response = await sendMessage({ type: 'upsertProject', project, editing });
   if (!response.ok) throw new Error(response.error);
-  if (!response.state) throw new Error('Project state was not returned');
-  state.projects = response.state.projects;
-  renderPanelIfChanged(true);
 }
 
 function handleToggleProjectExpand(projectId: string) {
@@ -411,9 +401,6 @@ function handleToggleProjectExpand(projectId: string) {
 async function handleToggleProjectPin(projectId: string, isPinned: boolean) {
   const response = await sendMessage({ type: 'setProjectPinned', projectId, isPinned });
   if (!response.ok) throw new Error(response.error);
-  if (!response.state) throw new Error('Project state was not returned');
-  state.projects = response.state.projects;
-  renderPanelIfChanged(true);
 }
 
 function handleToggleCollapse(collapsed: boolean) {
@@ -425,41 +412,27 @@ function handleToggleCollapse(collapsed: boolean) {
 async function handleDeleteProject(projectId: string) {
   const response = await sendMessage({ type: 'deleteProject', projectId });
   if (!response.ok || !response.state) return;
-  state.projects = response.state.projects;
-  state.chatIndex = new Map(Object.entries(response.state.chatIndex));
   state.expandedProjectIds.delete(projectId);
   applyNativeChatVisibility();
   renderPanelIfChanged(true);
 }
 
 async function handleMoveChat(conversationId: string, projectId: string | null) {
-  await ensureChatKnown(conversationId);
-  const response = await sendMessage({ type: 'moveChat', conversationId, projectId });
-  if (!response.ok || !response.state) return;
-  state.projects = response.state.projects ?? state.projects;
-  state.chatIndex = new Map(Object.entries(response.state.chatIndex));
-  applyNativeChatVisibility();
-  renderPanelIfChanged(true);
+  const existing = state.chatIndex.get(conversationId);
+  const link = !existing?.lastUrl ? findNativeLinkByConversationId(conversationId) : null;
+  const metadata = link ? readNativeMetadata(conversationId, link) : undefined;
+  const response = await sendMessage({ type: 'moveChat', conversationId, projectId, metadata });
+  if (!response.ok) throw new Error(response.error);
 }
 
-async function ensureChatKnown(conversationId: string) {
-  const existing = state.chatIndex.get(conversationId);
-  if (existing?.title && existing.lastUrl) return;
+function readNativeMetadata(conversationId: string, link: HTMLAnchorElement): NativeChatMetadata {
+  const title = normalizeTitle(link.textContent || '') || state.chatIndex.get(conversationId)?.title || 'Untitled chat';
+  return { conversationId, title, lastUrl: link.href };
+}
 
-  const link = findNativeLinkByConversationId(conversationId);
-  if (!link) return;
-
-  const row = chatsList ? findChatRowElement(link, chatsList) : link;
-  const chat: ChatRef = {
-    conversationId,
-    title: normalizeTitle(link.textContent || row?.textContent || existing?.title || '') || 'Untitled chat',
-    isPinned: existing?.isPinned ?? false,
-    projectId: existing?.projectId ?? null,
-    updatedAt: Date.now(),
-    lastUrl: link.href
-  };
-  state.chatIndex.set(conversationId, chat);
-  await sendMessage({ type: 'upsertChatRefs', chats: [chat] }).catch(() => undefined);
+function showMoveError(error: unknown) {
+  console.warn('[gemini-projects] move failed', error);
+  panel?.showToast('Could not move chat. Please try again.');
 }
 
 function findNativeLinkByConversationId(conversationId: string): HTMLAnchorElement | null {
@@ -478,11 +451,27 @@ function normalizeTitle(value: string): string {
     .trim();
 }
 
-function installNativeDragHandlers() {
-  const clearUnassignHighlight = () => {
-    chatsList?.removeAttribute(DROP_UNASSIGN_ATTR);
-  };
+function clearUnassignHighlight() {
+  unassignZone?.removeAttribute(DROP_UNASSIGN_ATTR);
+  unassignZone = null;
+}
 
+function clearDragFeedback() {
+  clearUnassignHighlight();
+  nativeDragSource?.removeAttribute(DRAG_SOURCE_ATTR);
+  nativeDragSource = null;
+  panel?.clearDragFeedback();
+  clearActiveDraggedChat();
+}
+
+function findUnassignZone(target: EventTarget | null): HTMLElement | null {
+  if (!(target instanceof Element) || target.closest('#gemini-projects-host')) return null;
+  if (chatsList?.contains(target)) return chatsList;
+  const all = target.closest<HTMLElement>('.chat-history');
+  return all && sidebarRoot?.contains(all) ? all : null;
+}
+
+function installNativeDragHandlers() {
   document.addEventListener('dragstart', (event) => {
     if (!chatsList) return;
     const target = event.target as HTMLElement | null;
@@ -494,7 +483,10 @@ function installNativeDragHandlers() {
     const conversationId = (link?.href ? getConversationId(link.href) : null) || getConversationIdFromChatRow(row);
     if (!conversationId) return;
 
+    clearDragFeedback();
     setActiveDraggedChat({ conversationId, sourceProjectId: null });
+    nativeDragSource = row ?? link;
+    nativeDragSource?.setAttribute(DRAG_SOURCE_ATTR, 'true');
     if (event.dataTransfer) {
       event.dataTransfer.setData('application/x-gemini-chat-id', conversationId);
       event.dataTransfer.effectAllowed = 'move';
@@ -502,39 +494,39 @@ function installNativeDragHandlers() {
   });
 
   document.addEventListener('dragover', (event) => {
-    const dragged = getActiveDraggedChat();
-    if (!dragged || !dragged.sourceProjectId || !chatsList) {
+    const zone = getActiveDraggedChat()?.sourceProjectId ? findUnassignZone(event.target) : null;
+    if (zone !== unassignZone) {
       clearUnassignHighlight();
-      return;
+      unassignZone = zone;
+      zone?.setAttribute(DROP_UNASSIGN_ATTR, 'true');
     }
-    const target = event.target as HTMLElement | null;
-    if (target && chatsList.contains(target) && !target.closest('#gemini-projects-host')) {
+    if (zone) {
       event.preventDefault();
       if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
-      chatsList.setAttribute(DROP_UNASSIGN_ATTR, 'true');
-    } else {
-      clearUnassignHighlight();
     }
+  });
+
+  document.addEventListener('dragleave', (event) => {
+    if (findUnassignZone(event.relatedTarget) !== unassignZone) clearUnassignHighlight();
   });
 
   document.addEventListener('drop', (event) => {
     const dragged = getActiveDraggedChat();
-    clearUnassignHighlight();
-    if (!dragged || !dragged.sourceProjectId || !chatsList) return;
-    const target = event.target as HTMLElement | null;
-    if (!target || !chatsList.contains(target) || target.closest('#gemini-projects-host')) return;
+    const zone = findUnassignZone(event.target);
+    clearDragFeedback();
+    if (!dragged?.sourceProjectId || !zone) return;
 
     event.preventDefault();
-    clearActiveDraggedChat();
+    const sourcePanel = panel;
     handleMoveChat(dragged.conversationId, null)
-      .then(() => panel?.showToast('Removed from project'))
-      .catch((error) => console.warn('[gemini-projects] drop unassign failed', error));
+      .then(() => {
+        if (panel === sourcePanel) panel?.showToast('Removed from project');
+      })
+      .catch(showMoveError);
   });
 
-  document.addEventListener('dragend', () => {
-    clearUnassignHighlight();
-    clearActiveDraggedChat();
-  });
+  document.addEventListener('dragend', clearDragFeedback);
+  window.addEventListener('blur', clearDragFeedback);
 }
 
 function installNativeHideStyle() {
@@ -543,9 +535,9 @@ function installNativeHideStyle() {
   style.id = 'gp-native-hide-style';
   style.textContent = `
     [${HIDDEN_ATTR}="true"] { display: none !important; }
+    [${DRAG_SOURCE_ATTR}="true"] { opacity: 0.45; }
     [${DROP_UNASSIGN_ATTR}="true"] {
-      outline: 1.5px dashed rgba(128, 128, 128, 0.45);
-      outline-offset: 2px;
+      box-shadow: inset 0 0 0 1.5px rgb(128 128 128 / .65);
       border-radius: 12px;
     }
   `;
@@ -566,6 +558,9 @@ function isSparkSurface(): boolean {
 }
 
 function cleanupInjectedProjects() {
+  clearDragFeedback();
+  detachChatMenu?.();
+  detachChatMenu = null;
   panel?.destroy();
   panel = null;
   panelHost = null;

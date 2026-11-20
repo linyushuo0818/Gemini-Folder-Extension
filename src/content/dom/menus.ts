@@ -1,4 +1,4 @@
-﻿import { showSurface, hideSurface, setSurfaceOrigin } from '../ui/motion';
+import { showSurface, setSurfaceOrigin } from '../ui/motion';
 import { Project } from '../../shared/types';
 import {
   findChatsListContainer,
@@ -12,10 +12,7 @@ import { renderIconSvg } from '../ui/icons';
 import { PILL_RADIUS } from '../ui/radii';
 import { resolveGeminiTheme } from '../ui/theme';
 
-const ACTIVE_ROW_ATTR = 'data-gp-active-row';
-const ACTIVE_ROW_ID_ATTR = 'data-gp-conversation-id';
 const MENU_ITEM_ATTR = 'data-gp-item';
-const MENU_OBSERVER_ATTR = 'data-gp-menu-observer';
 const MENU_TOKENS = ['share conversation', 'share', 'pin', 'rename', 'delete', '分享', '置顶', '重命名', '删除'];
 const PIN_ACTION_TOKENS = ['pin', '置顶', '置頂', '固定'];
 const RENAME_ACTION_TOKENS = ['rename', '重命名', '重新命名'];
@@ -28,17 +25,6 @@ interface ChatMenuEnhancerOptions {
   onMoveChat: (conversationId: string, projectId: string | null) => void;
   onCreateProject: () => void;
 }
-
-let openMoveMenuHandler: ((anchor: DOMRect, conversationId: string, item: HTMLElement) => void) | null = null;
-let closeMoveMenuHandler: (() => void) | null = null;
-let keepMoveMenuOpenHandler: (() => void) | null = null;
-let activeRowTimeout: number | null = null;
-let listenersAttached = false;
-let currentMenuRoot: HTMLElement | null = null;
-let menuObserver: MutationObserver | null = null;
-let submenuElement: HTMLElement | null = null;
-let closeTimer: number | null = null;
-let activeMoveItem: HTMLElement | null = null;
 
 function hasMenuToken(container: HTMLElement, tokens: string[]): boolean {
   const nodes = container.querySelectorAll<HTMLElement>('div, button, [role="menuitem"]');
@@ -87,91 +73,202 @@ function isRowInChatsList(row: HTMLElement | null): boolean {
   return chatsList.contains(row);
 }
 
-function clearActiveRow() {
-  const prev = document.querySelector<HTMLElement>(`[${ACTIVE_ROW_ATTR}="true"]`);
-  if (prev) {
-    prev.removeAttribute(ACTIVE_ROW_ATTR);
-    prev.removeAttribute(ACTIVE_ROW_ID_ATTR);
+export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions): () => void {
+  const lifecycle = new AbortController();
+  let session: AbortController | null = null;
+  let nativeMenu: HTMLElement | null = null;
+  let trigger: HTMLElement | null = null;
+  let kebab: HTMLElement | null = null;
+  let submenu: HTMLElement | null = null;
+  let closeTimer: number | undefined;
+
+  function cancelClose() {
+    window.clearTimeout(closeTimer);
+    closeTimer = undefined;
   }
-  if (activeRowTimeout) {
-    window.clearTimeout(activeRowTimeout);
-    activeRowTimeout = null;
+
+  function closeSubmenu(restoreFocus = false) {
+    cancelClose();
+    submenu?.remove();
+    submenu = null;
+    trigger?.setAttribute('aria-expanded', 'false');
+    trigger?.style.setProperty('background', 'transparent', 'important');
+    if (restoreFocus && trigger?.isConnected) trigger.focus({ preventScroll: true });
   }
-}
 
-function setActiveRow(row: HTMLElement | null) {
-  clearActiveRow();
-  if (!row) return;
-  row.setAttribute(ACTIVE_ROW_ATTR, 'true');
-  activeRowTimeout = window.setTimeout(() => clearActiveRow(), 2000);
-}
-
-export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions) {
-  const moveMenu = createMoveMenu(options);
-  openMoveMenuHandler = (anchor, conversationId, item) => {
-    moveMenu.setActiveItem(item);
-    moveMenu.open(anchor, conversationId);
-  };
-  closeMoveMenuHandler = () => moveMenu.startCloseTimer();
-  keepMoveMenuOpenHandler = () => moveMenu.cancelCloseTimer();
-
-  if (listenersAttached) {
-    return null;
+  function close(restoreFocus = false) {
+    closeSubmenu();
+    session?.abort();
+    session = null;
+    trigger?.remove();
+    trigger = null;
+    nativeMenu = null;
+    if (restoreFocus && kebab?.isConnected) kebab.focus({ preventScroll: true });
+    kebab = null;
   }
-  listenersAttached = true;
 
-  document.addEventListener(
-    'pointerdown',
-    (event) => {
-      const target = event.target as HTMLElement | null;
-      if (!target || !isChatKebabButton(target)) return;
+  function scheduleClose() {
+    cancelClose();
+    closeTimer = window.setTimeout(() => {
+      if (!submenu?.contains(options.overlayShadow.activeElement)) closeSubmenu();
+    }, 200);
+  }
 
-      cleanupMenuArtifacts();
+  function openSubmenu(item: HTMLElement, conversationId: string, keyboard: boolean) {
+    cancelClose();
+    if (submenu) {
+      if (keyboard) submenu.querySelector('button')?.focus();
+      return;
+    }
+    ensureSubmenuStyles(options.overlayShadow);
+    const menu = document.createElement('div');
+    menu.className = 'gp-move-menu';
+    menu.setAttribute('role', 'menu');
+    menu.setAttribute('aria-label', 'Move to Project');
+    submenu = menu;
+    trigger?.setAttribute('aria-expanded', 'true');
+    trigger?.style.setProperty('background', resolveGeminiTheme() === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#f1f3f4', 'important');
+    const layer = options.overlayShadow.getElementById('gp-overlay-layer') ?? options.overlayShadow;
+    layer.appendChild(menu);
 
-      const row = findChatRowFromTarget(target);
-      setActiveRow(row);
-      const conversationId = getConversationIdFromActiveRow(target);
-      if (conversationId && row) {
-        row.setAttribute(ACTIVE_ROW_ID_ATTR, conversationId);
+    function addAction(label: string, icon: string, action: () => void) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'gp-move-item';
+      button.setAttribute('role', 'menuitem');
+      button.innerHTML = icon;
+      const text = document.createElement('span');
+      text.textContent = label;
+      button.appendChild(text);
+      button.onclick = () => {
+        const nativeButton = kebab;
+        if (nativeButton?.getAttribute('aria-expanded') === 'true') nativeButton.click();
+        close(true);
+        action();
+      };
+      menu.appendChild(button);
+    }
+
+    addAction('New Project', renderIconSvg('default'), options.onCreateProject);
+    const current = options.getChatProjectId(conversationId);
+    for (const project of options.getProjects()) {
+      if (project.id === current) continue;
+      addAction(project.name, renderIconSvg(project.icon, project.color),
+        () => options.onMoveChat(conversationId, project.id));
+    }
+    if (current) addAction('Remove from Project', '', () => options.onMoveChat(conversationId, null));
+
+    menu.onmouseenter = cancelClose;
+    menu.onmouseleave = scheduleClose;
+    menu.onkeydown = (event) => {
+      if (event.key === 'Escape' || event.key === 'ArrowLeft') {
+        event.preventDefault();
+        event.stopPropagation();
+        closeSubmenu(true);
+      } else if (event.key === 'Tab') {
+        closeSubmenu(true);
+      } else {
+        moveMenuFocus(menu, event);
       }
+    };
+    showSurface(menu, 'menu', 'block', () => {
+      const anchor = item.getBoundingClientRect();
+      const left = Math.max(8, Math.min(
+        anchor.right + menu.offsetWidth <= window.innerWidth - 8 ? anchor.right : anchor.left - menu.offsetWidth,
+        window.innerWidth - menu.offsetWidth - 8
+      ));
+      const top = Math.max(8, Math.min(anchor.top, window.innerHeight - menu.offsetHeight - 8));
+      menu.style.left = `${left}px`;
+      menu.style.top = `${top}px`;
+      setSurfaceOrigin(menu, anchor, left, top);
+    });
+    if (keyboard) menu.querySelector('button')?.focus();
+  }
 
-      waitForMenuRoot(target).then((menuRoot) => {
-        if (!menuRoot) return;
-        const resolvedId = conversationId || getConversationIdFromActiveRow(target);
-        if (!resolvedId) return;
-        tryInjectWithRetries(menuRoot, resolvedId, target, 0);
-      });
-    },
-    true
-  );
+  function begin(target: Element) {
+    const button = target.closest<HTMLElement>('button, [role="button"], [aria-haspopup]');
+    if (!button || !isChatKebabButton(button)) return;
+    close();
+    const row = findChatRowFromTarget(button);
+    const href = row?.querySelector<HTMLAnchorElement>('a[href*="/app/"]')?.href;
+    const conversationId = getConversationId(href) ?? getConversationIdFromChatRow(row);
+    if (!conversationId) return;
 
+    kebab = button;
+    const controller = new AbortController();
+    session = controller;
+    const { signal } = controller;
+    let frame = 0;
+    let attempts = 0;
+    const findAndInject = () => {
+      const root = findBestMenuRoot(button);
+      if (root) {
+        nativeMenu = findActualMenuRoot(findMenuContainer(root));
+        trigger = injectMoveToProject(nativeMenu, {
+          open: (item, keyboard) => openSubmenu(item, conversationId, keyboard),
+          leave: scheduleClose,
+          close
+        });
+        if (trigger) {
+          const observer = new MutationObserver(() => {
+            // Gemini 的菜单容器可在可见时被设为 pointer-events: none。
+            if (!trigger?.isConnected || !nativeMenu?.getClientRects().length ||
+                getComputedStyle(nativeMenu).visibility === 'hidden') close();
+          });
+          observer.observe(document.body, { childList: true, subtree: true });
+          observer.observe(nativeMenu, { attributes: true, attributeFilter: ['class', 'style', 'hidden'] });
+          signal.addEventListener('abort', () => observer.disconnect(), { once: true });
+          return;
+        }
+      }
+      if (++attempts < 30) frame = requestAnimationFrame(findAndInject);
+      else close();
+    };
+    frame = requestAnimationFrame(findAndInject);
+    signal.addEventListener('abort', () => cancelAnimationFrame(frame), { once: true });
+  }
+
+  document.addEventListener('pointerdown', (event) => {
+    if (event.target instanceof Element) begin(event.target);
+  }, { signal: lifecycle.signal, capture: true });
   document.addEventListener('click', (event) => {
+    if (!nativeMenu && event.detail === 0 && event.target instanceof Element) begin(event.target);
     const path = event.composedPath();
-    const target = event.target as HTMLElement | null;
-    if (!target) return;
-
-    const inSubmenu = !!submenuElement && path.includes(submenuElement);
-    const inMenu = !!currentMenuRoot && (path.includes(currentMenuRoot) || currentMenuRoot.contains(target));
-    const isKebab = isChatKebabButton(target);
-
-    if (!inSubmenu && !inMenu && !isKebab) {
-      cleanupMenuArtifacts();
-    }
-  });
-
-  document.addEventListener('scroll', () => cleanupMenuArtifacts(), true);
+    if (!path.includes(kebab!) && !path.includes(nativeMenu!) && !path.includes(submenu!)) close();
+  }, { signal: lifecycle.signal, capture: true });
   document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      cleanupMenuArtifacts();
+    if (['Enter', ' '].includes(event.key) && !event.repeat && event.target instanceof Element) begin(event.target);
+    if (event.key === 'Escape' && !event.composedPath().includes(submenu!) && event.target !== trigger) close();
+    if (event.key !== 'ArrowDown' || !trigger || !nativeMenu) return;
+    const nativeItems = Array.from(nativeMenu.querySelectorAll('[role="menuitem"], button')).filter((item) => item !== trigger);
+    if (nativeItems.at(-1) === event.target) {
+      event.preventDefault();
+      event.stopPropagation();
+      trigger.focus({ preventScroll: true });
     }
-  });
+  }, { signal: lifecycle.signal, capture: true });
+  document.addEventListener('scroll', (event) => {
+    if (submenu && kebab && event.target instanceof Node && event.target.contains(kebab)) closeSubmenu();
+  }, { signal: lifecycle.signal, capture: true });
+  window.addEventListener('resize', () => close(), { signal: lifecycle.signal });
 
   return () => {
-    listenersAttached = false;
-    openMoveMenuHandler = null;
-    closeMoveMenuHandler = null;
-    keepMoveMenuOpenHandler = null;
+    close();
+    lifecycle.abort();
   };
+}
+
+export function moveMenuFocus(menu: HTMLElement, event: KeyboardEvent) {
+  if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+  const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('button'))
+    .filter((item) => item.getClientRects().length > 0 && !item.disabled);
+  if (!items.length) return;
+  const current = items.indexOf(event.target as HTMLButtonElement);
+  const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+    : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+  event.preventDefault();
+  event.stopPropagation();
+  items[index].focus();
 }
 
 export function isChatKebabButton(el: HTMLElement): boolean {
@@ -205,71 +302,6 @@ export function isChatKebabButton(el: HTMLElement): boolean {
     '選項'
   ].some((token) => label.includes(token));
   return hasMenuAttr || hasDots || labelHit;
-}
-
-export function waitForMenuRoot(targetEl?: HTMLElement): Promise<HTMLElement | null> {
-  return new Promise((resolve) => {
-    let done = false;
-    const resolveOnce = (menu: HTMLElement | null) => {
-      if (done) return;
-      done = true;
-      observer.disconnect();
-      resolve(menu);
-    };
-
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        for (const node of Array.from(mutation.addedNodes)) {
-          const menu = findMenuFromNode(node);
-          if (menu) {
-            resolveOnce(menu);
-            return;
-          }
-        }
-      }
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
-
-    let frame = 0;
-    const maxFrames = 30;
-    const tick = () => {
-      if (done) return;
-      const menuRoot = findBestMenuRoot(targetEl);
-      if (menuRoot) {
-        resolveOnce(menuRoot);
-        return;
-      }
-      frame += 1;
-      if (frame >= maxFrames) {
-        resolveOnce(null);
-        return;
-      }
-      requestAnimationFrame(tick);
-    };
-    requestAnimationFrame(tick);
-  });
-}
-
-function findMenuFromNode(node: Node): HTMLElement | null {
-  if (!(node instanceof HTMLElement)) {
-    return null;
-  }
-  if (isGeminiChatMenu(node)) {
-    return node;
-  }
-  const roleMenu = node.querySelector<HTMLElement>('[role="menu"], [role="listbox"]');
-  if (roleMenu && isGeminiChatMenu(roleMenu)) {
-    return roleMenu;
-  }
-  const menuItem = node.querySelector<HTMLElement>('[role="menuitem"]');
-  if (menuItem) {
-    const root = menuItem.closest<HTMLElement>('[role="menu"], [role="listbox"]') || menuItem.parentElement;
-    if (root && isGeminiChatMenu(root)) {
-      return root;
-    }
-  }
-  return null;
 }
 
 function collectSearchRoots(): (Document | ShadowRoot)[] {
@@ -378,46 +410,22 @@ export function isGeminiChatMenu(root: HTMLElement): boolean {
   return summary.recognizedActionCount >= 2 && (summary.pin || summary.rename || summary.delete);
 }
 
-export function getConversationIdFromActiveRow(targetEl: HTMLElement): string | null {
-  const active = document.querySelector<HTMLElement>(`[${ACTIVE_ROW_ATTR}="true"]`);
-  const row = active || findChatRowFromTarget(targetEl);
-  const link = row?.querySelector<HTMLAnchorElement>('a[href]') || targetEl.closest<HTMLAnchorElement>('a[href]');
-  const hrefId = link?.href ? getConversationId(link.href) : null;
-  if (hrefId) return hrefId;
-  if (row) {
-    const cached = row.getAttribute(ACTIVE_ROW_ID_ATTR);
-    if (cached) return cached;
-  }
-  return getConversationIdFromChatRow(row);
-}
-
-export function injectMoveToProject(root: HTMLElement, conversationId: string): boolean {
-  if (!openMoveMenuHandler) return false;
-
-  let menuRoot = findMenuContainer(root);
-  menuRoot = findActualMenuRoot(menuRoot);
-  if (menuRoot === document.body || menuRoot === document.documentElement || !isGeminiChatMenu(menuRoot)) {
-    return false;
-  }
-  currentMenuRoot = menuRoot;
-
-  queryAllInRoots(`[${MENU_ITEM_ATTR}="move-to-project"]`).forEach((node) => {
-    if (!menuRoot.contains(node)) {
-      node.remove();
-    }
-  });
-
-  const existing = menuRoot.querySelector(`[${MENU_ITEM_ATTR}="move-to-project"]`);
-  if (existing) {
-    existing.remove();
-  }
-
+function injectMoveToProject(menuRoot: HTMLElement, actions: {
+  open: (item: HTMLElement, keyboard: boolean) => void;
+  leave: () => void;
+  close: (restoreFocus: boolean) => void;
+}): HTMLElement | null {
   const { container, deleteItem } = findMenuListContainer(menuRoot);
   if (!container || container === document.body || container === document.documentElement) {
-    return false;
+    return null;
   }
 
-  const item = document.createElement('div');
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.setAttribute('aria-haspopup', 'menu');
+  item.setAttribute('aria-expanded', 'false');
+  item.style.width = '100%';
+  item.style.pointerEvents = 'auto';
   item.setAttribute('role', 'menuitem');
   item.setAttribute(MENU_ITEM_ATTR, 'move-to-project');
 
@@ -435,7 +443,6 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
   item.style.setProperty('background', 'transparent', 'important');
   item.style.setProperty('color', 'inherit', 'important');
   item.style.setProperty('border', 'none', 'important');
-  item.style.setProperty('outline', 'none', 'important');
   item.style.setProperty('font-family', '"Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif', 'important');
   item.style.setProperty('font-size', '14px', 'important');
   item.style.setProperty('font-weight', '500', 'important');
@@ -474,20 +481,31 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
   item.appendChild(label);
   item.appendChild(arrow);
 
-  item.addEventListener('mouseenter', () => {
-    const hoverBg = resolveGeminiTheme() === 'dark' ? 'rgba(255, 255, 255, 0.08)' : '#f1f3f4';
-    item.style.setProperty('background', hoverBg, 'important');
-    keepMoveMenuOpenHandler?.();
-    openMoveMenuHandler?.(item.getBoundingClientRect(), conversationId, item);
+  item.addEventListener('mouseenter', () => actions.open(item, false));
+  item.addEventListener('mouseleave', actions.leave);
+  item.addEventListener('focus', () => {
+    item.style.outline = '2px solid currentColor';
+    item.style.outlineOffset = '-2px';
   });
-
-  item.addEventListener('mouseleave', () => {
-    item.style.setProperty('background', 'transparent', 'important');
-    closeMoveMenuHandler?.();
+  item.addEventListener('blur', () => { item.style.outline = ''; });
+  item.addEventListener('click', (event) => {
+    event.stopPropagation();
+    actions.open(item, event.detail === 0);
   });
-
-  item.addEventListener('click', () => {
-    openMoveMenuHandler?.(item.getBoundingClientRect(), conversationId, item);
+  item.addEventListener('keydown', (event) => {
+    if (!['Enter', ' ', 'ArrowRight', 'ArrowUp', 'Escape'].includes(event.key)) return;
+    if (event.key === 'ArrowUp') {
+      const previous = item.previousElementSibling;
+      if (!(previous instanceof HTMLElement)) return;
+      previous.focus();
+    } else if (event.key === 'Escape') {
+      actions.close(true);
+      return;
+    } else {
+      actions.open(item, true);
+    }
+    event.preventDefault();
+    event.stopPropagation();
   });
 
   const insertParent = deleteItem?.parentNode || container;
@@ -500,11 +518,10 @@ export function injectMoveToProject(root: HTMLElement, conversationId: string): 
   const ok = validateInjection(item, container);
   if (!ok.passed) {
     item.remove();
-    return false;
+    return null;
   }
 
-  observeMenuRoot(menuRoot, conversationId);
-  return true;
+  return item;
 }
 
 function validateInjection(item: HTMLElement, menuRoot: HTMLElement): { passed: boolean; overlap: number } {
@@ -527,39 +544,6 @@ function intersectionArea(a: DOMRect, b: DOMRect): number {
   return w * h;
 }
 
-function observeMenuRoot(menuRoot: HTMLElement, conversationId: string) {
-  if (menuRoot.getAttribute(MENU_OBSERVER_ATTR) === 'true') {
-    return;
-  }
-  menuRoot.setAttribute(MENU_OBSERVER_ATTR, 'true');
-  let reinjectCount = 0;
-
-  if (menuObserver) {
-    menuObserver.disconnect();
-  }
-
-  menuObserver = new MutationObserver(() => {
-    if (!document.contains(menuRoot) || !isMenuRootVisible(menuRoot)) {
-      menuObserver?.disconnect();
-      menuRoot.removeAttribute(MENU_OBSERVER_ATTR);
-      cleanupMenuArtifacts();
-      return;
-    }
-    const exists = menuRoot.querySelector(`[${MENU_ITEM_ATTR}="move-to-project"]`);
-    if (!exists && reinjectCount < 3) {
-      reinjectCount += 1;
-      injectMoveToProject(menuRoot, conversationId);
-    }
-  });
-
-  menuObserver.observe(menuRoot, { childList: true, subtree: true });
-
-  window.setTimeout(() => {
-    menuObserver?.disconnect();
-    menuRoot.removeAttribute(MENU_OBSERVER_ATTR);
-  }, 800);
-}
-
 function isMenuRootVisible(element: HTMLElement): boolean {
   const rect = element.getBoundingClientRect();
   const inViewport =
@@ -576,7 +560,6 @@ function isMenuRootVisible(element: HTMLElement): boolean {
     inViewport &&
     withinBounds &&
     area > 2000 &&
-    style.pointerEvents !== 'none' &&
     style.display !== 'none' &&
     style.visibility !== 'hidden'
   );
@@ -649,12 +632,21 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       padding: 0 12px;
       border-radius: var(--gp-radius-pill, ${PILL_RADIUS});
       box-sizing: border-box;
+      width: 100%;
+      border: 0;
+      background: transparent;
+      font: inherit;
+      text-align: left;
       cursor: pointer;
       color: var(--gp-fg, #141413);
       transition: background-color var(--gp-transition, .18s ease);
     }
     .gp-move-item:hover {
       background: var(--gp-bg-hover, #f5f4ed);
+    }
+    .gp-move-item:focus-visible {
+      outline: 2px solid var(--gp-focus);
+      outline-offset: -2px;
     }
     .gp-move-item svg {
       width: 18px;
@@ -668,188 +660,8 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       text-overflow: ellipsis;
       white-space: nowrap;
     }
-    .gp-move-divider {
-      height: 1px;
-      background: var(--gp-border, rgb(31 30 29 / .15));
-      margin: 4px 8px;
-    }
   `;
   shadow.appendChild(style);
-}
-
-function createMoveMenu(options: ChatMenuEnhancerOptions) {
-  function getOverlayLayer(): HTMLElement {
-    ensureSubmenuStyles(options.overlayShadow);
-    const layer = options.overlayShadow.getElementById('gp-overlay-layer') as HTMLElement | null;
-    return layer || (options.overlayShadow as unknown as HTMLElement);
-  }
-
-  function ensureSubmenu(): HTMLElement {
-    const layer = getOverlayLayer();
-    if (submenuElement && layer.contains(submenuElement)) {
-      return submenuElement;
-    }
-    submenuElement?.remove();
-    submenuElement = document.createElement('div');
-    submenuElement.className = 'gp-move-menu';
-    submenuElement.setAttribute('role', 'menu');
-
-    submenuElement.addEventListener('mouseenter', () => {
-      cancelCloseTimer();
-    });
-    submenuElement.addEventListener('mouseleave', () => {
-      startCloseTimer();
-    });
-
-    layer.appendChild(submenuElement);
-    return submenuElement;
-  }
-
-  function buildMenu(conversationId: string) {
-    const projects = options.getProjects();
-    const currentProjectId = options.getChatProjectId(conversationId);
-
-    const items = [
-      `<div class="gp-move-item secondary" data-gp-move="new">${renderIconSvg('default')}<span>New Project</span></div>`,
-      '<div class="gp-move-divider"></div>',
-      ...projects.map(
-        (project) =>
-          `<div class="gp-move-item" data-gp-move="${project.id}">${renderIconSvg(project.icon, project.color)}<span>${escapeHtml(project.name)}</span></div>`
-      )
-    ];
-
-    if (currentProjectId) {
-      items.push('<div class="gp-move-divider"></div>');
-      items.push('<div class="gp-move-item" data-gp-move="remove"><span>Remove from Project</span></div>');
-    }
-
-    const menu = ensureSubmenu();
-    menu.innerHTML = items.join('');
-  }
-
-  function open(anchorRect: DOMRect, conversationId: string) {
-    const menu = ensureSubmenu();
-    buildMenu(conversationId);
-
-    menu.style.display = 'block';
-    menu.style.visibility = 'hidden';
-    menu.style.left = '0px';
-    menu.style.top = '0px';
-
-    requestAnimationFrame(() => {
-      if (!menu.isConnected) return;
-
-      const menuWidth = menu.offsetWidth;
-      const height = menu.offsetHeight;
-      const left = anchorRect.right + menuWidth > window.innerWidth
-        ? anchorRect.left - menuWidth
-        : anchorRect.right;
-
-      const padding = 8;
-      let top = anchorRect.top;
-      if (top + height + padding > window.innerHeight) {
-        top = window.innerHeight - height - padding;
-      }
-      top = Math.max(padding, top);
-
-      menu.style.left = `${Math.max(8, left)}px`;
-      menu.style.top = `${top}px`;
-      menu.style.visibility = 'visible';
-      showSurface(menu, 'menu', 'block', () => setSurfaceOrigin(menu, anchorRect, Math.max(8, left), top));
-    });
-
-    menu.onclick = (event) => {
-      const target = (event.target as HTMLElement).closest('[data-gp-move]') as HTMLElement | null;
-      if (!target) return;
-      const action = target.dataset.gpMove;
-      if (action === 'new') {
-        options.onCreateProject();
-        cleanupMenuArtifacts();
-        return;
-      }
-      if (action === 'remove') {
-        options.onMoveChat(conversationId, null);
-        cleanupMenuArtifacts();
-        return;
-      }
-      options.onMoveChat(conversationId, action || null);
-      cleanupMenuArtifacts();
-    };
-    document.addEventListener('mousemove', onDocMouseMove, true);
-  }
-
-  function close() {
-    if (submenuElement) {
-      const closingMenu = submenuElement;
-      submenuElement = null;
-      hideSurface(closingMenu, () => closingMenu.remove());
-    }
-    document.removeEventListener('mousemove', onDocMouseMove, true);
-    activeMoveItem = null;
-  }
-
-  function onDocMouseMove(e: MouseEvent) {
-    if (!submenuElement || !activeMoveItem) return;
-    const path = e.composedPath();
-    const inSubmenu = path.includes(submenuElement);
-    const inItem = path.includes(activeMoveItem);
-
-    if (!inSubmenu && !inItem) {
-      startCloseTimer();
-    } else {
-      cancelCloseTimer();
-    }
-  }
-
-  function startCloseTimer() {
-    if (closeTimer) clearTimeout(closeTimer);
-    closeTimer = window.setTimeout(() => {
-      close();
-    }, 200);
-  }
-
-  function cancelCloseTimer() {
-    if (closeTimer) {
-      clearTimeout(closeTimer);
-      closeTimer = null;
-    }
-  }
-
-  function setActiveItem(item: HTMLElement) {
-    activeMoveItem = item;
-  }
-
-  return { open, close, startCloseTimer, cancelCloseTimer, setActiveItem };
-}
-
-function cleanupMenuArtifacts() {
-  const moveItems = Array.from(queryAllInRoots(`[${MENU_ITEM_ATTR}="move-to-project"]`));
-  moveItems.forEach((node) => node.remove());
-
-  if (submenuElement) {
-    const closingMenu = submenuElement;
-    submenuElement = null;
-    hideSurface(closingMenu, () => closingMenu.remove());
-  }
-
-  if (menuObserver) {
-    menuObserver.disconnect();
-    menuObserver = null;
-  }
-
-  if (currentMenuRoot) {
-    currentMenuRoot.removeAttribute(MENU_OBSERVER_ATTR);
-    currentMenuRoot = null;
-  }
-}
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
 }
 
 function findChatRowFromTarget(target: HTMLElement): HTMLElement | null {
@@ -922,21 +734,4 @@ function findActualMenuRoot(root: HTMLElement): HTMLElement {
     return best.menu;
   }
   return root;
-}
-
-function queryAllInRoots(selector: string): HTMLElement[] {
-  const roots = collectSearchRoots();
-  const results: HTMLElement[] = [];
-  roots.forEach((root) => {
-    results.push(...Array.from(root.querySelectorAll<HTMLElement>(selector)));
-  });
-  return results;
-}
-
-function tryInjectWithRetries(menuRoot: HTMLElement, conversationId: string, targetEl: HTMLElement, attempt: number) {
-  const ok = injectMoveToProject(menuRoot, conversationId);
-  if (ok) return;
-  if (attempt >= 2) return;
-  const nextRoot = findBestMenuRoot(targetEl) || menuRoot;
-  requestAnimationFrame(() => tryInjectWithRetries(nextRoot, conversationId, targetEl, attempt + 1));
 }

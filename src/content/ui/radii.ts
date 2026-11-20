@@ -17,7 +17,7 @@ export const RADIUS_TOKENS_CSS = `
 export const PANEL_GEOMETRY_CSS = `
   --gp-panel-border: .5px;
   --gp-panel-action-inset: 16px;
-  --gp-radius-panel: calc(var(--gp-panel-inset) + var(--gp-panel-action-height) / 2 + var(--gp-panel-border));
+  --gp-radius-panel: calc(var(--gp-panel-inset) + var(--gp-panel-top-radius, calc(var(--gp-panel-action-height) / 2)) + var(--gp-panel-border));
   --gp-radius-panel-bottom: calc(var(--gp-panel-action-inset) + var(--gp-panel-action-height) / 2 + var(--gp-panel-border));
   --gp-radius-control: calc(var(--gp-panel-action-height) / 2);
   border-radius: var(--gp-radius-panel) var(--gp-radius-panel) var(--gp-radius-panel-bottom) var(--gp-radius-panel-bottom);

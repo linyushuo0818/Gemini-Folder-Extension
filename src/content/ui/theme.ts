@@ -4,20 +4,16 @@ export type GeminiTheme = 'light' | 'dark';
 export function resolveGeminiTheme(): GeminiTheme {
   const html = document.documentElement;
   const body = document.body;
-  const classes = `${html?.className || ''} ${body?.className || ''}`.toLowerCase();
-  const dataTheme = `${html?.getAttribute('data-theme') || ''} ${body?.getAttribute('data-theme') || ''}`.toLowerCase();
-
-  if (/\b(light|theme-light|light-theme)\b/.test(`${classes} ${dataTheme}`)) {
-    return 'light';
-  }
-  if (/\b(dark|theme-dark|dark-theme)\b/.test(`${classes} ${dataTheme}`)) {
-    return 'dark';
-  }
+  const dataTheme = body?.getAttribute('data-theme') ?? html.getAttribute('data-theme');
+  if (dataTheme === 'light' || dataTheme === 'dark') return dataTheme;
+  const classes = new Set([...html.classList, ...(body?.classList ?? [])]);
+  if (['light', 'theme-light', 'light-theme'].some((name) => classes.has(name))) return 'light';
+  if (['dark', 'theme-dark', 'dark-theme'].some((name) => classes.has(name))) return 'dark';
 
   const sample = [body, html]
     .map((node) => (node ? window.getComputedStyle(node).backgroundColor : ''))
     .find((color) => color && color !== 'transparent' && color !== 'rgba(0, 0, 0, 0)');
-  if (!sample) return 'light';
+  if (!sample) return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 
   const rgb = sample.match(/\d+(\.\d+)?/g);
   if (!rgb || rgb.length < 3) return 'light';
@@ -48,6 +44,11 @@ export function observeGeminiTheme(onThemeChange: (theme: GeminiTheme) => void):
     observer.observe(document.body, options);
   }
 
+  const systemTheme = window.matchMedia('(prefers-color-scheme: dark)');
+  systemTheme.addEventListener('change', sync);
   sync();
-  return () => observer.disconnect();
+  return () => {
+    observer.disconnect();
+    systemTheme.removeEventListener('change', sync);
+  };
 }

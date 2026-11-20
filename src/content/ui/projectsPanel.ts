@@ -1,24 +1,24 @@
-﻿import { ChatRef, Project, ProjectIcon, RuntimeState } from '../../shared/types';
+import { ChatRef, Project, ProjectIcon, RuntimeState } from '../../shared/types';
 import { exportAllData, triggerImport } from '../../shared/backup';
-import { runtimeSendMessage } from '../../shared/webext';
 import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg } from './icons';
 import { showSurface, hideSurface, setSurfaceOrigin, installMotionStyles, shouldAnimateMotion, MOTION_EASE } from './motion';
 import { PANEL_TITLE_TYPOGRAPHY } from './typography';
 import { SURFACE_THEME_CSS } from './surfaceTheme';
 import { PANEL_GEOMETRY_CSS, RADIUS_TOKENS_CSS } from './radii';
 import { observeGeminiTheme } from './theme';
+import { moveMenuFocus } from '../dom/menus';
 import { clearActiveDraggedChat, getActiveDraggedChat, setActiveDraggedChat } from '../dom/dragState';
 
 interface ProjectsPanelOptions {
   shadow: ShadowRoot;
   overlayShadow: ShadowRoot;
-  onSaveProject: (project: Project) => Promise<void>;
+  onSaveProject: (project: Project, editing: boolean) => Promise<void>;
   onToggleProjectPin: (projectId: string, isPinned: boolean) => Promise<void>;
   onToggleProjectExpand: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onToggleCollapse: (collapsed: boolean) => void;
-  onRemoveChatFromProject: (conversationId: string) => void;
-  onMoveChatToProject: (conversationId: string, projectId: string) => void;
+  onRemoveChatFromProject: (conversationId: string) => Promise<void>;
+  onMoveChatToProject: (conversationId: string, projectId: string) => Promise<void>;
 }
 
 type ModalMode = 'create' | 'edit';
@@ -128,13 +128,12 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         const project = state.projects.find((p) => p.id === chatProjectId);
         if (project) {
           chatMenu.open(
-            chatMenuButton.getBoundingClientRect(),
-            chatId,
+            chatMenuButton,
             chatProjectId,
             project.name,
             {
-              onRemove: () => options.onRemoveChatFromProject(chatId),
-              onMoveToProject: (targetProjectId) => options.onMoveChatToProject(chatId, targetProjectId)
+              onRemove: () => options.onRemoveChatFromProject(chatId).catch(showMoveError),
+              onMoveToProject: (targetProjectId) => options.onMoveChatToProject(chatId, targetProjectId).catch(showMoveError)
             }
           );
         }
@@ -165,7 +164,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         const projectId = projectRow?.dataset.gpProjectId;
         const project = state.projects.find((item) => item.id === projectId);
         if (project) {
-          openProjectMenu(project, projectMenuButton.getBoundingClientRect());
+          openProjectMenu(project, projectMenuButton);
         }
         return;
       }
@@ -210,10 +209,6 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         target.click();
       }
     }, { signal: panelEventsController.signal });
-
-    const clearDropTargets = () => {
-      panelRoot.querySelectorAll<HTMLElement>('.gp-drop-target').forEach((node) => node.classList.remove('gp-drop-target'));
-    };
 
     panelRoot.addEventListener('dragstart', (event) => {
       const target = event.target as HTMLElement | null;
@@ -262,30 +257,33 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
     panelRoot.addEventListener('drop', (event) => {
       const dragged = getActiveDraggedChat();
-      clearDropTargets();
+      clearDragFeedback();
       if (!dragged) return;
       const target = event.target as HTMLElement | null;
-      const projectEl = target?.closest<HTMLElement>('.gp-project');
-      const targetProjectId = projectEl?.dataset.gpProjectId;
+      const targetProjectId = target?.closest<HTMLElement>('.gp-project')?.dataset.gpProjectId;
       if (!targetProjectId || targetProjectId === dragged.sourceProjectId) return;
 
       event.preventDefault();
-      event.stopPropagation();
       clearActiveDraggedChat();
-      panelRoot.querySelectorAll<HTMLElement>('.gp-dragging').forEach((node) => node.classList.remove('gp-dragging'));
-
       const targetProject = state.projects.find((item) => item.id === targetProjectId);
-      options.onMoveChatToProject(dragged.conversationId, targetProjectId);
-      if (targetProject) {
-        showToast(`Moved to ${targetProject.name}`);
-      }
+      void options.onMoveChatToProject(dragged.conversationId, targetProjectId)
+        .then(() => { if (targetProject) showToast(`Moved to ${targetProject.name}`); })
+        .catch(showMoveError);
     }, { signal: panelEventsController.signal });
+  }
 
-    panelRoot.addEventListener('dragend', () => {
-      clearDropTargets();
-      panelRoot.querySelectorAll<HTMLElement>('.gp-dragging').forEach((node) => node.classList.remove('gp-dragging'));
-      clearActiveDraggedChat();
-    }, { signal: panelEventsController.signal });
+  function clearDropTargets() {
+    panelRoot.querySelectorAll('.gp-drop-target').forEach((node) => node.classList.remove('gp-drop-target'));
+  }
+
+  function clearDragFeedback() {
+    clearDropTargets();
+    panelRoot.querySelectorAll('.gp-dragging').forEach((node) => node.classList.remove('gp-dragging'));
+  }
+
+  function showMoveError(error: unknown) {
+    console.warn('[Gemini Projects] Could not move chat', error);
+    showToast('Could not move chat. Please try again.');
   }
 
   function openCreateModal() {
@@ -434,7 +432,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
       modal.setError('');
       modal.setSaving(true);
       try {
-        await options.onSaveProject(projectData);
+        await options.onSaveProject(projectData, modalMode === 'edit');
         modal.setSaving(false);
         modal.close();
         showToast(saveMode === 'create' ? 'Project created' : 'Project saved');
@@ -476,8 +474,14 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     });
   }
 
-  function openProjectMenu(project: Project, anchorRect: DOMRect) {
-    projectMenu.open(anchorRect, project, {
+  function openProjectMenu(project: Project, anchor: HTMLButtonElement) {
+    projectMenu.open(anchor, project, {
+      onReturnFocus: () => {
+        const row = panelRoot.querySelector(`.gp-project[data-gp-project-id="${CSS.escape(project.id)}"]`);
+        const target = row?.querySelector<HTMLElement>('[data-gp-action="project-menu"]') ??
+          panelRoot.querySelector<HTMLElement>('[data-gp-action="new-project"]');
+        target?.focus({ preventScroll: true });
+      },
       onTogglePin: async () => {
         const isPinned = !project.isPinned;
         await options.onToggleProjectPin(project.id, isPinned);
@@ -493,14 +497,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   }
 
   function showToast(message: string) {
-    toast.show(message);
-  }
-
-  async function refreshStateCache(): Promise<void> {
-    const response = await runtimeSendMessage<{ ok?: boolean; error?: string }>({ type: 'refreshStateCache' });
-    if (response && response.ok === false) {
-      throw new Error(response.error || 'Runtime message failed');
-    }
+    if (!lifecycleController.signal.aborted) toast.show(message);
   }
 
   async function handleBackupClick() {
@@ -513,17 +510,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   }
 
   function handleRestoreClick() {
-    triggerImport(async (result) => {
-      showToast(result.message);
-      if (!result.success) return;
-
-      try {
-        await refreshStateCache();
-      } catch {
-        // Reload below will rebuild state even if the eager cache refresh fails.
-      }
-      window.location.reload();
-    });
+    triggerImport((result) => showToast(result.message));
   }
 
   function closeAllOverlays() {
@@ -534,7 +521,9 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   }
 
   function destroy() {
+    clearDragFeedback();
     closeAllOverlays();
+    overlayLayer.replaceChildren();
     panelEventsController?.abort();
     panelEventsController = null;
     lifecycleController.abort();
@@ -545,6 +534,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     render,
     closeAllOverlays,
     showToast,
+    clearDragFeedback,
     openCreateModal,
     destroy
   };
@@ -582,7 +572,7 @@ export function renderProjectsSection(
                 const isActive = activeConversationId !== null && chat.conversationId === activeConversationId;
                 const isMissing = nativeChatsReady && !isActive && !nativeConversationIds.has(chat.conversationId);
                 return `
-                        <div class="gp-chat-row ${isActive ? 'active' : ''} ${isMissing ? 'missing' : ''}" draggable="true" data-gp-chat-id="${chat.conversationId}" data-gp-project-id="${project.id}">
+                        <div class="gp-chat-row ${isActive ? 'active' : ''} ${isMissing ? 'missing' : ''}" draggable="true" data-gp-chat-id="${escapeAttr(chat.conversationId)}" data-gp-project-id="${escapeAttr(project.id)}">
                           <a class="gp-chat-link" draggable="false" href="${escapeHtml(chat.lastUrl || `/app/${chat.conversationId}`)}" ${isMissing ? 'title="Not in currently loaded history — click to open"' : ''}>
                             <span class="gp-chat-color" aria-hidden="true"></span>
                             <span class="gp-chat-title">${escapeHtml(chat.title || 'Untitled chat')}</span>
@@ -600,7 +590,7 @@ export function renderProjectsSection(
         `;
 
       return `
-        <div class="gp-project" data-gp-project-id="${project.id}">
+        <div class="gp-project" data-gp-project-id="${escapeAttr(project.id)}">
           <div class="gp-row gp-project-row ${isExpanded ? 'active' : ''}" data-gp-action="toggle-project" role="button" tabindex="0" aria-label="${escapeAttr(project.name)}" aria-expanded="${isExpanded}">
             <span class="gp-icon">${renderIconSvg(project.icon, project.color)}</span>
             <span class="gp-label">${escapeHtml(project.name)}</span>
@@ -630,7 +620,6 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       ${RADIUS_TOKENS_CSS}
       :host {
         all: initial;
-        font-family: inherit;
         color: var(--gp-fg, #1f1f1f);
         box-sizing: border-box;
 
@@ -651,6 +640,8 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         isolation: isolate;
         padding-top: 8px;
       }
+
+      #gp-panel-root { font-family: var(--gp-font); }
 
       :host(.dark) {
         --gp-fg: #e3e3e3;
@@ -750,7 +741,8 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       }
       .gp-project-collapse.collapsed { grid-template-rows: 0fr; opacity: 0; }
       .gp-project-collapse > .gp-project-chats { min-height: 0; overflow: hidden; }
-      .gp-title:focus-visible, .gp-row:focus-visible {
+      .gp-title:focus-visible, .gp-row:focus-visible,
+      .gp-kebab:focus-visible, .gp-chat-kebab:focus-visible, .gp-chat-link:focus-visible {
         outline: 2px solid var(--gp-fg-muted); outline-offset: -2px;
       }
       [data-gp-motion-instant], [data-gp-motion-instant] .gp-chevron { transition: none !important; }
@@ -942,6 +934,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       }
 
       .gp-chat-link {
+        border-radius: var(--gp-radius-pill);
         flex: 1;
         min-width: 0; /* Allow text truncation */
         display: flex;
@@ -1148,7 +1141,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-icon-columns: 10;
         --gp-action-width: 124px;
         --gp-action-height: 40px;
-        --gp-panel-inset: 32px;
+        --gp-panel-inset: 32px; --gp-panel-top-radius: 16px;
         --gp-panel-action-height: var(--gp-action-height);
         ${PANEL_GEOMETRY_CSS}
         background: var(--gp-surface);
@@ -1439,7 +1432,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-width: 220px;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-menu);
-        box-shadow: 0 8px 20px rgba(60, 64, 67, 0.18);
+        box-shadow: var(--gp-shadow);
         border: 1px solid var(--gp-border);
         padding: var(--gp-menu-inset);
         display: none;
@@ -1466,7 +1459,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         background: var(--gp-hover);
         transform: none;
       }
-      .gp-menu-item.danger { color: #b3261e; }
+      .gp-menu-item.danger { color: var(--gp-danger); }
       .gp-project-menu {
         width: max-content;
         min-width: 0;
@@ -1475,7 +1468,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         padding: var(--gp-menu-inset);
         border-radius: var(--gp-radius-menu);
       }
-      .gp-project-menu .gp-menu-item {
+      .gp-menu .gp-menu-item {
         width: 100%;
         min-height: var(--gp-menu-item-height);
         justify-content: flex-start;
@@ -1490,23 +1483,20 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         font-size: 14px;
         font-weight: 500;
       }
-      .gp-project-menu .gp-menu-item svg {
+      .gp-menu .gp-menu-item svg {
         flex: 0 0 18px;
       }
-      .gp-project-menu .gp-menu-item:hover,
-      .gp-project-menu .gp-menu-item:focus-visible {
+      .gp-menu .gp-menu-item:hover,
+      .gp-menu .gp-menu-item:focus-visible {
         background: var(--gp-hover);
       }
-      .gp-project-menu .gp-menu-item:focus-visible {
+      .gp-menu .gp-menu-item:focus-visible {
         outline: 2px solid var(--gp-focus);
         outline-offset: -2px;
       }
-      .gp-project-menu .gp-menu-item:disabled {
+      .gp-menu .gp-menu-item:disabled {
         cursor: wait;
         opacity: 0.6;
-      }
-      :host(.dark) .gp-project-menu .gp-menu-item.danger {
-        color: #f2b8b5;
       }
 
       /* Chat menu item with icons */
@@ -1562,7 +1552,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         box-sizing: border-box;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-menu);
-        box-shadow: 0 8px 20px rgba(60, 64, 67, 0.18);
+        box-shadow: var(--gp-shadow);
         border: 1px solid var(--gp-border);
         padding: var(--gp-menu-inset);
         display: none;
@@ -1589,10 +1579,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       @media (max-width: 440px) {
         .gp-modal { --gp-icon-columns: 6; --gp-panel-inset: 24px; gap: 20px; }
         .gp-template-grid { gap: 4px; }
-        .gp-tool-button { gap: 6px; padding: 0 6px; font-size: 12px; }
+        .gp-tool-button { white-space: nowrap; gap: 6px; padding: 0 6px; font-size: 12px; }
         .gp-tool-button svg { width: 16px; height: 16px; flex-basis: 16px; }
         .gp-primary { padding: 0 8px; }
-        .gp-color-row { gap: 0; }
+        .gp-color-row { gap: 0; flex-wrap: wrap; }
         .gp-color-dot { width: 32px; height: 32px; }
       }
       @media (max-width: 360px) { .gp-modal { --gp-icon-columns: 5; --gp-panel-inset: 20px; } }
@@ -1777,9 +1767,10 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
     onPinError: (error: unknown) => void;
     onEdit: () => void;
     onDelete: () => void;
+    onReturnFocus: () => void;
   };
   let callbacks: ProjectMenuCallbacks | null = null;
-  let openedAt = 0;
+  let opener: HTMLElement | null = null;
   let pinPending = false;
   let deleteConfirming = false;
   let deleteConfirmTimer: number | null = null;
@@ -1794,10 +1785,12 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
     if (deleteSpan) deleteSpan.textContent = 'Delete';
   }
 
-  function open(anchorRect: DOMRect, project: Project, nextCallbacks: ProjectMenuCallbacks) {
+  function open(anchor: HTMLButtonElement, project: Project, nextCallbacks: ProjectMenuCallbacks) {
     if (pinPending) return;
     resetDeleteConfirm();
     callbacks = nextCallbacks;
+    opener = anchor;
+    const anchorRect = anchor.getBoundingClientRect();
     menu.innerHTML = `
       <button type="button" role="menuitem" class="gp-menu-item" data-gp-menu="pin">${renderProjectActionIcon(project.isPinned ? 'unpin' : 'pin')}<span>${project.isPinned ? 'Unpin' : 'Pin'}</span></button>
       <button type="button" role="menuitem" class="gp-menu-item" data-gp-menu="edit">${renderProjectActionIcon('edit')}<span>Edit</span></button>
@@ -1816,13 +1809,15 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
       menu.style.top = `${top}px`;
       setSurfaceOrigin(menu, anchorRect, left, top);
     });
-    openedAt = performance.now();
     menu.querySelector<HTMLButtonElement>('[data-gp-menu]')?.focus();
   }
 
-  function close() {
+  function close(restoreFocus = false) {
     resetDeleteConfirm();
     hideSurface(menu);
+    if (restoreFocus) callbacks?.onReturnFocus();
+    callbacks = null;
+    opener = null;
   }
 
   menu.addEventListener('click', async (event) => {
@@ -1841,7 +1836,7 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
       label.textContent = originalLabel === 'Unpin' ? 'Unpinning…' : 'Pinning…';
       try {
         await activeCallbacks.onTogglePin();
-        close();
+        close(true);
       } catch (error) {
         activeCallbacks.onPinError(error);
       } finally {
@@ -1863,7 +1858,7 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
       }
       resetDeleteConfirm();
       callbacks.onDelete();
-      close();
+      close(true);
       return;
     }
     if (action === 'edit') callbacks.onEdit();
@@ -1871,28 +1866,22 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
   });
 
   menu.addEventListener('keydown', (event) => {
-    if (!['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key) || pinPending) return;
-    event.preventDefault();
-    const items = Array.from(menu.querySelectorAll<HTMLButtonElement>('[data-gp-menu]'));
-    const current = items.indexOf(event.target as HTMLButtonElement);
-    const index = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
-      : (current + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
-    items[index]?.focus();
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    } else if (event.key === 'Tab') {
+      close(true);
+    } else if (!pinPending) {
+      moveMenuFocus(menu, event);
+    }
   });
 
   document.addEventListener('click', (event) => {
-    // Shadow DOM 内部点击在冒泡到 document 时会重定位到 host，忽略打开当次点击。
-    if (performance.now() - openedAt < 50) return;
-    if (!event.composedPath().includes(menu)) {
-      close();
-    }
-  }, { signal });
-
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      close();
-    }
-  }, { signal });
+    const path = event.composedPath();
+    if (!path.includes(menu) && !path.includes(opener!)) close();
+  }, { signal, capture: true });
+  window.addEventListener('resize', () => close(), { signal });
 
   return { open, close };
 }
@@ -1901,6 +1890,7 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
 function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal: AbortSignal) {
   const menu = document.createElement('div');
   menu.className = 'gp-menu gp-chat-menu';
+  menu.setAttribute('role', 'menu');
   menu.setAttribute('data-gp-motion-fixed-children', '');
   layer.appendChild(menu);
 
@@ -1908,9 +1898,8 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
     onRemove: () => void;
     onMoveToProject: (projectId: string) => void;
   } | null = null;
-  let currentProjectId: string | null = null;
-  let currentProjectName: string = '';
-  let openedAt = 0;
+  let opener: HTMLElement | null = null;
+  let closeSubmenu: ((restoreFocus?: boolean) => void) | null = null;
   let submenuCloseTimer: number | undefined;
   let hoverController: AbortController | null = null;
   function cancelSubmenuClose() {
@@ -1921,13 +1910,12 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
     cancelSubmenuClose();
     submenuCloseTimer = window.setTimeout(() => {
       submenuCloseTimer = undefined;
-      hideSurface(submenu);
+      if (!submenu.contains((layer.getRootNode() as ShadowRoot).activeElement)) closeSubmenu?.();
     }, 150);
   }
 
   function open(
-    anchorRect: DOMRect,
-    chatId: string,
+    anchor: HTMLElement,
     projectId: string,
     projectName: string,
     nextCallbacks: {
@@ -1935,27 +1923,26 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
       onMoveToProject: (projectId: string) => void;
     }
   ) {
-    cancelSubmenuClose();
-    hoverController?.abort();
+    close();
     hoverController = new AbortController();
     callbacks = nextCallbacks;
-    currentProjectId = projectId;
-    currentProjectName = projectName;
+    opener = anchor;
+    const anchorRect = anchor.getBoundingClientRect();
 
     // 获取其他项目列表（排除当前项目）
     const otherProjects = getProjects().filter(p => p.id !== projectId);
 
     menu.innerHTML = `
-      <div class="gp-menu-item" data-gp-chat-action="remove">
+      <button type="button" role="menuitem" class="gp-menu-item" data-gp-chat-action="remove">
         <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
           <polyline points="16 17 21 12 16 7"/>
           <line x1="21" y1="12" x2="9" y2="12"/>
         </svg>
         <span>Remove from ${escapeHtml(projectName)}</span>
-      </div>
+      </button>
       ${otherProjects.length > 0 ? `
-        <div class="gp-menu-item gp-submenu-trigger" data-gp-chat-action="move-trigger">
+        <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" class="gp-menu-item gp-submenu-trigger" data-gp-chat-action="move-trigger">
           <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
             <line x1="12" y1="11" x2="12" y2="17"/>
@@ -1965,13 +1952,13 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
           <svg class="gp-submenu-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
             <polyline points="9 18 15 12 9 6"/>
           </svg>
-        </div>
-        <div class="gp-submenu" data-gp-submenu="move">
+        </button>
+        <div class="gp-submenu" role="menu" aria-label="Move to Project">
           ${otherProjects.map(p => `
-            <div class="gp-menu-item" data-gp-chat-action="move" data-gp-target-project="${p.id}">
+            <button type="button" role="menuitem" class="gp-menu-item" data-gp-chat-action="move" data-gp-target-project="${escapeAttr(p.id)}">
               ${renderIconSvg(p.icon, p.color)}
               <span>${escapeHtml(p.name)}</span>
-            </div>
+            </button>
           `).join('')}
         </div>
       ` : ''}
@@ -1990,14 +1977,15 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
       menu.style.top = `${top}px`;
       setSurfaceOrigin(menu, anchorRect, left, top);
     });
-    openedAt = performance.now();
+    menu.querySelector('button')?.focus({ preventScroll: true });
 
-    // 子菜单悬停显示
-    const trigger = menu.querySelector('.gp-submenu-trigger');
-    const submenu = menu.querySelector('.gp-submenu') as HTMLElement | null;
+    const trigger = menu.querySelector<HTMLButtonElement>('.gp-submenu-trigger');
+    const submenu = menu.querySelector<HTMLElement>('.gp-submenu');
     if (trigger && submenu) {
-      trigger.addEventListener('mouseenter', () => {
+      const listeners = { signal: hoverController.signal };
+      const openSubmenu = (focus: boolean) => {
         cancelSubmenuClose();
+        trigger.setAttribute('aria-expanded', 'true');
         showSurface(submenu, 'menu', 'block', () => {
           const triggerRect = trigger.getBoundingClientRect();
           const submenuRect = { width: submenu.offsetWidth, height: submenu.offsetHeight };
@@ -2012,25 +2000,44 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
           submenu.style.top = `${submenuTop}px`;
           setSurfaceOrigin(submenu, triggerRect, submenuLeft, submenuTop);
         });
-      }, { signal: hoverController.signal });
+        if (focus) submenu.querySelector('button')?.focus({ preventScroll: true });
+      };
+      closeSubmenu = (restoreFocus = false) => {
+        cancelSubmenuClose();
+        trigger.setAttribute('aria-expanded', 'false');
+        hideSurface(submenu);
+        if (restoreFocus) trigger.focus({ preventScroll: true });
+      };
+      trigger.addEventListener('mouseenter', () => openSubmenu(false), listeners);
+      trigger.addEventListener('click', () => openSubmenu(true), listeners);
+      trigger.addEventListener('keydown', (event) => {
+        if (event.key !== 'ArrowRight') return;
+        event.preventDefault();
+        openSubmenu(true);
+      }, listeners);
       trigger.addEventListener('mouseleave', (e) => {
         const related = (e as MouseEvent).relatedTarget as HTMLElement | null;
         if (related && submenu.contains(related)) return;
         scheduleSubmenuClose(submenu);
-      }, { signal: hoverController.signal });
-      submenu.addEventListener('mouseenter', cancelSubmenuClose, { signal: hoverController.signal });
+      }, listeners);
+      submenu.addEventListener('mouseenter', cancelSubmenuClose, listeners);
       submenu.addEventListener('mouseleave', (event) => {
         if (event.relatedTarget instanceof Node && trigger.contains(event.relatedTarget)) return;
         scheduleSubmenuClose(submenu);
-      }, { signal: hoverController.signal });
+      }, listeners);
     }
   }
 
-  function close() {
+  function close(restoreFocus = false) {
+    closeSubmenu?.();
+    closeSubmenu = null;
+    hoverController?.abort();
+    hoverController = null;
     cancelSubmenuClose();
     hideSurface(menu);
-    const submenu = menu.querySelector('.gp-submenu') as HTMLElement | null;
-    if (submenu) hideSurface(submenu);
+    callbacks = null;
+    if (restoreFocus && opener?.isConnected) opener.focus({ preventScroll: true });
+    opener = null;
   }
 
   menu.addEventListener('click', (event) => {
@@ -2040,28 +2047,35 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
     const action = target.dataset.gpChatAction;
     if (action === 'remove') {
       callbacks.onRemove();
-      close();
+      close(true);
     } else if (action === 'move') {
       const targetProjectId = target.dataset.gpTargetProject;
       if (targetProjectId) {
         callbacks.onMoveToProject(targetProjectId);
-        close();
+        close(true);
       }
     }
   });
 
-  document.addEventListener('click', (event) => {
-    if (performance.now() - openedAt < 50) return;
-    if (!event.composedPath().includes(menu)) {
-      close();
+  menu.addEventListener('keydown', (event) => {
+    const target = event.target as HTMLElement;
+    const submenu = target.closest<HTMLElement>('.gp-submenu');
+    if (event.key === 'Escape' || (submenu && event.key === 'ArrowLeft')) {
+      event.preventDefault();
+      event.stopPropagation();
+      if (submenu) closeSubmenu?.(true);
+      else close(true);
+    } else if (event.key === 'Tab') {
+      close(true);
+    } else {
+      moveMenuFocus(submenu ?? menu, event);
     }
-  }, { signal });
+  });
 
-  document.addEventListener('keydown', (event) => {
-    if (event.key === 'Escape') {
-      close();
-    }
-  }, { signal });
+  document.addEventListener('click', (event) => {
+    if (!event.composedPath().includes(menu)) close();
+  }, { signal, capture: true });
+  window.addEventListener('resize', () => close(), { signal });
 
   return { open, close };
 }

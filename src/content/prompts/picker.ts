@@ -1,5 +1,5 @@
 import { Prompt, promptStore } from './store';
-import { focusComposer, insertPrompt } from './composer';
+import { captureComposer, ComposerSession, insertPrompt, isCurrentComposer, restoreComposerFocus } from './composer';
 import { showSurface, hideSurface, setSurfaceOrigin } from '../ui/motion';
 import { PANEL_TITLE_TYPOGRAPHY } from '../ui/typography';
 import { SURFACE_THEME_CSS } from '../ui/surfaceTheme';
@@ -7,11 +7,6 @@ import { PANEL_GEOMETRY_CSS } from '../ui/radii';
 import { observeGeminiTheme, resolveGeminiTheme } from '../ui/theme';
 
 const PICKER_ID = 'gp-prompt-picker-root';
-
-export interface PromptPickerOpenOptions {
-  triggeredBySlash?: boolean;
-  returnComposer?: HTMLElement | null;
-}
 
 const ICONS = {
   search: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
@@ -46,15 +41,17 @@ export class PromptPicker {
   private host: HTMLElement;
   private isOpen = false;
   private searchQuery = '';
-  private triggerRect: DOMRect | null = null;
+  private session: ComposerSession | null = null;
+  private opener: HTMLElement | null = null;
+  private editorOpener: HTMLElement | null = null;
+  private positionFrame = 0;
+  private geometry = '';
+  private loadError = false;
   private selectedPromptId: string | null = null;
   private visiblePromptIds: string[] = [];
-  private lastVisibleCount = 0;
   private modalDeleteConfirm = false;
   private modalDeleteTimer: number | null = null;
   private editingPrompt: Prompt | null = null;
-  private triggeredBySlash = false;
-  private returnComposer: HTMLElement | null = null;
 
   private constructor() {
     this.host = document.createElement('div');
@@ -71,202 +68,151 @@ export class PromptPicker {
       this.host.dataset.gpTheme = theme;
     });
 
-    promptStore.subscribe(() => this.updateList());
+    promptStore.subscribe(() => {
+      this.loadError = false;
+      if (this.isOpen) this.updateList();
+    });
 
-    // 全局外部点击关闭
-    document.addEventListener('mousedown', (e) => {
-      if (!this.isOpen) return;
-      const path = e.composedPath();
-      const inHost = path.includes(this.host);
-      if (!inHost && !(e.target as HTMLElement).closest('[data-gp-prompt-btn]')) {
-        const modal = this.shadow.querySelector('.modal-overlay') as HTMLElement | null;
-        if (modal && modal.dataset.gpMotionState === 'open') return;
-        this.close();
+    document.addEventListener('mousedown', (event) => {
+      if (!this.isOpen || this.isEditing()) return;
+      const path = event.composedPath();
+      if (!path.includes(this.host) && !path.includes(document.getElementById('gp-prompt-btn')!)) this.close();
+    }, true);
+
+    document.addEventListener('keydown', (event) => {
+      if (!this.isOpen || event.isComposing || event.keyCode === 229) return;
+      const editing = this.isEditing();
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
+        if (editing) this.closeModal();
+        else this.close(true);
+        return;
+      }
+      if (!event.composedPath().includes(this.host)) return;
+      if (event.key === 'Tab') {
+        const scope = this.shadow.querySelector(editing ? '#modal-overlay' : '.picker')!;
+        const controls = Array.from(scope.querySelectorAll<HTMLElement>('button:not(:disabled), input, textarea'))
+          .filter((control) => control.getClientRects().length > 0);
+        const active = this.shadow.activeElement as HTMLElement;
+        if (event.shiftKey && active === controls[0]) {
+          event.preventDefault();
+          controls.at(-1)?.focus();
+        } else if (!event.shiftKey && active === controls.at(-1)) {
+          event.preventDefault();
+          controls[0]?.focus();
+        }
+        return;
+      }
+      if (editing) return;
+      const target = event.composedPath()[0];
+      if (!(target instanceof HTMLElement) || !target.matches('.search-input, .item-insert')) return;
+      if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+        event.preventDefault();
+        this.moveSelection(event.key === 'ArrowDown' ? 1 : -1);
+      } else if (event.key === 'Enter' && (target.matches('.search-input') || event.ctrlKey || event.metaKey)) {
+        event.preventDefault();
+        if (target.matches('.item-insert')) this.selectedPromptId = target.closest<HTMLElement>('.item')?.dataset.id ?? null;
+        this.insertSelectedPrompt(event.ctrlKey || event.metaKey);
       }
     }, true);
 
-    document.addEventListener('keydown', (e) => {
-      if (!this.isOpen) return;
-      const modal = this.shadow.querySelector('.modal-overlay') as HTMLElement | null;
-      const modalOpen = !!modal && modal.dataset.gpMotionState === 'open';
 
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        if (modalOpen) {
-          this.closeModal();
-        } else {
-          const composer = this.returnComposer;
-          this.close();
-          if (composer?.isConnected) {
-            focusComposer(composer);
-          } else {
-            document.querySelector<HTMLButtonElement>('[data-gp-prompt-btn]')?.focus();
-          }
-        }
-        return;
-      }
-      if (modalOpen) {
-        if (e.key === 'Tab') {
-          const controls = Array.from(modal!.querySelectorAll<HTMLElement>('button:not(:disabled), input, textarea'))
-            .filter((el) => el.getBoundingClientRect().height > 0);
-          const active = e.composedPath()[0];
-          const first = controls[0];
-          const last = controls[controls.length - 1];
-          if (e.shiftKey && (active === first || !controls.includes(active as HTMLElement))) {
-            e.preventDefault();
-            last?.focus();
-          } else if (!e.shiftKey && (active === last || !controls.includes(active as HTMLElement))) {
-            e.preventDefault();
-            first?.focus();
-          }
-        }
-        return;
-      }
-      const target = e.composedPath()[0] as HTMLElement;
-      if (!target.closest('.search-input, .item-insert')) return;
-
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        this.moveSelection(1);
-        return;
-      }
-      if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        this.moveSelection(-1);
-        return;
-      }
-      if (e.key === 'Enter') {
-        const active = e.composedPath()[0] as HTMLElement | null;
-        if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') && !active.classList.contains('search-input')) {
-          return;
-        }
-        if (active?.closest('button')) return;
-        e.preventDefault();
-        this.insertSelectedPrompt(e.ctrlKey || e.metaKey);
-      }
-    });
-
-    window.addEventListener('resize', () => {
-      if (this.isOpen) {
-        this.updatePosition();
-        this.applyDynamicHeight(this.lastVisibleCount);
-      }
-    });
   }
 
   public static getInstance(): PromptPicker {
-    if (!PromptPicker.instance) {
-      PromptPicker.instance = new PromptPicker();
-    }
-    return PromptPicker.instance;
+    return PromptPicker.instance ??= new PromptPicker();
   }
 
-  public toggle(rect: DOMRect, options?: PromptPickerOpenOptions) {
-    if (this.isOpen) {
-      this.close();
-    } else {
-      this.open(rect, options);
-    }
+  public isEditing(): boolean {
+    return this.shadow.querySelector<HTMLElement>('#modal-overlay')?.dataset.gpMotionState === 'open';
   }
 
-  public open(rect: DOMRect, options?: PromptPickerOpenOptions) {
+  public toggle(composer: HTMLElement, opener: HTMLElement | null) {
+    if (this.isEditing()) return;
+    if (this.isOpen) this.close(true);
+    else this.open(captureComposer(composer), opener);
+  }
+
+  public open(session: ComposerSession, opener: HTMLElement | null) {
+    if (this.isOpen) return;
     this.host.dataset.gpTheme = resolveGeminiTheme();
     this.isOpen = true;
-    this.triggerRect = rect;
+    this.session = session;
+    this.opener = opener;
+    this.geometry = '';
     this.selectedPromptId = null;
     this.visiblePromptIds = [];
     this.searchQuery = '';
-    this.triggeredBySlash = options?.triggeredBySlash === true;
-    this.returnComposer = options?.returnComposer ?? null;
 
     this.host.style.display = 'block';
     this.host.style.pointerEvents = 'auto';
-
-    const picker = this.shadow.querySelector<HTMLElement>('.picker');
-    if (picker) {
-      showSurface(picker, 'menu', 'flex', () => {
-        this.updateList();
-        this.updatePosition();
-      });
-    }
-    const input = this.shadow.querySelector('.search-input') as HTMLInputElement | null;
-    if (input) {
-      input.value = '';
-      this.shadow.querySelector<HTMLButtonElement>('.search-clear')!.hidden = true;
-      input.focus();
-    }
+    const picker = this.shadow.querySelector<HTMLElement>('.picker')!;
+    const input = this.shadow.querySelector<HTMLInputElement>('.search-input')!;
+    input.value = '';
+    this.shadow.querySelector<HTMLButtonElement>('.search-clear')!.hidden = true;
+    showSurface(picker, 'menu', 'flex', () => this.updateList());
+    input.focus({ preventScroll: true });
+    this.positionPicker();
+    void promptStore.refresh().catch(() => {
+      this.loadError = true;
+      if (this.isOpen) this.updateList();
+    });
   }
 
-  public close() {
+  public close(restoreFocus = false) {
+    const { session, opener } = this;
     this.isOpen = false;
-    this.triggeredBySlash = false;
-    this.returnComposer = null;
+    this.session = null;
+    this.opener = null;
+    cancelAnimationFrame(this.positionFrame);
+    if (this.isEditing()) this.closeModal(false);
     this.host.style.pointerEvents = 'none';
-    const picker = this.shadow.querySelector<HTMLElement>('.picker');
-    if (picker) {
-      hideSurface(picker, () => {
-        if (!this.isOpen) this.host.style.display = 'none';
-      });
+    const picker = this.shadow.querySelector<HTMLElement>('.picker')!;
+    hideSurface(picker, () => {
+      if (!this.isOpen) this.host.style.display = 'none';
+    });
+    if (restoreFocus && session && isCurrentComposer(session)) {
+      if (opener && opener !== session.composer && opener.isConnected) opener.focus();
+      else restoreComposerFocus(session);
     }
   }
+
+  private positionPicker = () => {
+    const composer = this.session?.composer;
+    if (!composer?.isConnected || this.session?.url !== location.href ||
+        !composer.getClientRects().length) {
+      this.close();
+      return;
+    }
+    this.updatePosition();
+    this.positionFrame = requestAnimationFrame(this.positionPicker);
+  };
 
   private updatePosition() {
-    if (!this.triggerRect) return;
+    if (!this.session) return;
+    const picker = this.shadow.querySelector<HTMLElement>('.picker')!;
+    const rect = this.session.composer.getBoundingClientRect();
     const margin = 12;
     const gap = 10;
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
-    const mobile = viewportWidth <= 720;
-    const picker = this.shadow.querySelector('.picker') as HTMLElement | null;
-
-    const width = Math.min(400, viewportWidth - margin * 2);
-    const height = Math.min(picker?.offsetHeight || 400, viewportHeight - margin * 2);
-
-    if (picker) {
-      picker.style.width = `${width}px`;
-      picker.style.maxHeight = `${viewportHeight - margin * 2}px`;
-    }
-
-    let left = this.triggerRect.left;
-    let top = this.triggerRect.top - height - gap;
-
-    if (mobile) {
-      left = margin;
-      top = viewportHeight - height - 16;
-    } else if (top >= margin) {
-      // 优先悬浮在输入区上方并左对齐入口，不遮挡当前输入框内容。
-      left = Math.max(margin, Math.min(this.triggerRect.left, viewportWidth - width - margin));
-    } else {
-      const rightSide = this.triggerRect.right + gap;
-      const leftSide = this.triggerRect.left - width - gap;
-      if (rightSide + width <= viewportWidth - margin) {
-        left = rightSide;
-      } else if (leftSide >= margin) {
-        left = leftSide;
-      } else {
-        const centered = this.triggerRect.left + this.triggerRect.width / 2 - width / 2;
-        left = Math.max(margin, Math.min(centered, viewportWidth - width - margin));
-      }
-      const preferredTop = this.triggerRect.bottom + gap;
-      top = Math.max(margin, Math.min(preferredTop, viewportHeight - height - margin));
-    }
-
-    if (left + width > viewportWidth - margin) {
-      left = viewportWidth - width - margin;
-    }
-    if (left < margin) {
-      left = margin;
-    }
-    if (top < margin) {
-      top = margin;
-    }
-
-    this.host.style.left = `${Math.round(left)}px`;
-    this.host.style.top = `${Math.round(top)}px`;
-    if (picker) {
-      setSurfaceOrigin(picker, this.triggerRect, left, top);
-    }
+    const above = Math.floor(rect.top - gap - margin);
+    const below = Math.floor(viewportHeight - rect.bottom - gap - margin);
+    const placeAbove = above >= 160 || above >= below;
+    const capacity = Math.max(0, placeAbove ? above : below);
+    const width = Math.max(0, Math.min(400, viewportWidth - margin * 2));
+    const left = Math.round(Math.max(margin, Math.min(rect.left, viewportWidth - width - margin)));
+    // 侧栏过渡只改变输入区的位置，已打开的 Picker 仍需重新锚定。
+    const geometry = [left, width, capacity, Math.round(rect.top), Math.round(rect.bottom), placeAbove].join();
+    if (geometry === this.geometry) return;
+    this.geometry = geometry;
+    picker.style.width = `${width}px`;
+    picker.style.maxHeight = `${capacity}px`;
+    const top = Math.max(margin, Math.round(placeAbove ? rect.top - gap - picker.offsetHeight : rect.bottom + gap));
+    this.host.style.left = `${left}px`;
+    this.host.style.top = `${top}px`;
+    setSurfaceOrigin(picker, rect, left, top);
   }
 
   private applyDynamicHeight(itemCount: number) {
@@ -280,10 +226,9 @@ export class PromptPicker {
     const footerHeight = footer?.offsetHeight || 56;
     const visibleItems = Array.from(list.querySelectorAll<HTMLElement>('.item')).slice(0, 4);
     const listTarget = itemCount <= 0 ? 120 : visibleItems.reduce((height, item) => height + item.offsetHeight + 4, 8);
-    const viewportMax = Math.max(0, Math.min(window.innerHeight - 24, 580));
-    const target = Math.min(headerHeight + footerHeight + listTarget, viewportMax);
+    const target = Math.min(headerHeight + footerHeight + listTarget, 640);
     picker.style.height = `${Math.round(target)}px`;
-    picker.style.maxHeight = `${Math.round(viewportMax)}px`;
+    this.geometry = '';
     this.updatePosition();
   }
 
@@ -311,7 +256,7 @@ export class PromptPicker {
         display: flex; flex-direction: column; overflow: hidden;
         background: var(--gp-surface); color: var(--gp-fg);
         border: var(--gp-panel-border) solid var(--gp-border);
-        box-shadow: 0 16px 48px #00000026, 0 4px 12px #00000012;
+        box-shadow: var(--gp-shadow);
         font-family: var(--gp-font-sans); font-size: 14px;
         --gp-motion-open: 150ms;
       }
@@ -353,7 +298,7 @@ export class PromptPicker {
       .btn-orb:hover { opacity: .85; }
       .btn-orb svg { width: 16px; height: 16px; }
       .modal-overlay { position: fixed; inset: 0; z-index: 2147483647; display: flex; align-items: center; justify-content: center; padding: 16px; background: var(--gp-backdrop); }
-      .modal { --gp-panel-inset: 32px; --gp-panel-action-height: 36px; ${PANEL_GEOMETRY_CSS} width: min(560px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; background: var(--gp-surface); border: var(--gp-panel-border) solid var(--gp-border); box-shadow: var(--gp-shadow); font: 14px var(--gp-font-sans); color: var(--gp-fg); }
+      .modal { --gp-panel-inset: 32px; --gp-panel-top-radius: 16px; --gp-panel-action-height: 36px; ${PANEL_GEOMETRY_CSS} width: min(560px, 100%); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; overflow: hidden; background: var(--gp-surface); border: var(--gp-panel-border) solid var(--gp-border); box-shadow: var(--gp-shadow); font: 14px var(--gp-font-sans); color: var(--gp-fg); }
       .modal-header { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding: var(--gp-panel-inset) var(--gp-panel-inset) 24px; }
       .modal-close { display: grid; place-items: center; width: 32px; height: 32px; padding: 0; border: 0; border-radius: var(--gp-radius-circle); background: transparent; color: var(--gp-fg-secondary); }
       .modal-close:hover { background: var(--gp-bg-hover); }
@@ -361,16 +306,18 @@ export class PromptPicker {
       .modal-body > * { flex-shrink: 0; }
       .form-group { display: flex; flex-direction: column; gap: 8px; }
       .form-label { font-size: 14px; line-height: 19.6px; font-weight: 600; }
-      .form-input, .form-textarea { width: 100%; border: .5px solid var(--gp-control-border); border-radius: var(--gp-radius-control); background: var(--gp-surface); color: var(--gp-fg); padding: 10px 12px; font-size: 14px; line-height: 19.6px; }
-      .form-input { height: 40px; border-width: 1px; }
-      .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--gp-focus); box-shadow: 0 0 0 2px var(--gp-bg-hover); }
+      .form-input, .form-textarea { width: 100%; border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-control); background: var(--gp-surface); color: var(--gp-fg); padding: 10px 12px; font-size: 14px; line-height: 19.6px; }
+      .form-input { height: 40px; }
+      .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--gp-focus); box-shadow: 0 0 0 1px var(--gp-focus); }
       .form-input::placeholder, .form-textarea::placeholder { color: var(--gp-fg-tertiary); }
-      .textarea-shell { position: relative; }
-      .form-textarea { display: block; height: clamp(120px, 28vh, 260px); resize: vertical; padding: 16px 16px 40px; }
-      .textarea-token { position: absolute; right: 16px; bottom: 16px; font: 12px "JetBrains Mono", ui-monospace, monospace; color: var(--gp-fg-secondary); pointer-events: none; }
+      .form-textarea { display: block; height: clamp(120px, 28vh, 260px); resize: none; padding: 16px; }
+      .content-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+      .textarea-token { color: var(--gp-fg-tertiary); font-size: 12px; white-space: nowrap; }
       .modal-footer { flex-shrink: 0; padding: var(--gp-panel-action-inset); border-top: .5px solid var(--gp-border); display: flex; justify-content: space-between; align-items: center; gap: 8px; }
       .modal-footer-left, .modal-footer-right { display: flex; align-items: center; gap: 8px; }
       .modal-footer-right { margin-left: auto; }
+      .modal-footer .btn { white-space: nowrap; }
+      @media (max-width: 400px) { .modal-footer .btn { padding-inline: 10px; } }
       .btn { height: 36px; padding: 0 16px; border-radius: var(--gp-radius-pill); border: .5px solid var(--gp-button-border); font-size: 14px; font-weight: 600; background: transparent; }
       .btn:hover { background: var(--gp-bg-hover); }
       .btn-save { border-color: var(--gp-accent); background: var(--gp-accent); color: var(--gp-accent-fg); }
@@ -442,6 +389,7 @@ export class PromptPicker {
   }
 
   private showModal(prompt?: Prompt) {
+    this.editorOpener = this.shadow.activeElement as HTMLElement | null;
     this.editingPrompt = prompt || null;
     this.modalDeleteConfirm = false;
     if (this.modalDeleteTimer) {
@@ -454,7 +402,7 @@ export class PromptPicker {
     const overlay = this.shadow.getElementById('modal-overlay') as HTMLElement;
     this.shadow.querySelector('.picker')?.setAttribute('inert', '');
     overlay.innerHTML = `
-      <div class="modal" data-gp-motion-surface role="dialog" aria-modal="true" aria-labelledby="prompt-editor-title" aria-label="${prompt ? 'Edit Prompt' : 'New Prompt'}">
+      <div class="modal" data-gp-motion-surface role="dialog" aria-modal="true" aria-labelledby="prompt-editor-title">
         <div class="modal-header">
           <h2 class="modal-title" id="prompt-editor-title">${prompt ? 'Edit Prompt' : 'New Prompt'}</h2>
           <button class="modal-close" id="modal-close" aria-label="Close editor">${ICONS.close}</button>
@@ -465,11 +413,11 @@ export class PromptPicker {
             <input class="form-input" id="prompt-title" aria-label="Name" type="text" placeholder="e.g. Code Review" value="${safeTitle}" />
           </div>
           <div class="form-group content-group">
-            <label class="form-label" for="prompt-content">Prompt Content</label>
-            <div class="textarea-shell">
-              <textarea class="form-textarea" id="prompt-content" aria-label="Prompt Content" placeholder="Enter your prompt template...">${safeContent}</textarea>
+            <div class="content-label">
+              <label class="form-label" for="prompt-content">Prompt Content</label>
               <span class="textarea-token" id="content-token-estimate">~0 tokens</span>
             </div>
+            <textarea class="form-textarea" id="prompt-content" placeholder="Enter your prompt template...">${safeContent}</textarea>
           </div>
         </div>
         <p class="form-status" id="form-status" role="alert"></p>
@@ -521,7 +469,8 @@ export class PromptPicker {
 
       if (!this.modalDeleteConfirm) {
         this.modalDeleteConfirm = true;
-        deleteBtn.textContent = 'Confirm Delete';
+        deleteBtn.textContent = 'Confirm';
+        deleteBtn.setAttribute('aria-label', 'Confirm Delete');
         deleteBtn.classList.add('confirming');
         if (this.modalDeleteTimer) {
           window.clearTimeout(this.modalDeleteTimer);
@@ -530,6 +479,7 @@ export class PromptPicker {
           this.modalDeleteConfirm = false;
           this.modalDeleteTimer = null;
           deleteBtn.textContent = 'Delete';
+          deleteBtn.removeAttribute('aria-label');
           deleteBtn.classList.remove('confirming');
         }, 2200);
         return;
@@ -539,10 +489,18 @@ export class PromptPicker {
         window.clearTimeout(this.modalDeleteTimer);
         this.modalDeleteTimer = null;
       }
+      const status = overlay.querySelector<HTMLElement>('#form-status')!;
       const deletingId = this.editingPrompt.id;
-      await promptStore.delete(deletingId);
-      this.closeModal();
-      this.updateList();
+      deleteBtn.disabled = true;
+      if (saveBtn) saveBtn.disabled = true;
+      try {
+        await promptStore.delete(deletingId);
+        if (status.isConnected && this.isEditing()) this.closeModal();
+      } catch {
+        status.textContent = 'Could not delete this prompt. Please try again.';
+        deleteBtn.disabled = false;
+        updateSaveEnabled();
+      }
     });
 
     overlay.onclick = (e) => {
@@ -554,11 +512,17 @@ export class PromptPicker {
     }, 50);
   }
 
-  private closeModal() {
+  private closeModal(restoreFocus = true) {
     const overlay = this.shadow.getElementById('modal-overlay') as HTMLElement;
     hideSurface(overlay, () => { overlay.innerHTML = ''; });
     this.shadow.querySelector('.picker')?.removeAttribute('inert');
-    this.shadow.querySelector<HTMLButtonElement>('.item.selected .item-action-btn, .btn-new')?.focus();
+    if (restoreFocus) {
+      const opener = this.editorOpener;
+      const replacement = this.editingPrompt && Array.from(this.shadow.querySelectorAll<HTMLButtonElement>('.item-action-btn'))
+        .find((button) => button.dataset.id === this.editingPrompt?.id);
+      (opener?.isConnected ? opener : replacement || this.shadow.querySelector<HTMLButtonElement>('.btn-new'))?.focus();
+    }
+    this.editorOpener = null;
     this.editingPrompt = null;
     this.modalDeleteConfirm = false;
     if (this.modalDeleteTimer) {
@@ -581,6 +545,7 @@ export class PromptPicker {
     const content = (this.shadow.getElementById('prompt-content') as HTMLTextAreaElement)?.value.trim();
     const status = this.shadow.getElementById('form-status');
 
+    if (this.shadow.querySelector<HTMLButtonElement>('#modal-save')?.disabled) return;
     if (!title || !content) {
       if (status) status.textContent = 'Please fill in both Name and Prompt Content.';
       return;
@@ -598,9 +563,7 @@ export class PromptPicker {
         title,
         content
       });
-      this.closeModal();
-      this.updateList();
-      this.shadow.querySelector<HTMLButtonElement>('.btn-new')?.focus();
+      if (status?.isConnected && this.isEditing()) this.closeModal();
     } catch {
       if (status) status.textContent = 'Could not save this prompt. Your draft is still here; please try again.';
     } finally {
@@ -611,7 +574,7 @@ export class PromptPicker {
     }
   }
 
-  private moveSelection(step: number) {
+  private moveSelection(step: number, followFocus = true) {
     if (!this.visiblePromptIds.length) return;
     const currentIndex = this.selectedPromptId ? this.visiblePromptIds.indexOf(this.selectedPromptId) : -1;
     const baseIndex = currentIndex >= 0 ? currentIndex : 0;
@@ -625,7 +588,7 @@ export class PromptPicker {
       row.classList.toggle('selected', row.dataset.id === this.selectedPromptId);
       if (row.dataset.id === this.selectedPromptId) {
         row.scrollIntoView({ block: 'nearest' });
-        if (this.shadow.activeElement?.classList.contains('item-insert')) {
+        if (followFocus && this.shadow.activeElement?.classList.contains('item-insert')) {
           row.querySelector<HTMLButtonElement>('.item-insert')?.focus();
         }
       }
@@ -649,16 +612,19 @@ export class PromptPicker {
       p.content.toLowerCase().includes(this.searchQuery)
     );
 
+    const focused = this.shadow.activeElement as HTMLElement | null;
+    const focusedId = focused?.closest<HTMLElement>('.item')?.dataset.id;
     list.replaceChildren();
     this.visiblePromptIds = displayPrompts.map((prompt) => prompt.id);
-    this.lastVisibleCount = displayPrompts.length;
     const count = this.shadow.getElementById('library-count');
     if (count) count.textContent = `${displayPrompts.length} ${displayPrompts.length === 1 ? 'prompt' : 'prompts'}`;
 
     if (displayPrompts.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'empty-box';
-      empty.textContent = this.searchQuery ? 'No matching prompts' : 'Your library is empty. Add your first prompt.';
+      empty.textContent = this.loadError ? 'Could not load prompts. Reopen to try again.'
+        : this.searchQuery ? 'No matching prompts' : 'Your library is empty. Add your first prompt.';
+      if (this.loadError) empty.setAttribute('role', 'status');
       list.appendChild(empty);
       this.selectedPromptId = null;
       this.applyDynamicHeight(0);
@@ -707,6 +673,7 @@ export class PromptPicker {
       editBtn.dataset.action = 'edit';
       editBtn.dataset.id = prompt.id;
       editBtn.title = 'Edit';
+      editBtn.setAttribute('aria-label', `Edit ${prompt.title}`);
       editBtn.type = 'button';
       editBtn.innerHTML = ICONS.edit;
       editBtn.addEventListener('click', (e) => {
@@ -726,54 +693,35 @@ export class PromptPicker {
       item.addEventListener('mouseenter', () => {
         if (this.selectedPromptId === prompt.id) return;
         this.selectedPromptId = prompt.id;
-        this.moveSelection(0);
+        this.moveSelection(0, false);
       });
 
       list.appendChild(item);
+      if (focusedId === prompt.id) {
+        (focused?.classList.contains('item-action-btn') ? editBtn : insertButton).focus({ preventScroll: true });
+      }
     });
     this.applyDynamicHeight(displayPrompts.length);
   }
 
-  private insertPromptContent(text: string): boolean {
-    const stripLeadingSlash = this.triggeredBySlash;
-    this.triggeredBySlash = false;
-    if (insertPrompt(text, { stripLeadingSlash })) return true;
-    return this.insertPromptFallback(text);
-  }
-
-  private insertPromptFallback(text: string): boolean {
-    const composer = document.querySelector('rich-textarea [contenteditable="true"], div[contenteditable="true"][role="textbox"], textarea') as HTMLElement | null;
-    if (!composer) return false;
-    composer.focus();
-    const ok = document.execCommand('insertText', false, text);
-    if (!ok) {
-      const selection = window.getSelection();
-      if (selection && selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        range.deleteContents();
-        range.insertNode(document.createTextNode(text));
-      }
-    }
-    composer.dispatchEvent(new Event('input', { bubbles: true }));
-    return true;
-  }
-
-  private async onSelect(prompt: Prompt, keepOpen: boolean) {
-    promptStore.trackUsage(prompt.id).catch(() => undefined);
-    const inserted = this.insertPromptContent(prompt.content);
-    if (!inserted) {
+  private onSelect(prompt: Prompt, keepOpen: boolean) {
+    if (!this.session || this.isEditing()) return;
+    if (!insertPrompt(this.session, prompt.content)) {
+      this.close();
       return;
     }
+    void promptStore.trackUsage(prompt.id).catch((error) =>
+      console.warn('[Gemini Projects] Could not record prompt usage', error));
     if (keepOpen) {
+      this.session = captureComposer(this.session.composer);
       this.searchQuery = '';
-      const input = this.shadow.querySelector('.search-input') as HTMLInputElement | null;
-      if (input) {
-        input.value = '';
-        input.focus();
-      }
+      const input = this.shadow.querySelector<HTMLInputElement>('.search-input')!;
+      input.value = '';
+      this.shadow.querySelector<HTMLButtonElement>('.search-clear')!.hidden = true;
+      input.focus();
       this.updateList();
-      return;
+    } else {
+      this.close();
     }
-    this.close();
   }
 }

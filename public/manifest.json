@@ -6,9 +6,6 @@
     "permissions": [
         "storage"
     ],
-    "host_permissions": [
-        "https://gemini.google.com/*"
-    ],
     "background": {
         "service_worker": "background.js",
         "type": "module"

@@ -629,7 +629,7 @@ export function getConversationIdFromChatRow(row: Element | null): string | null
 export function findChatRowElement(target: Element | null, listRoot?: HTMLElement | null): HTMLElement | null {
   if (!target) return null;
 
-  const directListItem = target.closest('[role="listitem"], li') as HTMLElement | null;
+  const directListItem = target.closest('gem-nav-list-item, [role="listitem"], li') as HTMLElement | null;
   if (directListItem) {
     return directListItem;
   }

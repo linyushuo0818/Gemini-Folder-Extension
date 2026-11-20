@@ -4,6 +4,33 @@ import { storageLocalGet, storageLocalSet } from './webext';
 export const STORAGE_KEY = 'gemini_projects_v1';
 export const CURRENT_SCHEMA_VERSION = 1;
 
+export function isRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
+}
+
+export function isSafeId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-z0-9_-]{1,128}$/i.test(value) && !(value in Object.prototype);
+}
+
+export function isProjectColor(value: unknown): value is string {
+  return typeof value === 'string' && /^#(?:[a-f0-9]{3,4}|[a-f0-9]{6}|[a-f0-9]{8})$/i.test(value);
+}
+
+export function normalizeChatUrl(value: unknown, conversationId: string): string | undefined {
+  if (typeof value !== 'string') return undefined;
+  try {
+    const origin = 'https://gemini.google.com';
+    const url = new URL(value, origin);
+    const path = /^\/(?:u\/\d+\/)?app\/([a-z0-9_-]+)\/?$/i.exec(url.pathname);
+    if (url.origin === origin && !url.username && !url.password && path?.[1] === conversationId) {
+      return url.href;
+    }
+  } catch {
+    return undefined;
+  }
+  return undefined;
+}
+
 export function createEmptyState(): StoredState {
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
@@ -30,9 +57,9 @@ function normalizeStoredTitle(title: string): { title: string; isPinned: boolean
 }
 
 function sanitizeProject(raw: unknown, fallbackIndex: number): Project | null {
-  if (!raw || typeof raw !== 'object') return null;
+  if (!isRecord(raw)) return null;
   const candidate = raw as Partial<Project>;
-  if (typeof candidate.id !== 'string' || !candidate.id.trim()) return null;
+  if (!isSafeId(candidate.id)) return null;
   if (typeof candidate.name !== 'string' || !candidate.name.trim()) return null;
 
   const now = Date.now();
@@ -40,7 +67,7 @@ function sanitizeProject(raw: unknown, fallbackIndex: number): Project | null {
     id: candidate.id,
     name: candidate.name.trim(),
     icon: (typeof candidate.icon === 'string' && candidate.icon ? candidate.icon : 'default') as ProjectIcon,
-    color: typeof candidate.color === 'string' && candidate.color ? candidate.color : undefined,
+    color: isProjectColor(candidate.color) ? candidate.color : undefined,
     isPinned: candidate.isPinned === true,
     createdAt: typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt) ? candidate.createdAt : now,
     updatedAt: typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt) ? candidate.updatedAt : now,
@@ -49,50 +76,57 @@ function sanitizeProject(raw: unknown, fallbackIndex: number): Project | null {
 }
 
 // 校验并规范化外部或持久化来源的项目状态；结构不合法时返回 null。
-export function normalizeProjectsState(raw: unknown): StoredState | null {
-  if (!raw || typeof raw !== 'object') {
-    return null;
+export function normalizeProjectsState(raw: unknown, strict = false): StoredState | null {
+  if (!isRecord(raw) || raw.schemaVersion !== CURRENT_SCHEMA_VERSION ||
+      !Array.isArray(raw.projects) || !isRecord(raw.chatIndex) ||
+      (raw.uiPrefs !== undefined && !isRecord(raw.uiPrefs))) return null;
+
+  const projects: Project[] = [];
+  const projectIds = new Set<string>();
+  for (const entry of raw.projects) {
+    const project = sanitizeProject(entry, projects.length);
+    if (!project || projectIds.has(project.id) ||
+        (strict && entry.color != null && !isProjectColor(entry.color))) {
+      if (strict) return null;
+      continue;
+    }
+    projects.push(project);
+    projectIds.add(project.id);
   }
 
-  const candidate = raw as Partial<StoredState>;
-  if (candidate.schemaVersion !== CURRENT_SCHEMA_VERSION) {
-    return null;
-  }
-
-  const projects: Project[] = Array.isArray(candidate.projects)
-    ? candidate.projects
-        .map((item, idx) => sanitizeProject(item, idx))
-        .filter((item): item is Project => item !== null)
-    : [];
-
-  const rawChatIndex =
-    candidate.chatIndex && typeof candidate.chatIndex === 'object' && !Array.isArray(candidate.chatIndex)
-      ? (candidate.chatIndex as Record<string, ChatRef & { lastSeenAt?: number; lastUrl?: string }>)
-      : {};
   const chatIndex: Record<string, ChatRef> = {};
-
-  Object.entries(rawChatIndex).forEach(([key, value]) => {
-    if (!value || typeof value !== 'object') return;
-    const conversationId = typeof value.conversationId === 'string' && value.conversationId ? value.conversationId : key;
-    if (!conversationId) return;
+  for (const [key, value] of Object.entries(raw.chatIndex)) {
+    if (!isRecord(value)) {
+      if (strict) return null;
+      continue;
+    }
+    const conversationId = value.conversationId ?? key;
+    if (!isSafeId(conversationId) || !isSafeId(key) || Object.hasOwn(chatIndex, conversationId)) {
+      if (strict) return null;
+      continue;
+    }
+    const projectId = typeof value.projectId === 'string' && projectIds.has(value.projectId)
+      ? value.projectId : null;
+    const lastUrl = normalizeChatUrl(value.lastUrl, conversationId);
+    if (strict && ((value.projectId != null && !projectId) || (value.lastUrl != null && !lastUrl))) return null;
     const normalized = normalizeStoredTitle(typeof value.title === 'string' ? value.title : '');
     chatIndex[conversationId] = {
       conversationId,
       title: normalized.title,
       isPinned: typeof value.isPinned === 'boolean' ? value.isPinned : normalized.isPinned,
-      projectId: typeof value.projectId === 'string' ? value.projectId : null,
+      projectId,
       updatedAt:
         typeof value.updatedAt === 'number' && Number.isFinite(value.updatedAt)
           ? value.updatedAt
           : typeof value.lastSeenAt === 'number' && Number.isFinite(value.lastSeenAt)
             ? value.lastSeenAt
             : Date.now(),
-      lastUrl: typeof value.lastUrl === 'string' ? value.lastUrl : undefined
+      lastUrl
     };
-  });
+  }
 
   const uiPrefs = {
-    projectsCollapsed: candidate.uiPrefs?.projectsCollapsed === true
+    projectsCollapsed: raw.uiPrefs?.projectsCollapsed === true
   };
 
   return {
@@ -103,13 +137,13 @@ export function normalizeProjectsState(raw: unknown): StoredState | null {
   };
 }
 
-export function migrateState(raw: unknown): StoredState {
-  return normalizeProjectsState(raw) ?? createEmptyState();
-}
-
 export async function loadState(): Promise<StoredState> {
   const result = await storageLocalGet<Record<string, unknown>>(STORAGE_KEY);
-  return migrateState(result[STORAGE_KEY]);
+  const raw = result[STORAGE_KEY];
+  if (raw === undefined) return createEmptyState();
+  const state = normalizeProjectsState(raw);
+  if (!state) throw new Error('Could not read projects data.');
+  return state;
 }
 
 export async function saveState(state: StoredState): Promise<void> {

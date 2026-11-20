@@ -1,3 +1,5 @@
+import { isProjectColor } from '../../shared/storage';
+
 ﻿import { ProjectIcon } from '../../shared/types';
 
 export interface IconOption {
@@ -193,7 +195,7 @@ export const ICON_OPTIONS: IconOption[] = [
  * 将默认黑色（#1f1f1f）规范化为 currentColor，保证深浅模式下都清晰可见。
  */
 export function resolveProjectIconColor(color?: string): string | undefined {
-  if (!color) return undefined;
+  if (!isProjectColor(color)) return undefined;
   return color.trim().toLowerCase() === '#1f1f1f' ? undefined : color;
 }
 

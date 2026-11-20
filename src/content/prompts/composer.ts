@@ -1,157 +1,136 @@
-
-export function getComposerPlainText(composer: HTMLElement): string {
-    if (composer instanceof HTMLTextAreaElement) {
-        return composer.value;
-    }
-    return (composer.textContent || '').replace(/[\u200B-\u200D\uFEFF]/g, '');
-}
-
-export function clearSlashTrigger(composer: HTMLElement): void {
-    if (getComposerPlainText(composer).trim() !== '/') return;
-    composer.focus();
-    if (composer instanceof HTMLTextAreaElement) {
-        composer.value = '';
-        composer.dispatchEvent(new Event('input', { bubbles: true }));
-        return;
-    }
-    const selection = window.getSelection();
-    if (selection) {
-        const range = document.createRange();
-        range.selectNodeContents(composer);
-        selection.removeAllRanges();
-        selection.addRange(range);
-    }
-    document.execCommand('delete', false);
-    if (getComposerPlainText(composer).trim() === '/') {
-        composer.textContent = '';
-    }
-    composer.dispatchEvent(new Event('input', { bubbles: true }));
-}
-
-export function insertPrompt(text: string, options?: { stripLeadingSlash?: boolean }): boolean {
-    const composer = findComposer();
-    if (!composer) {
-        console.error('[Gemini Projects] No composer found');
-        return false;
-    }
-
-    if (options?.stripLeadingSlash) {
-        clearSlashTrigger(composer);
-    }
-
-    focusComposer(composer);
-
-    const success = document.execCommand('insertText', false, text);
-    if (!success) {
-        insertTextAtCursor(text);
-    }
-
-    composer.dispatchEvent(new Event('input', { bubbles: true }));
-    composer.dispatchEvent(new Event('change', { bubbles: true }));
-    handlePlaceholder(composer);
-    return true;
-}
-
-export function focusComposer(composer: HTMLElement) {
-    composer.focus();
-    if (!composer.isContentEditable) return;
-    const selection = window.getSelection();
-    if (!selection) return;
-    const range = document.createRange();
-    range.selectNodeContents(composer);
-    range.collapse(false);
-    selection.removeAllRanges();
-    selection.addRange(range);
-}
+const COMPOSER_SELECTOR = [
+  'rich-textarea [contenteditable="true"]',
+  'rich-textarea textarea',
+  'input-area textarea',
+  'textarea[aria-label*="Message"]',
+  'textarea[placeholder*="Ask"]'
+].join(', ');
 
 export function findComposer(): HTMLElement | null {
-    const active = document.activeElement as HTMLElement | null;
-    if (isUsableComposer(active)) {
-        return active;
-    }
-
-    const selectors = [
-        'rich-textarea [contenteditable="true"]',
-        'div[contenteditable="true"][role="textbox"]',
-        'div.ql-editor[contenteditable="true"]',
-        'textarea[aria-label*="Message"]',
-        'textarea[placeholder*="message"]',
-        'textarea[placeholder*="Ask"]'
-    ];
-
-    for (const selector of selectors) {
-        const candidate = document.querySelector(selector) as HTMLElement | null;
-        if (isUsableComposer(candidate)) {
-            return candidate;
-        }
-    }
-
-    const candidates = Array.from(document.querySelectorAll<HTMLElement>('textarea, [contenteditable="true"]'));
-    const visible = candidates.filter((el) => isUsableComposer(el));
-    if (!visible.length) return null;
-
-    visible.sort((a, b) => {
-        const ar = a.getBoundingClientRect();
-        const br = b.getBoundingClientRect();
-        return br.bottom - ar.bottom;
+  const composers = Array.from(document.querySelectorAll<HTMLElement>(COMPOSER_SELECTOR))
+    .filter((editor) => {
+      const rect = editor.getBoundingClientRect();
+      return rect.width > 0 && rect.height > 0 && getComputedStyle(editor).visibility !== 'hidden';
     });
-
-    return visible[0] || null;
+  return composers.find((editor) => editor.contains(document.activeElement)) ?? composers[0] ?? null;
 }
 
-function isUsableComposer(el: HTMLElement | null): boolean {
-    if (!el) return false;
-    if (el.closest('#gp-prompt-picker-root')) return false;
-    const isEditable = el.isContentEditable || el.tagName === 'TEXTAREA';
-    if (!isEditable) return false;
-    const rect = el.getBoundingClientRect();
-    if (rect.width < 120 || rect.height < 20) return false;
-    const style = window.getComputedStyle(el);
-    if (style.display === 'none' || style.visibility === 'hidden') return false;
-    return true;
+export function getComposerPlainText(composer: HTMLElement): string {
+  return composer instanceof HTMLTextAreaElement
+    ? composer.value
+    : (composer.innerText || '').replace(/[\u200B\uFEFF]/g, '');
 }
 
-function insertTextAtCursor(text: string) {
-    const sel = window.getSelection();
-    if (sel && sel.rangeCount > 0) {
-        const range = sel.getRangeAt(0);
-        range.deleteContents();
-        const node = document.createTextNode(text);
-        range.insertNode(node);
+export interface ComposerSession {
+  composer: HTMLElement;
+  url: string;
+  draft: string;
+  range: Range | null;
+  textareaSelection: [start: number, end: number] | null;
+  slash: boolean;
+}
 
-        // Move cursor to end
-        range.setStartAfter(node);
-        range.setEndAfter(node);
-        sel.removeAllRanges();
-        sel.addRange(range);
+function draftOf(composer: HTMLElement): string {
+  return composer instanceof HTMLTextAreaElement ? composer.value : composer.innerHTML;
+}
+
+export function captureComposer(composer: HTMLElement, slash = false): ComposerSession {
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  return {
+    composer,
+    url: location.href,
+    draft: draftOf(composer),
+    range: range && composer.contains(range.commonAncestorContainer) ? range.cloneRange() : null,
+    textareaSelection: composer instanceof HTMLTextAreaElement
+      ? [composer.selectionStart, composer.selectionEnd] : null,
+    slash
+  };
+}
+
+export function isCurrentComposer(session: ComposerSession): boolean {
+  return session.url === location.href && findComposer() === session.composer;
+}
+
+export function restoreComposerFocus(session: ComposerSession): boolean {
+  if (!isCurrentComposer(session)) return false;
+  const { composer, textareaSelection, range } = session;
+  composer.focus({ preventScroll: true });
+  if (draftOf(composer) !== session.draft) return false;
+
+  if (composer instanceof HTMLTextAreaElement && textareaSelection) {
+    composer.setSelectionRange(...textareaSelection);
+  } else {
+    const selection = window.getSelection();
+    if (!selection) return false;
+    const currentRange = range && composer.contains(range.commonAncestorContainer) && range.cloneRange();
+    const target = currentRange || document.createRange();
+    if (!currentRange) {
+      target.selectNodeContents(composer);
+      target.collapse(false);
     }
+    selection.removeAllRanges();
+    selection.addRange(target);
+  }
+  return true;
 }
 
-function handlePlaceholder(composer: HTMLElement) {
-    // Scan text content for {{...}}
-    // This is a naive implementation that works if the placeholder is in a single text node.
-    // Enhanced version would traverse walker.
+export function insertPrompt(session: ComposerSession, text: string): boolean {
+  if (!restoreComposerFocus(session)) return false;
+  const { composer } = session;
+  const selection = window.getSelection();
+  if (session.slash && getComposerPlainText(composer).trim() === '/') {
+    if (composer instanceof HTMLTextAreaElement) composer.select();
+    else selection?.selectAllChildren(composer);
+  }
 
-    const text = composer.innerText;
-    const match = /\{\{(.*?)\}\}/.exec(text);
-    if (match) {
-        // Find the text node containing this
-        // Simplification: just find the first text node with this string
-        const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
-        let node;
-        while ((node = walker.nextNode())) {
-            const val = node.nodeValue || '';
-            const idx = val.indexOf(match[0]);
-            if (idx !== -1) {
-                // Select it
-                const range = document.createRange();
-                range.setStart(node, idx);
-                range.setEnd(node, idx + match[0].length);
-                const sel = window.getSelection();
-                sel?.removeAllRanges();
-                sel?.addRange(range);
-                break;
-            }
-        }
+  const start = composer instanceof HTMLTextAreaElement ? composer.selectionStart : textBeforeSelection(composer);
+  if (start === null || !document.execCommand('insertText', false, text)) return false;
+
+  const placeholder = /\{\{[^{}\r\n]+\}\}/.exec(text);
+  if (placeholder) {
+    if (composer instanceof HTMLTextAreaElement) {
+      composer.setSelectionRange(start + placeholder.index, start + placeholder.index + placeholder[0].length);
+    } else {
+      // execCommand 对换行使用块节点，Range.toString() 只计入文本节点的字符。
+      const insertedPrefix = text.slice(0, placeholder.index).replace(/[\r\n]/g, '');
+      selectTextAt(composer, start + insertedPrefix.length, placeholder[0]);
     }
+  }
+  return true;
+}
+
+function textBeforeSelection(composer: HTMLElement): number | null {
+  const selection = window.getSelection();
+  if (!selection?.rangeCount) return null;
+  const range = selection.getRangeAt(0);
+  if (!composer.contains(range.commonAncestorContainer)) return null;
+  const prefix = document.createRange();
+  prefix.selectNodeContents(composer);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  return prefix.toString().length;
+}
+
+function selectTextAt(composer: HTMLElement, start: number, text: string) {
+  const range = document.createRange();
+  const walker = document.createTreeWalker(composer, NodeFilter.SHOW_TEXT);
+  let offset = 0;
+  let started = false;
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    const end = offset + (node.nodeValue?.length ?? 0);
+    if (!started && start < end) {
+      range.setStart(node, start - offset);
+      started = true;
+    }
+    if (started && start + text.length <= end) {
+      range.setEnd(node, start + text.length - offset);
+      const selection = window.getSelection();
+      if (range.toString() === text && selection) {
+        selection.removeAllRanges();
+        selection.addRange(range);
+      }
+      return;
+    }
+    offset = end;
+  }
 }

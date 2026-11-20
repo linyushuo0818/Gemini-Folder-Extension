@@ -1,4 +1,6 @@
-﻿export type ProjectIcon =
+import type { Prompt, PromptsData } from './prompts';
+
+export type ProjectIcon =
   | 'investing'
   | 'homework'
   | 'writing'
@@ -50,6 +52,8 @@ export interface ChatRef {
   lastUrl?: string;
 }
 
+export type NativeChatMetadata = Pick<ChatRef, 'conversationId' | 'title' | 'lastUrl'>;
+
 export interface UiPrefs {
   projectsCollapsed: boolean;
 }
@@ -80,14 +84,17 @@ export interface RuntimeState {
 
 export type BackgroundRequest =
   | { type: 'getState' }
-  | { type: 'upsertProject'; project: Project }
+  | { type: 'upsertProject'; project: Project; editing: boolean }
   | { type: 'setProjectPinned'; projectId: string; isPinned: boolean }
   | { type: 'deleteProject'; projectId: string }
-  | { type: 'moveChat'; conversationId: string; projectId: string | null }
-  | { type: 'upsertChatRefs'; chats: ChatRef[] }
+  | { type: 'moveChat'; conversationId: string; projectId: string | null; metadata?: NativeChatMetadata }
+  | { type: 'upsertChatRefs'; chats: NativeChatMetadata[] }
   | { type: 'updateUiPrefs'; prefs: Partial<UiPrefs> }
-  | { type: 'refreshStateCache' };
+  | { type: 'getPrompts' }
+  | { type: 'savePrompt'; prompt: Pick<Prompt, 'title' | 'content'> & { id?: string } }
+  | { type: 'deletePrompt' | 'trackPromptUsage'; id: string }
+  | { type: 'restoreBackup'; data: unknown };
 
 export type BackgroundResponse =
-  | { ok: true; state?: StoredState }
+  | { ok: true; state?: StoredState; prompts?: PromptsData }
   | { ok: false; error: string };
