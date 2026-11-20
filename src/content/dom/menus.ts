@@ -431,32 +431,33 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
 
   item.style.display = 'flex';
   item.style.alignItems = 'center';
-  item.style.gap = '12px';
-  item.style.setProperty('height', '32px', 'important');
-  item.style.setProperty('min-height', '32px', 'important');
-  item.style.setProperty('max-height', '32px', 'important');
-  item.style.setProperty('padding', '0 12px', 'important');
-  item.style.setProperty('margin', '2px 0', 'important');
+  item.style.gap = '8px';
+  item.style.textAlign = 'start';
+  item.style.setProperty('height', '36px', 'important');
+  item.style.setProperty('min-height', '36px', 'important');
+  item.style.setProperty('max-height', '36px', 'important');
+  item.style.setProperty('padding', '0 8px', 'important');
+  item.style.setProperty('margin', '0', 'important');
   item.style.setProperty('box-sizing', 'border-box', 'important');
   item.style.setProperty('cursor', 'pointer', 'important');
   item.style.setProperty('border-radius', PILL_RADIUS, 'important');
   item.style.setProperty('background', 'transparent', 'important');
   item.style.setProperty('color', 'inherit', 'important');
   item.style.setProperty('border', 'none', 'important');
-  item.style.setProperty('font-family', '"Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif', 'important');
+  item.style.setProperty('font-family', '"Google Sans Flex", "Google Sans Text", "Google Sans", sans-serif', 'important');
   item.style.setProperty('font-size', '14px', 'important');
   item.style.setProperty('font-weight', '500', 'important');
   item.style.setProperty('line-height', '20px', 'important');
 
   const icon = document.createElement('span');
-  icon.style.setProperty('width', '18px', 'important');
-  icon.style.setProperty('height', '18px', 'important');
-  icon.style.setProperty('flex', '0 0 18px', 'important');
+  icon.style.setProperty('width', '20px', 'important');
+  icon.style.setProperty('height', '20px', 'important');
+  icon.style.setProperty('flex', '0 0 20px', 'important');
   icon.style.display = 'inline-flex';
   icon.style.alignItems = 'center';
   icon.style.justifyContent = 'center';
   icon.innerHTML = `
-    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
       <path d="m12 10 3 3-3 3" />
       <path d="M15 13H8" />
@@ -466,9 +467,14 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
   const label = document.createElement('span');
   label.textContent = 'Move to Project';
   label.style.flex = '1';
+  label.style.minWidth = '0';
+  label.style.overflow = 'hidden';
+  label.style.textOverflow = 'ellipsis';
+  label.style.whiteSpace = 'nowrap';
 
   const arrow = document.createElement('span');
   arrow.style.display = 'flex';
+  arrow.style.flex = '0 0 20px';
   arrow.style.alignItems = 'center';
   arrow.style.opacity = '0.6';
   arrow.innerHTML = `
