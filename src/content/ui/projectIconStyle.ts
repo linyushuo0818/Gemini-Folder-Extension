@@ -31,6 +31,9 @@ export const PROJECT_ICON_STYLE_CSS = `
   .gp-template-grid svg {
     color: var(--gp-grid-icon-color, inherit);
   }
+  [data-gp-icon-palette] .gp-template-grid svg {
+    color: var(--gp-icon-palette-color);
+  }
   .gp-icon-style-option {
     position: relative;
     display: inline-flex;

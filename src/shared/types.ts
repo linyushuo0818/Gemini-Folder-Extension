@@ -38,6 +38,7 @@ export interface Project {
   icon: ProjectIcon;
   iconStyle: ProjectIconStyle;
   color?: string;
+  useIconPalette?: true;
   isPinned?: boolean;
   createdAt: number;
   updatedAt: number;

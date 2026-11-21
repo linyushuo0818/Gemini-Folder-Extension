@@ -51,6 +51,7 @@ function buildUpsertProjectState(state: StoredState, project: Project): StoredSt
               icon: project.icon,
               iconStyle: project.iconStyle ?? item.iconStyle,
               color: project.color,
+              useIconPalette: project.useIconPalette,
               updatedAt: Date.now()
             }
           : item

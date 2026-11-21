@@ -76,6 +76,7 @@ function sanitizeProject(raw: unknown, fallbackIndex: number, fallbackIconStyle:
     icon: (typeof candidate.icon === 'string' && candidate.icon ? candidate.icon : 'default') as ProjectIcon,
     iconStyle: validIconStyle ? iconStyle : fallbackIconStyle,
     color: isProjectColor(candidate.color) ? candidate.color : undefined,
+    useIconPalette: candidate.useIconPalette === true || undefined,
     isPinned: candidate.isPinned === true,
     createdAt: typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt) ? candidate.createdAt : now,
     updatedAt: typeof candidate.updatedAt === 'number' && Number.isFinite(candidate.updatedAt) ? candidate.updatedAt : now,

@@ -11,9 +11,9 @@ export interface IconOption {
   svg: string;
 }
 
-// 预定义颜色（GPT 样式）
+export const ADAPTIVE_PROJECT_COLOR = '#1f1f1f';
 export const COLOR_OPTIONS: { color: string; label: string }[] = [
-  { color: '#1f1f1f', label: 'Black' },
+  { color: ADAPTIVE_PROJECT_COLOR, label: 'Black' },
   { color: '#E85C5C', label: 'Red' },
   { color: '#F97316', label: 'Orange' },
   { color: '#F59E0B', label: 'Yellow' },
@@ -22,6 +22,13 @@ export const COLOR_OPTIONS: { color: string; label: string }[] = [
   { color: '#8B5CF6', label: 'Purple' },
   { color: '#EC4899', label: 'Pink' },
 ];
+
+export const MULTICOLOR_ICON_PALETTE = COLOR_OPTIONS.slice(1).map(({ color }) => color);
+
+export function getPaletteIconColor(icon: ProjectIcon): string {
+  const index = Math.max(0, ICON_OPTIONS.findIndex((option) => option.id === icon));
+  return MULTICOLOR_ICON_PALETTE[index % MULTICOLOR_ICON_PALETTE.length];
+}
 
 /**
  * Lucide Icons (Outline Style) - Premium Quality
@@ -199,7 +206,7 @@ export const ICON_OPTIONS: IconOption[] = [
  */
 export function resolveProjectIconColor(color?: string): string | undefined {
   if (!isProjectColor(color)) return undefined;
-  return color.trim().toLowerCase() === '#1f1f1f' ? undefined : color;
+  return color.trim().toLowerCase() === ADAPTIVE_PROJECT_COLOR ? undefined : color;
 }
 
 export function renderIconSvg(

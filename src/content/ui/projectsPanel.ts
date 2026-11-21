@@ -1,7 +1,10 @@
 import { ChatRef, DEFAULT_PROJECT_ICON_STYLE, Project, ProjectIcon, ProjectIconStyle, PROJECT_ICON_STYLES, RuntimeState } from '../../shared/types';
 import { exportAllData, triggerImport } from '../../shared/backup';
 import { isProjectIconStyle } from '../../shared/storage';
-import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg, resolveProjectIconColor } from './icons';
+import {
+  ADAPTIVE_PROJECT_COLOR, COLOR_OPTIONS, ICON_OPTIONS, MULTICOLOR_ICON_PALETTE,
+  getIconLabel, getPaletteIconColor, renderIconSvg, resolveProjectIconColor
+} from './icons';
 import { showSurface, hideSurface, setSurfaceOrigin, installMotionStyles, shouldAnimateMotion, MOTION_EASE } from './motion';
 import { PROJECT_ICON_STYLE_CSS } from './projectIconStyle';
 import { PANEL_TITLE_TYPOGRAPHY } from './typography';
@@ -24,6 +27,7 @@ interface ProjectsPanelOptions {
 }
 
 type ModalMode = 'create' | 'edit';
+const MULTICOLOR = 'multicolor';
 const PANEL_COLLAPSE_ANIMATION_MS = 190;
 const PROJECT_COLLAPSE_ANIMATION_MS = 180;
 
@@ -59,7 +63,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   let modalProject: Project | null = null;
   let modalSelectedIcon: ProjectIcon = 'default';
   let modalIconStyle: ProjectIconStyle = DEFAULT_PROJECT_ICON_STYLE;
-  let modalSelectedColor: string = '#1f1f1f'; // Default black
+  let modalSelectedColor = MULTICOLOR;
   let inputDirty = false;
   let iconButton: HTMLButtonElement | null = null;
 
@@ -68,6 +72,15 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
   const iconStyleInputs = modal.element.querySelectorAll<HTMLInputElement>('[name="gp-project-icon-style"]');
   const iconOptions = modal.element.querySelectorAll<HTMLButtonElement>('[data-gp-template]');
+  const colorOptions = modal.element.querySelectorAll<HTMLButtonElement>('[data-gp-color]');
+  colorOptions.forEach((option) => {
+    option.addEventListener('click', () => {
+      modalSelectedColor = option.dataset.gpColor!;
+      syncModalColorSelection();
+      updateIconButton();
+    }, { signal: lifecycleController.signal });
+  });
+
   function renderModalIcons() {
     iconStyleInputs.forEach((input) => { input.checked = input.value === modalIconStyle; });
     iconOptions.forEach((option) => {
@@ -312,7 +325,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalProjectId = null;
     modalSelectedIcon = 'default';
     modalIconStyle = DEFAULT_PROJECT_ICON_STYLE;
-    modalSelectedColor = '#1f1f1f';
+    modalSelectedColor = MULTICOLOR;
     showModal({
       title: 'Create Project',
       confirmLabel: 'Done',
@@ -328,7 +341,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalProject = project;
     modalSelectedIcon = project.icon;
     modalIconStyle = project.iconStyle;
-    modalSelectedColor = project.color || '#1f1f1f';
+    modalSelectedColor = project.useIconPalette ? MULTICOLOR : project.color ?? ADAPTIVE_PROJECT_COLOR;
     showModal({
       title: 'Edit project',
       confirmLabel: 'Save',
@@ -337,9 +350,13 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     });
   }
 
+  function getModalIconColor(): string {
+    return modalSelectedColor === MULTICOLOR ? getPaletteIconColor(modalSelectedIcon) : modalSelectedColor;
+  }
+
   function updateIconButton() {
     if (iconButton) {
-      iconButton.innerHTML = renderIconSvg(modalSelectedIcon, modalIconStyle, modalSelectedColor);
+      iconButton.innerHTML = renderIconSvg(modalSelectedIcon, modalIconStyle, getModalIconColor());
     }
   }
 
@@ -363,10 +380,12 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   }
 
   function syncModalColorSelection() {
+    modal.element.toggleAttribute('data-gp-icon-palette', modalSelectedColor === MULTICOLOR);
     const color = resolveProjectIconColor(modalSelectedColor);
     modal.element.style.setProperty('--gp-grid-icon-color', color ?? '');
-    modal.element.querySelectorAll<HTMLElement>('[data-gp-color]').forEach((option) => {
-      const isSelected = option.dataset.gpColor === modalSelectedColor;
+    const selection = modalSelectedColor.toLowerCase();
+    colorOptions.forEach((option) => {
+      const isSelected = option.dataset.gpColor!.toLowerCase() === selection;
       option.classList.toggle('selected', isSelected);
       option.setAttribute('aria-pressed', String(isSelected));
     });
@@ -445,7 +464,8 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         name,
         icon: modalSelectedIcon,
         iconStyle: modalIconStyle,
-        color: modalSelectedColor,
+        color: getModalIconColor(),
+        useIconPalette: modalSelectedColor === MULTICOLOR || undefined,
         isPinned: modalMode === 'edit' ? modalProject?.isPinned === true : false,
         createdAt: modalMode === 'create' ? now : (modalProject?.createdAt || now),
         updatedAt: now,
@@ -480,19 +500,6 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         const iconId = chip.dataset.gpTemplate as ProjectIcon;
         const label = chip.dataset.gpTemplateLabel || getIconLabel(iconId);
         createProjectFromTemplate(label, iconId, input ?? undefined, confirm ?? undefined);
-      };
-    });
-
-    // Color picker click handlers
-    const colorRow = modal.element.querySelector<HTMLElement>('[data-gp-color-row]');
-    colorRow?.querySelectorAll<HTMLButtonElement>('[data-gp-color]').forEach((dot) => {
-      dot.onclick = () => {
-        const color = dot.dataset.gpColor;
-        if (color) {
-          modalSelectedColor = color;
-          syncModalColorSelection();
-          updateIconButton();
-        }
       };
     });
   }
@@ -1334,7 +1341,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
 
       .gp-color-row {
         display: grid;
-        grid-template-columns: repeat(8, minmax(0, 1fr));
+        grid-template-columns: repeat(${COLOR_OPTIONS.length + 1}, minmax(0, 1fr));
         gap: 2px;
         width: min(302px, 100%);
       }
@@ -1353,6 +1360,13 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-color-dot:hover { background: var(--gp-hover); }
       .gp-color-dot.selected { border-color: var(--gp-choice-color); }
       .gp-color-adaptive { --gp-choice-color: var(--gp-fg); }
+      .gp-color-multicolor {
+        --gp-choice-color: conic-gradient(${MULTICOLOR_ICON_PALETTE.map((color, index) => {
+          const step = 1 / MULTICOLOR_ICON_PALETTE.length;
+          return `${color} ${index * step}turn ${(index + 1) * step}turn`;
+        }).join(', ')});
+      }
+      .gp-color-multicolor.selected { border-color: var(--gp-fg-secondary); }
 
       .gp-modal-actions {
         display: grid;
@@ -1646,11 +1660,13 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
       <p class="gp-form-status" role="alert" data-gp-form-status></p>
       <div class="gp-template-row" data-gp-template-row role="group" aria-label="Project icon">
         <div class="gp-icon-toolbar">
-          <div class="gp-color-row" data-gp-color-row role="group" aria-label="Project color">
-            ${COLOR_OPTIONS.map((opt, idx) => `
-              <button class="gp-color-dot ${idx === 0 ? 'selected gp-color-adaptive' : ''}"
-                type="button" data-gp-color="${opt.color}" title="${opt.label}" aria-label="${opt.label}"
-                aria-pressed="${idx === 0}" ${idx === 0 ? '' : `style="--gp-choice-color: ${opt.color};"`}></button>
+          <div class="gp-color-row" role="group" aria-label="Project color">
+            <button class="gp-color-dot gp-color-multicolor" type="button" data-gp-color="${MULTICOLOR}"
+              title="Multicolor" aria-label="Multicolor" aria-pressed="false"></button>
+            ${COLOR_OPTIONS.map(({ color, label }) => `
+              <button class="gp-color-dot${color === ADAPTIVE_PROJECT_COLOR ? ' gp-color-adaptive' : ''}"
+                type="button" data-gp-color="${color}" title="${label}" aria-label="${label}" aria-pressed="false"
+                ${color === ADAPTIVE_PROJECT_COLOR ? '' : `style="--gp-choice-color:${color}"`}></button>
             `).join('')}
           </div>
           <div class="gp-icon-style-switcher" role="radiogroup" aria-label="Project icon style">
@@ -1664,7 +1680,9 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
         </div>
         <div class="gp-template-grid">
           ${ICON_OPTIONS.map((icon) => `
-            <button class="gp-template-chip" type="button" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}" title="${icon.label}" aria-label="${icon.label}" aria-pressed="false">
+            <button class="gp-template-chip" type="button" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}"
+              title="${icon.label}" aria-label="${icon.label}" aria-pressed="false"
+              style="--gp-icon-palette-color:${getPaletteIconColor(icon.id)}">
             </button>
           `).join('')}
         </div>

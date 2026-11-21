@@ -16,7 +16,7 @@ It also includes a local Prompt Library, so you can save prompts you reuse often
 - Move existing chats into Projects
 - Remove a chat from a Project without deleting the original Gemini chat
 - See when a Project chat is missing because it was deleted from Gemini history on another device
-- Choose Project icons and colors
+- Choose Project icons with a multicolor palette or a preset color
 - Choose Outline, Solid, or Duotone separately for each project
 - Use the compact Project menu to pin, edit, or delete a Project. Pinned Projects stay above other Projects after reload; unpinning restores their original order.
 - Back up and restore your local Projects and prompts

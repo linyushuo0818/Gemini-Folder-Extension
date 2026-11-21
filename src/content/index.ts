@@ -604,7 +604,7 @@ function renderPanelIfChanged(force = false) {
 
 function getRenderKey(): string {
   const projects = state.projects
-    .map((project) => `${project.id}:${project.name}:${project.icon}:${project.iconStyle}:${project.color || ''}:${project.sortIndex}:${project.isPinned === true}`)
+    .map((project) => `${project.id}:${project.name}:${project.icon}:${project.iconStyle}:${project.color || ''}:${project.useIconPalette === true}:${project.sortIndex}:${project.isPinned === true}`)
     .join('|');
   const chats = Array.from(state.chatIndex.values())
     .filter((chat) => chat.projectId)
