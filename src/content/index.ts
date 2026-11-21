@@ -1,4 +1,4 @@
-import { BackgroundRequest, BackgroundResponse, NativeChatMetadata, Project, ProjectIconStyle, RuntimeState, StoredState } from '../shared/types';
+import { BackgroundRequest, BackgroundResponse, NativeChatMetadata, Project, RuntimeState, StoredState } from '../shared/types';
 import { createEmptyState, isSafeId, normalizeChatUrl, STORAGE_KEY } from '../shared/storage';
 import { runtimeSendMessage, webext } from '../shared/webext';
 import {
@@ -227,7 +227,6 @@ function ensurePanel() {
       onToggleProjectExpand: handleToggleProjectExpand,
       onDeleteProject: handleDeleteProject,
       onToggleCollapse: handleToggleCollapse,
-      onSetProjectIconStyle: handleSetProjectIconStyle,
       onRemoveChatFromProject: (conversationId) => handleMoveChat(conversationId, null),
       onMoveChatToProject: handleMoveChat
     });
@@ -408,11 +407,6 @@ function handleToggleCollapse(collapsed: boolean) {
   state.uiPrefs.projectsCollapsed = collapsed;
   sendMessage({ type: 'updateUiPrefs', prefs: { projectsCollapsed: collapsed } }).catch(() => undefined);
   renderPanelIfChanged(true);
-}
-
-async function handleSetProjectIconStyle(projectIconStyle: ProjectIconStyle) {
-  const response = await sendMessage({ type: 'updateUiPrefs', prefs: { projectIconStyle } });
-  if (!response.ok) throw new Error(response.error);
 }
 
 async function handleDeleteProject(projectId: string) {
@@ -610,7 +604,7 @@ function renderPanelIfChanged(force = false) {
 
 function getRenderKey(): string {
   const projects = state.projects
-    .map((project) => `${project.id}:${project.name}:${project.icon}:${project.color || ''}:${project.sortIndex}:${project.isPinned === true}`)
+    .map((project) => `${project.id}:${project.name}:${project.icon}:${project.iconStyle}:${project.color || ''}:${project.sortIndex}:${project.isPinned === true}`)
     .join('|');
   const chats = Array.from(state.chatIndex.values())
     .filter((chat) => chat.projectId)
@@ -623,7 +617,7 @@ function getRenderKey(): string {
     })
     .sort()
     .join('|');
-  return `${state.activeConversationId || ''}|${state.uiPrefs.projectsCollapsed}|${state.uiPrefs.projectIconStyle}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;
+  return `${state.activeConversationId || ''}|${state.uiPrefs.projectsCollapsed}|${Array.from(state.expandedProjectIds).sort().join(',')}|${projects}|${chats}`;
 }
 
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T> {

@@ -1,5 +1,5 @@
-import { BackgroundRequest, BackgroundResponse, ChatRef, NativeChatMetadata, Project, StoredState } from './shared/types';
-import { isSafeId, loadState, normalizeChatUrl, saveState, STORAGE_KEY } from './shared/storage';
+import { BackgroundRequest, BackgroundResponse, ChatRef, DEFAULT_PROJECT_ICON_STYLE, NativeChatMetadata, Project, StoredState } from './shared/types';
+import { isProjectIconStyle, isSafeId, loadState, normalizeChatUrl, saveState, STORAGE_KEY } from './shared/storage';
 import { createSeedData, normalizePromptsData, PROMPTS_KEY, PromptsData } from './shared/prompts';
 import { validateBackup } from './shared/backup';
 import { storageLocalGet, storageLocalSet, webext } from './shared/webext';
@@ -45,10 +45,17 @@ function buildUpsertProjectState(state: StoredState, project: Project): StoredSt
   const projects = exists
     ? state.projects.map((item) =>
         item.id === project.id
-          ? { ...item, name: project.name, icon: project.icon, color: project.color, updatedAt: Date.now() }
+          ? {
+              ...item,
+              name: project.name,
+              icon: project.icon,
+              iconStyle: project.iconStyle ?? item.iconStyle,
+              color: project.color,
+              updatedAt: Date.now()
+            }
           : item
       )
-    : [...state.projects, project];
+    : [...state.projects, { ...project, iconStyle: project.iconStyle ?? DEFAULT_PROJECT_ICON_STYLE }];
   return { ...state, projects };
 }
 
@@ -90,7 +97,7 @@ function buildUpsertChatRefsState(state: StoredState, chats: NativeChatMetadata[
 function buildUpdateUiPrefsState(state: StoredState, prefs: Partial<StoredState['uiPrefs']>): StoredState {
   return {
     ...state,
-    uiPrefs: { ...state.uiPrefs, ...prefs }
+    uiPrefs: { projectsCollapsed: prefs.projectsCollapsed ?? state.uiPrefs.projectsCollapsed }
   };
 }
 
@@ -146,6 +153,9 @@ async function handleMessage(message: BackgroundRequest): Promise<BackgroundResp
       case 'getState':
         return { ok: true, state };
       case 'upsertProject': {
+        if (message.project.iconStyle !== undefined && !isProjectIconStyle(message.project.iconStyle)) {
+          return { ok: false, error: 'Invalid project icon style.' };
+        }
         if (message.editing && !state.projects.some((item) => item.id === message.project.id)) {
           return { ok: false, error: 'Project not found' };
         }

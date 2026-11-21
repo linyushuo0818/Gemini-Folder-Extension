@@ -40,7 +40,7 @@ export function createEmptyState(): StoredState {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     projects: [],
     chatIndex: {},
-    uiPrefs: { projectsCollapsed: false, projectIconStyle: DEFAULT_PROJECT_ICON_STYLE }
+    uiPrefs: { projectsCollapsed: false }
   };
 }
 
@@ -60,17 +60,21 @@ function normalizeStoredTitle(title: string): { title: string; isPinned: boolean
   };
 }
 
-function sanitizeProject(raw: unknown, fallbackIndex: number): Project | null {
+function sanitizeProject(raw: unknown, fallbackIndex: number, fallbackIconStyle: ProjectIconStyle, strict: boolean): Project | null {
   if (!isRecord(raw)) return null;
   const candidate = raw as Partial<Project>;
   if (!isSafeId(candidate.id)) return null;
   if (typeof candidate.name !== 'string' || !candidate.name.trim()) return null;
+  const iconStyle = candidate.iconStyle;
+  const validIconStyle = isProjectIconStyle(iconStyle);
+  if (strict && iconStyle !== undefined && !validIconStyle) return null;
 
   const now = Date.now();
   return {
     id: candidate.id,
     name: candidate.name.trim(),
     icon: (typeof candidate.icon === 'string' && candidate.icon ? candidate.icon : 'default') as ProjectIcon,
+    iconStyle: validIconStyle ? iconStyle : fallbackIconStyle,
     color: isProjectColor(candidate.color) ? candidate.color : undefined,
     isPinned: candidate.isPinned === true,
     createdAt: typeof candidate.createdAt === 'number' && Number.isFinite(candidate.createdAt) ? candidate.createdAt : now,
@@ -85,10 +89,16 @@ export function normalizeProjectsState(raw: unknown, strict = false): StoredStat
       !Array.isArray(raw.projects) || !isRecord(raw.chatIndex) ||
       (raw.uiPrefs !== undefined && !isRecord(raw.uiPrefs))) return null;
 
+  // 旧数据只有全局样式，使用它补齐各项目缺失的样式。
+  const legacyIconStyle = raw.uiPrefs?.projectIconStyle;
+  const validLegacyIconStyle = isProjectIconStyle(legacyIconStyle);
+  if (strict && legacyIconStyle !== undefined && !validLegacyIconStyle) return null;
+  const fallbackIconStyle = validLegacyIconStyle ? legacyIconStyle : DEFAULT_PROJECT_ICON_STYLE;
+
   const projects: Project[] = [];
   const projectIds = new Set<string>();
   for (const entry of raw.projects) {
-    const project = sanitizeProject(entry, projects.length);
+    const project = sanitizeProject(entry, projects.length, fallbackIconStyle, strict);
     if (!project || projectIds.has(project.id) ||
         (strict && entry.color != null && !isProjectColor(entry.color))) {
       if (strict) return null;
@@ -129,21 +139,11 @@ export function normalizeProjectsState(raw: unknown, strict = false): StoredStat
     };
   }
 
-  const projectIconStyle = raw.uiPrefs?.projectIconStyle;
-  const validIconStyle = isProjectIconStyle(projectIconStyle);
-  if (strict && projectIconStyle !== undefined && !validIconStyle) {
-    return null;
-  }
-  const uiPrefs: StoredState['uiPrefs'] = {
-    projectsCollapsed: raw.uiPrefs?.projectsCollapsed === true,
-    projectIconStyle: validIconStyle ? projectIconStyle : DEFAULT_PROJECT_ICON_STYLE
-  };
-
   return {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     projects,
     chatIndex,
-    uiPrefs
+    uiPrefs: { projectsCollapsed: raw.uiPrefs?.projectsCollapsed === true }
   };
 }
 

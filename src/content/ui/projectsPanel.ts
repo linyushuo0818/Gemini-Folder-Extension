@@ -1,7 +1,7 @@
 import { ChatRef, DEFAULT_PROJECT_ICON_STYLE, Project, ProjectIcon, ProjectIconStyle, PROJECT_ICON_STYLES, RuntimeState } from '../../shared/types';
 import { exportAllData, triggerImport } from '../../shared/backup';
 import { isProjectIconStyle } from '../../shared/storage';
-import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg, resolveProjectIconColor, PROJECT_ICON_RENDER_CSS } from './icons';
+import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg, resolveProjectIconColor } from './icons';
 import { showSurface, hideSurface, setSurfaceOrigin, installMotionStyles, shouldAnimateMotion, MOTION_EASE } from './motion';
 import { PROJECT_ICON_STYLE_CSS } from './projectIconStyle';
 import { PANEL_TITLE_TYPOGRAPHY } from './typography';
@@ -19,7 +19,6 @@ interface ProjectsPanelOptions {
   onToggleProjectExpand: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   onToggleCollapse: (collapsed: boolean) => void;
-  onSetProjectIconStyle: (style: ProjectIconStyle) => Promise<void>;
   onRemoveChatFromProject: (conversationId: string) => Promise<void>;
   onMoveChatToProject: (conversationId: string, projectId: string) => Promise<void>;
 }
@@ -59,6 +58,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   let modalProjectId: string | null = null;
   let modalProject: Project | null = null;
   let modalSelectedIcon: ProjectIcon = 'default';
+  let modalIconStyle: ProjectIconStyle = DEFAULT_PROJECT_ICON_STYLE;
   let modalSelectedColor: string = '#1f1f1f'; // Default black
   let inputDirty = false;
   let iconButton: HTMLButtonElement | null = null;
@@ -67,25 +67,24 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   let pinnedSnapshot = new Map<string, boolean>();
 
   const iconStyleInputs = modal.element.querySelectorAll<HTMLInputElement>('[name="gp-project-icon-style"]');
-  function syncProjectIconStyle(style: ProjectIconStyle) {
-    options.shadow.host.setAttribute('data-gp-project-icon-style', style);
-    options.overlayShadow.host.setAttribute('data-gp-project-icon-style', style);
-    iconStyleInputs.forEach((input) => { input.checked = input.value === style; });
+  const iconOptions = modal.element.querySelectorAll<HTMLButtonElement>('[data-gp-template]');
+  function renderModalIcons() {
+    iconStyleInputs.forEach((input) => { input.checked = input.value === modalIconStyle; });
+    iconOptions.forEach((option) => {
+      option.innerHTML = renderIconSvg(option.dataset.gpTemplate as ProjectIcon, modalIconStyle);
+    });
+    updateIconButton();
   }
 
   modal.element.addEventListener('change', (event) => {
     const input = event.target;
     if (!(input instanceof HTMLInputElement) || input.name !== 'gp-project-icon-style' || !isProjectIconStyle(input.value)) return;
-    void options.onSetProjectIconStyle(input.value).catch((error) => {
-      console.warn('[Gemini Projects] Could not change project icon style', error);
-      syncProjectIconStyle(currentState?.uiPrefs.projectIconStyle ?? DEFAULT_PROJECT_ICON_STYLE);
-      showToast('Could not change icon style. Please try again.');
-    });
+    modalIconStyle = input.value;
+    renderModalIcons();
   }, { signal: lifecycleController.signal });
 
   function render(state: RuntimeState) {
     currentState = state;
-    syncProjectIconStyle(state.uiPrefs.projectIconStyle);
     const signature = JSON.stringify([
       state.projects, [...state.chatIndex.values()],
       [...state.nativeConversationIds], state.nativeChatsReady,
@@ -312,6 +311,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalMode = 'create';
     modalProjectId = null;
     modalSelectedIcon = 'default';
+    modalIconStyle = DEFAULT_PROJECT_ICON_STYLE;
     modalSelectedColor = '#1f1f1f';
     showModal({
       title: 'Create Project',
@@ -327,6 +327,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalProjectId = project.id;
     modalProject = project;
     modalSelectedIcon = project.icon;
+    modalIconStyle = project.iconStyle;
     modalSelectedColor = project.color || '#1f1f1f';
     showModal({
       title: 'Edit project',
@@ -338,7 +339,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
   function updateIconButton() {
     if (iconButton) {
-      iconButton.innerHTML = renderIconSvg(modalSelectedIcon, modalSelectedColor);
+      iconButton.innerHTML = renderIconSvg(modalSelectedIcon, modalIconStyle, modalSelectedColor);
     }
   }
 
@@ -354,7 +355,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   }
 
   function syncModalIconSelection() {
-    modal.element.querySelectorAll<HTMLElement>('[data-gp-template]').forEach((option) => {
+    iconOptions.forEach((option) => {
       const isSelected = option.dataset.gpTemplate === modalSelectedIcon;
       option.classList.toggle('selected', isSelected);
       option.setAttribute('aria-pressed', String(isSelected));
@@ -380,7 +381,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalSelectedIcon = templateIcon;
     updateIconButton();
     syncModalIconSelection();
-    if (!inputDirty && input) {
+    if (modalMode === 'create' && !inputDirty && input) {
       input.value = templateName;
     }
     if (confirm && input) {
@@ -420,7 +421,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
     confirm!.textContent = config.confirmLabel;
     confirm!.disabled = input?.value.trim().length === 0;
-    updateIconButton();
+    renderModalIcons();
     syncModalIconSelection();
     syncModalColorSelection();
 
@@ -443,6 +444,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         id: draftId,
         name,
         icon: modalSelectedIcon,
+        iconStyle: modalIconStyle,
         color: modalSelectedColor,
         isPinned: modalMode === 'edit' ? modalProject?.isPinned === true : false,
         createdAt: modalMode === 'create' ? now : (modalProject?.createdAt || now),
@@ -473,7 +475,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
       restoreButton.onclick = handleRestoreClick;
     }
 
-    iconRow?.querySelectorAll<HTMLElement>('[data-gp-template]').forEach((chip) => {
+    iconOptions.forEach((chip) => {
       chip.onclick = () => {
         const iconId = chip.dataset.gpTemplate as ProjectIcon;
         const label = chip.dataset.gpTemplateLabel || getIconLabel(iconId);
@@ -613,7 +615,7 @@ export function renderProjectsSection(
       return `
         <div class="gp-project" data-gp-project-id="${escapeAttr(project.id)}">
           <div class="gp-row gp-project-row ${isExpanded ? 'active' : ''}" data-gp-action="toggle-project" role="button" tabindex="0" aria-label="${escapeAttr(project.name)}" aria-expanded="${isExpanded}">
-            <span class="gp-icon">${renderIconSvg(project.icon, project.color)}</span>
+            <span class="gp-icon">${renderIconSvg(project.icon, project.iconStyle, project.color)}</span>
             <span class="gp-label">${escapeHtml(project.name)}</span>
             ${project.isPinned ? `<span class="gp-project-pin" role="img" aria-label="Pinned project" title="Pinned project">${renderProjectActionIcon('pin')}</span>` : ''}
             <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
@@ -639,7 +641,6 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
     style.dataset.gp = 'panel';
     style.textContent = `
       ${RADIUS_TOKENS_CSS}
-      ${PROJECT_ICON_RENDER_CSS}
       :host {
         all: initial;
         color: var(--gp-fg, #1f1f1f);
@@ -1133,7 +1134,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
     style.dataset.gp = 'overlay';
     style.textContent = `
       ${SURFACE_THEME_CSS}
-      ${PROJECT_ICON_RENDER_CSS}
       ${PROJECT_ICON_STYLE_CSS}
       :host {
         all: initial;
@@ -1192,8 +1192,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-modal-body > * { flex-shrink: 0; }
       .gp-modal-header, .gp-modal-actions { flex-shrink: 0; }
-      .gp-choice-label { font: 500 12px/16px var(--gp-font); color: var(--gp-fg-secondary); }
-      .gp-color-choice { display: flex; flex-direction: column; gap: 8px; }
       .gp-modal,
       .gp-modal * {
         box-sizing: border-box;
@@ -1288,7 +1286,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-template-row {
         display: flex;
         flex-direction: column;
-        gap: 8px;
+        gap: 12px;
         width: 100%;
       }
       .gp-template-grid {
@@ -1310,7 +1308,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         border: 1px solid transparent;
         cursor: pointer;
         color: var(--gp-fg);
-        background: transparent;
+        background: var(--gp-surface-footer);
         transition: background var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition), transform var(--gp-transition);
         flex: 0 0 auto;
       }
@@ -1334,10 +1332,15 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-template-chip:focus-visible, .gp-color-dot:focus-visible, .gp-modal-close:focus-visible, .gp-tool-button:focus-visible, .gp-primary:focus-visible { outline: 2px solid var(--gp-focus); outline-offset: 2px; }
 
-      .gp-color-row { display: flex; gap: 4px; align-items: center; width: 100%; }
+      .gp-color-row {
+        display: grid;
+        grid-template-columns: repeat(8, minmax(0, 1fr));
+        gap: 2px;
+        width: min(302px, 100%);
+      }
       .gp-color-dot {
-        width: 36px;
-        height: 36px;
+        width: 100%;
+        aspect-ratio: 1;
         border-radius: var(--gp-radius-circle);
         border: 1.5px solid transparent;
         background: transparent;
@@ -1600,8 +1603,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         .gp-tool-button { white-space: nowrap; gap: 6px; padding: 0 6px; font-size: 12px; }
         .gp-tool-button svg { width: 16px; height: 16px; flex-basis: 16px; }
         .gp-primary { padding: 0 8px; }
-        .gp-color-row { gap: 0; flex-wrap: wrap; }
-        .gp-color-dot { width: 32px; height: 32px; }
       }
       @media (max-width: 360px) { .gp-modal { --gp-icon-columns: 5; } }
       @media (prefers-reduced-motion: reduce) { .gp-modal *, .gp-menu *, .gp-submenu * { transition: none !important; } }
@@ -1643,20 +1644,16 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
       <div class="gp-modal-body">
       ${ProjectNameInputWithIcon()}
       <p class="gp-form-status" role="alert" data-gp-form-status></p>
-      <div class="gp-color-choice" role="group" aria-labelledby="gp-color-label">
-        <span class="gp-choice-label" id="gp-color-label">Color</span>
-        <div class="gp-color-row" data-gp-color-row>
-          ${COLOR_OPTIONS.map((opt, idx) => `
-            <button class="gp-color-dot ${idx === 0 ? 'selected gp-color-adaptive' : ''}"
-              type="button" data-gp-color="${opt.color}" title="${opt.label}" aria-label="${opt.label}"
-              aria-pressed="${idx === 0}" ${idx === 0 ? '' : `style="--gp-choice-color: ${opt.color};"`}></button>
-          `).join('')}
-        </div>
-      </div>
-      <div class="gp-template-row" data-gp-template-row role="group" aria-labelledby="gp-icon-label">
-        <div class="gp-icon-heading">
-          <span class="gp-choice-label" id="gp-icon-label">Icon</span>
-          <div class="gp-icon-style-switcher" role="radiogroup" aria-label="Icon style for all projects">
+      <div class="gp-template-row" data-gp-template-row role="group" aria-label="Project icon">
+        <div class="gp-icon-toolbar">
+          <div class="gp-color-row" data-gp-color-row role="group" aria-label="Project color">
+            ${COLOR_OPTIONS.map((opt, idx) => `
+              <button class="gp-color-dot ${idx === 0 ? 'selected gp-color-adaptive' : ''}"
+                type="button" data-gp-color="${opt.color}" title="${opt.label}" aria-label="${opt.label}"
+                aria-pressed="${idx === 0}" ${idx === 0 ? '' : `style="--gp-choice-color: ${opt.color};"`}></button>
+            `).join('')}
+          </div>
+          <div class="gp-icon-style-switcher" role="radiogroup" aria-label="Project icon style">
             ${PROJECT_ICON_STYLES.map((style) => `
               <label class="gp-icon-style-option">
                 <input type="radio" name="gp-project-icon-style" value="${style}" ${style === DEFAULT_PROJECT_ICON_STYLE ? 'checked' : ''}>
@@ -1668,7 +1665,6 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
         <div class="gp-template-grid">
           ${ICON_OPTIONS.map((icon) => `
             <button class="gp-template-chip" type="button" data-gp-template="${icon.id}" data-gp-template-label="${icon.label}" title="${icon.label}" aria-label="${icon.label}" aria-pressed="false">
-              ${renderIconSvg(icon.id)}
             </button>
           `).join('')}
         </div>
@@ -1983,7 +1979,7 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
         <div class="gp-submenu" role="menu" aria-label="Move to Project">
           ${otherProjects.map(p => `
             <button type="button" role="menuitem" class="gp-menu-item" data-gp-chat-action="move" data-gp-target-project="${escapeAttr(p.id)}">
-              ${renderIconSvg(p.icon, p.color)}
+              ${renderIconSvg(p.icon, p.iconStyle, p.color)}
               <span>${escapeHtml(p.name)}</span>
             </button>
           `).join('')}

@@ -7,7 +7,7 @@ export const PROJECT_ICON_STYLE_CSS = `
   :host(.dark), :host([data-gp-theme="dark"]) {
     --gp-icon-switcher-active-shadow: 0 1px 2px rgb(0 0 0 / .24), 0 0 0 .5px var(--gp-border);
   }
-  .gp-icon-heading {
+  .gp-icon-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -28,7 +28,7 @@ export const PROJECT_ICON_STYLE_CSS = `
     max-width: 100%;
     flex-shrink: 0;
   }
-  .gp-template-grid [data-gp-icon-duotone] {
+  .gp-template-grid svg {
     color: var(--gp-grid-icon-color, inherit);
   }
   .gp-icon-style-option {
@@ -96,7 +96,7 @@ export const PROJECT_ICON_STYLE_CSS = `
     }
   }
   @media (max-width: 360px) {
-    .gp-icon-heading {
+    .gp-icon-toolbar {
       gap: 6px 8px;
     }
     .gp-icon-style-option span {

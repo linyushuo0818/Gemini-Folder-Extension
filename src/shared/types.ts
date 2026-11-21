@@ -36,6 +36,7 @@ export interface Project {
   id: string;
   name: string;
   icon: ProjectIcon;
+  iconStyle: ProjectIconStyle;
   color?: string;
   isPinned?: boolean;
   createdAt: number;
@@ -60,7 +61,6 @@ export const DEFAULT_PROJECT_ICON_STYLE: ProjectIconStyle = 'duotone';
 
 export interface UiPrefs {
   projectsCollapsed: boolean;
-  projectIconStyle: ProjectIconStyle;
 }
 
 export interface StoredState {

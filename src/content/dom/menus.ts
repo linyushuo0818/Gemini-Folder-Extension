@@ -153,7 +153,7 @@ export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions): () => 
     const current = options.getChatProjectId(conversationId);
     for (const project of options.getProjects()) {
       if (project.id === current) continue;
-      addAction(project.name, renderIconSvg(project.icon, project.color),
+      addAction(project.name, renderIconSvg(project.icon, project.iconStyle, project.color),
         () => options.onMoveChat(conversationId, project.id));
     }
     if (current) addAction('Remove from Project', '', () => options.onMoveChat(conversationId, null));

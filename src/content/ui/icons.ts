@@ -1,13 +1,7 @@
 import { isProjectColor } from '../../shared/storage';
-import { DEFAULT_PROJECT_ICON_STYLE, ProjectIcon, PROJECT_ICON_STYLES } from '../../shared/types';
+import { DEFAULT_PROJECT_ICON_STYLE, ProjectIcon, ProjectIconStyle } from '../../shared/types';
 import { DUOTONE_PROJECT_ICONS } from './duotoneProjectIcons';
 import { SOLID_PROJECT_ICONS } from './solidProjectIcons';
-
-export const PROJECT_ICON_RENDER_CSS = `
-  ${PROJECT_ICON_STYLES.map((style) => `[data-gp-icon-${style}]`).join(', ')} { display: none; }
-  :host(:not([data-gp-project-icon-style])) [data-gp-icon-${DEFAULT_PROJECT_ICON_STYLE}],
-  ${PROJECT_ICON_STYLES.map((style) => `:host([data-gp-project-icon-style="${style}"]) [data-gp-icon-${style}]`).join(',\n  ')} { display: inline; }
-`;
 
 let duotoneInstance = 0;
 
@@ -208,24 +202,32 @@ export function resolveProjectIconColor(color?: string): string | undefined {
   return color.trim().toLowerCase() === '#1f1f1f' ? undefined : color;
 }
 
-/**
- * 渲染图标 SVG
- * @param iconId 图标 ID
- * @param colorOverride 颜色覆盖（可选）
- * @returns SVG HTML 字符串
- */
-export function renderIconSvg(iconId: ProjectIcon, colorOverride?: string): string {
+export function renderIconSvg(
+  iconId: ProjectIcon,
+  style: ProjectIconStyle = DEFAULT_PROJECT_ICON_STYLE,
+  colorOverride?: string
+): string {
   const option = ICON_OPTIONS.find((item) => item.id === iconId) || ICON_OPTIONS[0];
-  const override = resolveProjectIconColor(colorOverride);
-  const color = override ?? 'currentColor';
-  // Kubai 的蒙版和裁切路径在同一个 Shadow Root 内也需要实例级 ID。
-  const duotone = DUOTONE_PROJECT_ICONS[option.id].replace(/__K__/g, `gp-duotone-${++duotoneInstance}`);
+  const color = resolveProjectIconColor(colorOverride);
+  let shape: string;
+  switch (style) {
+    case 'outline':
+      shape = `<g data-gp-icon-outline fill="none" stroke="currentColor">${option.svg}</g>`;
+      break;
+    case 'solid':
+      shape = `<g data-gp-icon-solid fill="currentColor" stroke="none">${SOLID_PROJECT_ICONS[option.id]}</g>`;
+      break;
+    default: {
+      // Kubai 蒙版和裁切路径需要实例级 ID。
+      const duotone = DUOTONE_PROJECT_ICONS[option.id].replace(/__K__/g, `gp-duotone-${++duotoneInstance}`);
+      shape = `<g data-gp-icon-duotone transform="scale(1.5)">${duotone}</g>`;
+    }
+  }
   return `
-    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18" 
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="18" height="18"
+         ${color ? `style="color:${color}"` : ''}
          stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <g data-gp-icon-outline fill="none" stroke="${color}">${option.svg}</g>
-      <g data-gp-icon-solid fill="${color}" stroke="none">${SOLID_PROJECT_ICONS[option.id]}</g>
-      <g data-gp-icon-duotone transform="scale(1.5)"${override ? ` style="color:${override}"` : ''}>${duotone}</g>
+      ${shape}
     </svg>
   `;
 }
