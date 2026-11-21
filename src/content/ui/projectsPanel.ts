@@ -343,7 +343,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     modalIconStyle = project.iconStyle;
     modalSelectedColor = project.useIconPalette ? MULTICOLOR : project.color ?? ADAPTIVE_PROJECT_COLOR;
     showModal({
-      title: 'Edit project',
+      title: 'Edit Project',
       confirmLabel: 'Save',
       name: project.name,
       showIcons: true
@@ -395,13 +395,18 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     templateName: string,
     templateIcon: ProjectIcon,
     input?: HTMLInputElement,
-    confirm?: HTMLButtonElement
+    confirm?: HTMLButtonElement,
+    focusInput = false
   ) {
     modalSelectedIcon = templateIcon;
     updateIconButton();
     syncModalIconSelection();
     if (modalMode === 'create' && !inputDirty && input) {
       input.value = templateName;
+      if (focusInput) {
+        input.focus({ preventScroll: true });
+        input.select();
+      }
     }
     if (confirm && input) {
       confirm.disabled = input.value.trim().length === 0;
@@ -496,10 +501,11 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     }
 
     iconOptions.forEach((chip) => {
-      chip.onclick = () => {
+      chip.onclick = (event) => {
         const iconId = chip.dataset.gpTemplate as ProjectIcon;
         const label = chip.dataset.gpTemplateLabel || getIconLabel(iconId);
-        createProjectFromTemplate(label, iconId, input ?? undefined, confirm ?? undefined);
+        // 仅鼠标点击模板图标时将焦点移回名称框并选中默认名，保留键盘 Tab 遍历图标网格的体验。
+        createProjectFromTemplate(label, iconId, input ?? undefined, confirm ?? undefined, event.detail > 0);
       };
     });
   }
@@ -625,7 +631,10 @@ export function renderProjectsSection(
             <span class="gp-icon">${renderIconSvg(project.icon, project.iconStyle, project.color)}</span>
             <span class="gp-label">${escapeHtml(project.name)}</span>
             ${project.isPinned ? `<span class="gp-project-pin" role="img" aria-label="Pinned project" title="Pinned project">${renderProjectActionIcon('pin')}</span>` : ''}
-            <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+            <span class="gp-row-trailing">
+              ${chats.length > 0 ? `<span class="gp-project-count" aria-hidden="true">${chats.length}</span>` : ''}
+              <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+            </span>
           </div>
           <div class="gp-project-collapse ${isExpanded ? '' : 'collapsed'}" ${isExpanded ? '' : 'inert'}>
             ${chatRows}
@@ -868,6 +877,37 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         flex: 0 0 20px;
       }
 
+      .gp-row-trailing {
+        position: relative;
+        width: 32px;
+        height: 32px;
+        margin-right: -8px;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .gp-project-count {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-variant-numeric: tabular-nums;
+        color: var(--gp-section);
+        opacity: 1;
+        transition: opacity 0.15s ease;
+        pointer-events: none;
+      }
+
+      .gp-row:focus-within .gp-project-count,
+      .gp-row:hover .gp-project-count,
+      .gp-row.gp-force-hover .gp-project-count {
+        opacity: 0;
+      }
+
       .gp-kebab {
         width: 32px;
         height: 32px;
@@ -881,7 +921,6 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         cursor: pointer;
         opacity: 0;
         transition: background 0.15s ease, opacity 0.15s ease;
-        margin-right: -8px;
         flex-shrink: 0;
       }
 
@@ -1258,7 +1297,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-namebox:focus-within {
         border-color: var(--gp-focus);
-        box-shadow: 0 0 0 2px var(--gp-bg-hover);
+        box-shadow: var(--gp-focus-ring);
       }
       .gp-icon-button {
         width: 38px;
@@ -1469,8 +1508,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-width: 220px;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-menu);
-        box-shadow: var(--gp-shadow);
-        border: 1px solid var(--gp-border);
+        box-shadow: var(--gp-shadow-menu);
+        border: .5px solid var(--gp-border);
         padding: var(--gp-menu-inset);
         display: none;
         pointer-events: auto;
@@ -1587,8 +1626,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         box-sizing: border-box;
         background: var(--gp-surface);
         border-radius: var(--gp-radius-menu);
-        box-shadow: var(--gp-shadow);
-        border: 1px solid var(--gp-border);
+        box-shadow: var(--gp-shadow-menu);
+        border: .5px solid var(--gp-border);
         padding: var(--gp-menu-inset);
         display: none;
         z-index: 2147483647;
@@ -1623,8 +1662,8 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         position: fixed;
         bottom: 24px;
         right: 24px;
-        background: var(--gp-accent);
-        color: var(--gp-accent-fg);
+        background: var(--gp-toast-bg);
+        color: var(--gp-toast-fg);
         padding: 10px 16px;
         border-radius: var(--gp-radius-pill);
         font-size: 13px;
@@ -1632,7 +1671,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         display: none;
         pointer-events: auto;
         border: .5px solid var(--gp-border);
-        box-shadow: var(--gp-shadow);
+        box-shadow: var(--gp-shadow-menu);
         font-family: var(--gp-font);
       }
     `;
@@ -1689,10 +1728,10 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
       </div>
       <div class="gp-modal-actions">
         <div class="gp-modal-tools" aria-label="Project data tools">
-          <button class="gp-tool-button" type="button" data-gp-action="backup" title="Backup projects and prompts">
+          <button class="gp-tool-button" type="button" data-gp-action="backup" data-gp-press title="Backup projects and prompts">
             ${BACKUP_ICON}<span>Backup</span>
           </button>
-          <button class="gp-tool-button" type="button" data-gp-action="restore" title="Restore from backup file">
+          <button class="gp-tool-button" type="button" data-gp-action="restore" data-gp-press title="Restore from backup file">
             ${RESTORE_ICON}<span>Restore</span>
           </button>
         </div>

@@ -216,6 +216,7 @@ export class PromptPicker {
     this.host.style.left = `${left}px`;
     this.host.style.top = `${top}px`;
     setSurfaceOrigin(picker, rect, left, top);
+    this.syncListScrollFade(picker.querySelector<HTMLElement>('.list'));
   }
 
   private applyDynamicHeight(picker: HTMLElement) {
@@ -262,8 +263,8 @@ export class PromptPicker {
       .library-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; padding-inline: 8px; gap: 8px; }
       .library-title, .modal-title { margin: 0; ${PANEL_TITLE_TYPOGRAPHY} }
       .library-count { font-size: 12px; color: var(--gp-fg-secondary); }
-      .search-row { border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-pill); background: var(--gp-surface-sunken); }
-      .search-row:focus-within { border-color: var(--gp-focus); box-shadow: 0 0 0 1px var(--gp-focus); }
+      .search-row { border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-pill); background: var(--gp-surface-sunken); transition: border-color var(--gp-transition), box-shadow var(--gp-transition); }
+      .search-row:focus-within { border-color: var(--gp-focus); box-shadow: var(--gp-focus-ring); }
       .search-box { display: flex; align-items: center; height: 38px; padding: 0 8px 0 14px; gap: 8px; }
       .search-icon { display: flex; color: var(--gp-fg-secondary); }
       .search-input { min-width: 0; width: 100%; flex: 1; border: 0; background: transparent; padding: 0; outline: none; font-size: 14px; }
@@ -274,6 +275,7 @@ export class PromptPicker {
       .search-clear svg { width: 14px; height: 14px; }
       .search-input::placeholder { color: var(--gp-fg-tertiary); }
       .list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 var(--gp-library-inset) 8px; scrollbar-width: thin; scrollbar-color: var(--gp-border) transparent; }
+      .list[data-gp-fade-bottom] { mask-image: linear-gradient(to bottom, black calc(100% - 18px), transparent 100%); -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 18px), transparent 100%); }
       .empty-box { min-height: 112px; display: grid; place-content: center; padding: 16px; text-align: center; color: var(--gp-fg-secondary); font-size: 14px; }
       .item { position: relative; border-radius: var(--gp-radius-library-item); margin-bottom: 4px; border: .5px solid transparent; transition: background var(--gp-transition); }
       .item:hover, .item.selected, .item:focus-within { background: var(--gp-bg-active); }
@@ -281,14 +283,14 @@ export class PromptPicker {
       .list:has(.item:hover) .item.selected:not(:hover):not(:focus-within) .item-actions { opacity: 0; pointer-events: none; }
       .item-insert { display: block; width: 100%; border: 0; background: transparent; text-align: left; padding: 12px 14px; border-radius: inherit; }
       .item-content { min-width: 0; }
-      .item-head { display: flex; align-items: center; min-height: 24px; padding-right: 40px; margin-bottom: 4px; }
+      .item-head { display: flex; align-items: center; min-height: 24px; padding-right: 36px; margin-bottom: 4px; }
       .item-title { font-size: 14px; line-height: 19.6px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
       .item-preview { font-size: 14px; line-height: 19.6px; color: var(--gp-fg-secondary); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
-      .item-actions { position: absolute; top: 8px; right: 8px; display: flex; opacity: 0; pointer-events: none; transition: opacity var(--gp-transition); }
+      .item-actions { position: absolute; top: 10px; right: 10px; display: flex; opacity: 0; pointer-events: none; transition: opacity var(--gp-transition); }
       .item:hover .item-actions, .item.selected .item-actions, .item:focus-within .item-actions { opacity: 1; pointer-events: auto; }
-      .item-action-btn { width: 32px; height: 32px; display: grid; place-items: center; padding: 0; border: .5px solid var(--gp-border); border-radius: var(--gp-radius-circle); background: var(--gp-surface); color: var(--gp-fg-secondary); box-shadow: 0 1px 2px #0000000a; transition: background var(--gp-transition), color var(--gp-transition), box-shadow var(--gp-transition); }
+      .item-action-btn { width: 28px; height: 28px; display: grid; place-items: center; padding: 0; border: .5px solid var(--gp-border); border-radius: var(--gp-radius-circle); background: var(--gp-surface); color: var(--gp-fg-secondary); box-shadow: 0 1px 2px #0000000a; transition: background var(--gp-transition), color var(--gp-transition), box-shadow var(--gp-transition); }
       .item-action-btn:hover { background: var(--gp-bg-hover); color: var(--gp-fg); box-shadow: 0 2px 5px #00000014; }
-      .item-action-btn svg { width: 16px; height: 16px; stroke-width: 1.75; }
+      .item-action-btn svg { width: 14px; height: 14px; stroke-width: 1.75; }
       .footer-action, .modal-footer { flex-shrink: 0; border-top: 1px solid var(--gp-border); background: var(--gp-surface-footer); }
       .footer-action { padding: var(--gp-library-inset); }
       .footer-buttons { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -305,9 +307,9 @@ export class PromptPicker {
       .modal-body > * { flex-shrink: 0; }
       .form-group { display: flex; flex-direction: column; gap: 8px; }
       .form-label { font-size: 14px; line-height: 19.6px; font-weight: 600; }
-      .form-input, .form-textarea { width: 100%; border: 1px solid var(--gp-control-border); background: var(--gp-surface-sunken); color: var(--gp-fg); font-size: 14px; line-height: 19.6px; }
+      .form-input, .form-textarea { width: 100%; border: 1px solid var(--gp-control-border); background: var(--gp-surface-sunken); color: var(--gp-fg); font-size: 14px; line-height: 19.6px; transition: border-color var(--gp-transition), box-shadow var(--gp-transition); }
       .form-input { height: 40px; padding: 0 18px; border-radius: var(--gp-radius-pill); }
-      .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--gp-focus); box-shadow: 0 0 0 1px var(--gp-focus); }
+      .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--gp-focus); box-shadow: var(--gp-focus-ring); }
       .form-input::placeholder, .form-textarea::placeholder { color: var(--gp-fg-tertiary); }
       .form-textarea { display: block; height: clamp(120px, 28vh, 260px); resize: none; padding: 14px 18px; border-radius: var(--gp-radius-prompt-textarea); }
       .content-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
@@ -317,11 +319,13 @@ export class PromptPicker {
       .modal-footer-right { margin-left: auto; }
       .modal-footer .btn { white-space: nowrap; }
       @media (max-width: 400px) { .modal-footer .btn { padding-inline: 10px; } }
-      .btn { height: var(--gp-prompt-action-height); padding: 0 16px; border-radius: var(--gp-radius-pill); border: .5px solid var(--gp-button-border); font-size: 14px; font-weight: 600; background: transparent; }
-      .btn:hover { background: var(--gp-bg-hover); }
-      .btn-save { border-color: var(--gp-accent); background: var(--gp-accent); color: var(--gp-accent-fg); }
-      .btn-save:hover { background: var(--gp-accent); opacity: .85; }
+      .btn { height: var(--gp-prompt-action-height); padding: 0 16px; border-radius: var(--gp-radius-pill); border: 1px solid var(--gp-border); font-size: 14px; font-weight: 500; color: var(--gp-fg-secondary); background: transparent; transition: background var(--gp-transition), border-color var(--gp-transition), color var(--gp-transition), opacity var(--gp-transition); }
+      .btn:hover:not(:disabled) { background: var(--gp-bg-hover); color: var(--gp-fg); }
+      .btn-save { border-color: var(--gp-accent); background: var(--gp-accent); color: var(--gp-accent-fg); font-weight: 600; }
+      .btn-save:hover:not(:disabled) { background: var(--gp-accent); color: var(--gp-accent-fg); opacity: .88; }
+      .btn-save:disabled { background: var(--gp-bg-hover); border-color: var(--gp-border); color: var(--gp-fg-tertiary); opacity: 1; cursor: not-allowed; }
       .btn-delete { color: var(--gp-danger); border-color: transparent; }
+      .btn-delete:hover:not(:disabled) { color: var(--gp-danger); }
       .btn-delete.confirming { border-color: var(--gp-danger); }
       .form-status { margin: 0; padding: 0 var(--gp-panel-inset) 12px; font-size: 12px; color: var(--gp-danger); }
       .form-status:empty { display: none; }
@@ -382,6 +386,14 @@ export class PromptPicker {
     this.shadow.getElementById('btn-primary-action')?.addEventListener('click', () => {
       this.showModal();
     });
+    const list = this.shadow.getElementById('list-container');
+    list?.addEventListener('scroll', () => this.syncListScrollFade(list), { passive: true });
+  }
+
+  private syncListScrollFade(list: HTMLElement | null) {
+    if (!list) return;
+    const hasMoreBelow = list.scrollHeight - list.scrollTop - list.clientHeight > 6;
+    list.toggleAttribute('data-gp-fade-bottom', hasMoreBelow);
   }
 
   private showModal(prompt?: Prompt) {
@@ -419,10 +431,10 @@ export class PromptPicker {
         <p class="form-status" id="form-status" role="alert"></p>
         <div class="modal-footer">
           <div class="modal-footer-left">
-            ${prompt ? '<button class="btn btn-delete" id="modal-delete">Delete</button>' : ''}
+            ${prompt ? '<button class="btn btn-delete" data-gp-press id="modal-delete">Delete</button>' : ''}
           </div>
           <div class="modal-footer-right">
-            <button class="btn btn-cancel" id="modal-cancel">Cancel</button>
+            <button class="btn btn-cancel" data-gp-press id="modal-cancel">Cancel</button>
             <button class="btn btn-save" data-gp-press id="modal-save">Save</button>
           </div>
         </div>
@@ -449,9 +461,25 @@ export class PromptPicker {
     };
 
     titleInput?.addEventListener('input', updateSaveEnabled);
+    titleInput?.addEventListener('keydown', (e) => {
+      if (e.isComposing) return;
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+        e.preventDefault();
+        if (!saveBtn?.disabled) void this.savePrompt();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        contentInput?.focus();
+      }
+    });
     contentInput?.addEventListener('input', () => {
       updateContentMeta();
       updateSaveEnabled();
+    });
+    contentInput?.addEventListener('keydown', (e) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        if (!saveBtn?.disabled) void this.savePrompt();
+      }
     });
     updateContentMeta();
     updateSaveEnabled();
@@ -625,6 +653,7 @@ export class PromptPicker {
       this.selectedPromptId = null;
       this.geometry = '';
       this.updatePosition();
+      this.syncListScrollFade(list);
       return;
     }
 
@@ -700,6 +729,7 @@ export class PromptPicker {
     });
     this.geometry = '';
     this.updatePosition();
+    this.syncListScrollFade(list);
   }
 
   private onSelect(prompt: Prompt, keepOpen: boolean) {

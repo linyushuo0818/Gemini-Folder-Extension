@@ -620,8 +620,8 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       border-radius: var(--gp-radius-menu, 25px);
       background: var(--gp-surface, #ffffff);
       color: var(--gp-fg, #141413);
-      border: 1px solid var(--gp-border, rgb(31 30 29 / .15));
-      box-shadow: var(--gp-shadow, inset 0 1px 0 rgb(255 255 255 / .72), 0 24px 64px rgb(20 20 19 / .14), 0 4px 12px rgb(20 20 19 / .04));
+      border: .5px solid var(--gp-border, rgb(31 30 29 / .15));
+      box-shadow: var(--gp-shadow-menu, inset 0 1px 0 rgb(255 255 255 / .72), 0 12px 32px rgb(20 20 19 / .14), 0 2px 8px rgb(20 20 19 / .06));
       font-family: var(--gp-font-sans, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif);
       font-size: 14px;
       font-weight: 500;

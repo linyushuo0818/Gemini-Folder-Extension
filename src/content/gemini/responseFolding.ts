@@ -304,12 +304,16 @@ function isFoldable(content: HTMLElement): boolean {
   return fullHeight > runtime.collapsedHeight + 20 || fullHeight - visibleHeight > 20;
 }
 
+const CHEVRON_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>';
+
 function ensureToggleButton(root: HTMLElement): HTMLButtonElement {
   let button = root.querySelector<HTMLButtonElement>(`:scope > .${BUTTON_CLASS}`);
   if (!button) {
     button = document.createElement('button');
     button.type = 'button';
     button.className = BUTTON_CLASS;
+    button.innerHTML = CHEVRON_SVG;
     root.appendChild(button);
   }
 
@@ -342,20 +346,13 @@ function ensureToggleButton(root: HTMLElement): HTMLButtonElement {
 
 function applyCollapsedState(content: HTMLElement, button: HTMLButtonElement, collapsed: boolean): void {
   const labels = getLabels();
-  if (collapsed) {
-    content.classList.add(COLLAPSED_CLASS);
-    // 相同的 textContent 赋值也会产生 childList 变更，触发下一帧重复扫描。
-    if (button.textContent !== '+') button.textContent = '+';
-    button.title = labels.expand;
-    button.setAttribute('aria-label', labels.expand);
-    button.setAttribute('aria-expanded', 'false');
-  } else {
-    content.classList.remove(COLLAPSED_CLASS);
-    if (button.textContent !== '-') button.textContent = '-';
-    button.title = labels.collapse;
-    button.setAttribute('aria-label', labels.collapse);
-    button.setAttribute('aria-expanded', 'true');
-  }
+  const nextLabel = collapsed ? labels.expand : labels.collapse;
+  const nextExpanded = collapsed ? 'false' : 'true';
+  content.classList.toggle(COLLAPSED_CLASS, collapsed);
+  // 仅在状态变化时更新属性，避免无谓的 DOM 变更触发扫描。
+  if (button.title !== nextLabel) button.title = nextLabel;
+  if (button.getAttribute('aria-label') !== nextLabel) button.setAttribute('aria-label', nextLabel);
+  if (button.getAttribute('aria-expanded') !== nextExpanded) button.setAttribute('aria-expanded', nextExpanded);
 }
 
 function clearRootUi(root: HTMLElement): void {
@@ -597,36 +594,60 @@ function ensureStyles(): void {
       position: absolute;
       top: 8px;
       right: 8px;
-      width: 22px;
-      height: 22px;
+      width: 26px;
+      height: 26px;
+      padding: 0;
       border-radius: ${PILL_RADIUS};
-      border: 1px solid rgb(31 30 29 / .22);
+      border: .5px solid rgb(31 30 29 / .18);
       background: rgb(255 255 255 / .92);
-      color: #141413;
+      color: #3d3d3a;
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / .72), 0 2px 6px rgb(20 20 19 / .08);
       cursor: pointer;
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      font-size: 12px;
-      line-height: 1;
+      opacity: .72;
       z-index: 3;
-      transition: background .16s ease, box-shadow .16s ease;
+      transition: opacity .18s ease, background .18s ease, color .18s ease, box-shadow .18s ease, transform .14s ease;
     }
 
-    .${BUTTON_CLASS}:hover {
+    .${BUTTON_CLASS} svg {
+      display: block;
+      transition: transform .18s cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .${BUTTON_CLASS}[aria-expanded="false"] svg {
+      transform: rotate(180deg);
+    }
+
+    .${BUTTON_CLASS}:hover,
+    .${BUTTON_CLASS}:focus-visible {
+      opacity: 1;
       background: #faf9f5;
-      box-shadow: 0 2px 7px rgba(20, 20, 19, 0.16);
+      color: #141413;
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / .8), 0 4px 12px rgb(20 20 19 / .14);
+    }
+
+    .${BUTTON_CLASS}:active {
+      transform: scale(.94);
     }
 
     :root[data-gp-rf-theme="dark"] .${BUTTON_CLASS} {
-      border-color: rgb(222 220 209 / .22);
-      background: rgb(48 48 46 / .92);
-      color: #faf9f5;
+      border-color: rgb(222 220 209 / .18);
+      background: rgb(44 44 42 / .92);
+      color: #c2c0b6;
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / .08), 0 2px 8px rgb(0 0 0 / .32);
     }
 
-    :root[data-gp-rf-theme="dark"] .${BUTTON_CLASS}:hover {
-      background: #3d3d3a;
-      box-shadow: 0 2px 7px rgba(0, 0, 0, 0.42);
+    :root[data-gp-rf-theme="dark"] .${BUTTON_CLASS}:hover,
+    :root[data-gp-rf-theme="dark"] .${BUTTON_CLASS}:focus-visible {
+      background: #373734;
+      color: #faf9f5;
+      box-shadow: inset 0 1px 0 rgb(255 255 255 / .1), 0 4px 14px rgb(0 0 0 / .44);
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .${BUTTON_CLASS}, .${BUTTON_CLASS} svg { transition: none; }
     }
   `;
   document.head.appendChild(style);
