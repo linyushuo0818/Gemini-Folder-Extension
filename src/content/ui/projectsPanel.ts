@@ -1192,8 +1192,16 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-hover-strong: var(--gp-bg-active);
         --gp-selected: var(--gp-bg-active);
         --gp-selected-border: var(--gp-control-border);
+        --gp-chip-selected-bg-mix: 10%;
+        --gp-chip-selected-border-mix: 46%;
+        --gp-chip-selected-ring-mix: 10%;
         --gp-on-accent: var(--gp-accent-fg);
         --gp-name-inset: 4px;
+      }
+      :host(.dark), :host([data-gp-theme="dark"]) {
+        --gp-chip-selected-bg-mix: 18%;
+        --gp-chip-selected-border-mix: 56%;
+        --gp-chip-selected-ring-mix: 16%;
       }
 
       .gp-modal-backdrop {
@@ -1296,7 +1304,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .gp-namebox:focus-within {
-        border-color: var(--gp-focus);
+        border-color: var(--gp-focus-border);
         box-shadow: var(--gp-focus-ring);
       }
       .gp-icon-button {
@@ -1341,6 +1349,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 100%;
       }
       .gp-template-chip {
+        --gp-chip-accent: var(--gp-grid-icon-color, var(--gp-focus));
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1357,6 +1366,9 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transition: background var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition), transform var(--gp-transition);
         flex: 0 0 auto;
       }
+      [data-gp-icon-palette] .gp-template-chip {
+        --gp-chip-accent: var(--gp-icon-palette-color);
+      }
       .gp-template-chip:hover {
         border-color: transparent;
         background: var(--gp-hover);
@@ -1364,10 +1376,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       .gp-template-chip:active { transform: translateY(0); }
       .gp-template-chip.selected {
-        border-color: var(--gp-selected-border);
-        background: var(--gp-selected);
+        border-color: color-mix(in srgb, var(--gp-chip-accent) var(--gp-chip-selected-border-mix), transparent);
+        background: color-mix(in srgb, var(--gp-chip-accent) var(--gp-chip-selected-bg-mix), var(--gp-surface));
         color: var(--gp-fg);
-        box-shadow: none;
+        box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--gp-chip-accent) var(--gp-chip-selected-ring-mix), transparent);
         border-radius: var(--gp-radius-pill);
       }
       .gp-template-chip svg {
@@ -1404,7 +1416,17 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
           return `${color} ${index * step}turn ${(index + 1) * step}turn`;
         }).join(', ')});
       }
-      .gp-color-multicolor.selected { border-color: var(--gp-fg-secondary); }
+      .gp-color-multicolor.selected {
+        border-color: transparent;
+        background:
+          linear-gradient(var(--gp-surface), var(--gp-surface)) padding-box,
+          var(--gp-choice-color) border-box;
+      }
+      .gp-color-multicolor.selected:hover {
+        background:
+          linear-gradient(var(--gp-hover), var(--gp-hover)) padding-box,
+          var(--gp-choice-color) border-box;
+      }
 
       .gp-modal-actions {
         display: grid;

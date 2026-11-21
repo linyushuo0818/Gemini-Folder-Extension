@@ -256,7 +256,7 @@ export class PromptPicker {
         font-family: var(--gp-font-sans); font-size: 14px;
         --gp-motion-open: 150ms;
       }
-      .picker[data-gp-motion-state="open"]:has(+ .modal-overlay > .modal) {
+      .picker[data-gp-motion-state="open"]:has(+ .modal-overlay[data-gp-motion-state="open"]) {
         opacity: 0; pointer-events: none; transform: scale(.97);
       }
       .header { padding: 18px var(--gp-library-inset) 12px; flex-shrink: 0; }
@@ -264,7 +264,7 @@ export class PromptPicker {
       .library-title, .modal-title { margin: 0; ${PANEL_TITLE_TYPOGRAPHY} }
       .library-count { font-size: 12px; color: var(--gp-fg-secondary); }
       .search-row { border: 1px solid var(--gp-control-border); border-radius: var(--gp-radius-pill); background: var(--gp-surface-sunken); transition: border-color var(--gp-transition), box-shadow var(--gp-transition); }
-      .search-row:focus-within { border-color: var(--gp-focus); box-shadow: var(--gp-focus-ring); }
+      .search-row:focus-within { border-color: var(--gp-focus-border); box-shadow: var(--gp-focus-ring); }
       .search-box { display: flex; align-items: center; height: 38px; padding: 0 8px 0 14px; gap: 8px; }
       .search-icon { display: flex; color: var(--gp-fg-secondary); }
       .search-input { min-width: 0; width: 100%; flex: 1; border: 0; background: transparent; padding: 0; outline: none; font-size: 14px; }
@@ -309,7 +309,7 @@ export class PromptPicker {
       .form-label { font-size: 14px; line-height: 19.6px; font-weight: 600; }
       .form-input, .form-textarea { width: 100%; border: 1px solid var(--gp-control-border); background: var(--gp-surface-sunken); color: var(--gp-fg); font-size: 14px; line-height: 19.6px; transition: border-color var(--gp-transition), box-shadow var(--gp-transition); }
       .form-input { height: 40px; padding: 0 18px; border-radius: var(--gp-radius-pill); }
-      .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--gp-focus); box-shadow: var(--gp-focus-ring); }
+      .form-input:focus, .form-textarea:focus { outline: none; border-color: var(--gp-focus-border); box-shadow: var(--gp-focus-ring); }
       .form-input::placeholder, .form-textarea::placeholder { color: var(--gp-fg-tertiary); }
       .form-textarea { display: block; height: clamp(120px, 28vh, 260px); resize: none; padding: 14px 18px; border-radius: var(--gp-radius-prompt-textarea); }
       .content-label { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
