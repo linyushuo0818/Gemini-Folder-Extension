@@ -51,6 +51,12 @@ Run `npm ci`, `npm run lint`, and `npm run package:store` in that order. Packagi
 
 ## Changelog
 
+### v2.0.10
+
+- Unified pill curvature and concentric outer corner radii across project dialogs, the Prompt Library, prompt editors, and context menus.
+- Replaced harsh focus and selection outlines with subtle luminance and tonal surface states across inputs, color swatches, icon tiles, and the icon style switcher.
+- Polished micro-interactions: smoother cross-fade when returning from the prompt editor to the Prompt Library, `Enter` and `Cmd/Ctrl+Enter` keyboard flow in the prompt editor, subtle list scroll fade, project chat counts on sidebar rows, and an animated chevron toggle for response folding.
+
 ### v2.0.9
 
 - Added Duotone icons and let each project save its own icon style.
