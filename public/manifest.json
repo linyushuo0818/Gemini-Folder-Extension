@@ -1,7 +1,7 @@
 {
     "manifest_version": 3,
     "name": "Projects for Gemini™: Projects and Prompt Manager",
-    "version": "2.0.8",
+    "version": "2.0.9",
     "description": "Group Gemini chats into local Projects.",
     "permissions": [
         "storage"
