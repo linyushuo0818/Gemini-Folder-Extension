@@ -1190,18 +1190,17 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         --gp-muted: var(--gp-fg-tertiary);
         --gp-hover: var(--gp-bg-hover);
         --gp-hover-strong: var(--gp-bg-active);
-        --gp-selected: var(--gp-bg-active);
-        --gp-selected-border: var(--gp-control-border);
-        --gp-chip-selected-bg-mix: 10%;
-        --gp-chip-selected-border-mix: 46%;
-        --gp-chip-selected-ring-mix: 10%;
+        --gp-selected: var(--gp-surface-selected);
+        --gp-chip-idle-opacity: .68;
+        --gp-chip-hover-bg: var(--gp-surface-footer);
+        --gp-selected-pillow-shadow: inset 0 1px 2px rgb(20 20 19 / .04);
         --gp-on-accent: var(--gp-accent-fg);
         --gp-name-inset: 4px;
       }
       :host(.dark), :host([data-gp-theme="dark"]) {
-        --gp-chip-selected-bg-mix: 18%;
-        --gp-chip-selected-border-mix: 56%;
-        --gp-chip-selected-ring-mix: 16%;
+        --gp-chip-idle-opacity: .62;
+        --gp-chip-hover-bg: #333330;
+        --gp-selected-pillow-shadow: inset 0 1px 0 rgb(255 255 255 / .08);
       }
 
       .gp-modal-backdrop {
@@ -1301,18 +1300,19 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         padding: var(--gp-name-inset) 16px var(--gp-name-inset) var(--gp-name-inset);
         position: relative;
         background: var(--gp-surface-sunken);
-        transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
+        transition: background-color var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition);
       }
       .gp-namebox:focus-within {
-        border-color: var(--gp-focus-border);
-        box-shadow: var(--gp-focus-ring);
+        background: var(--gp-input-focus-bg);
+        border-color: var(--gp-input-focus-border);
+        box-shadow: var(--gp-input-focus-shadow);
       }
       .gp-icon-button {
         width: 38px;
         height: 38px;
         border: none;
         border-radius: var(--gp-radius-circle);
-        background: var(--gp-surface-sunken);
+        background: transparent;
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1349,7 +1349,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 100%;
       }
       .gp-template-chip {
-        --gp-chip-accent: var(--gp-grid-icon-color, var(--gp-focus));
         display: inline-flex;
         align-items: center;
         justify-content: center;
@@ -1359,33 +1358,36 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         min-height: 36px;
         padding: 0;
         border-radius: var(--gp-radius-pill);
-        border: 1px solid transparent;
+        border: 0;
         cursor: pointer;
         color: var(--gp-fg);
-        background: var(--gp-surface-footer);
-        transition: background var(--gp-transition), border-color var(--gp-transition), box-shadow var(--gp-transition), transform var(--gp-transition);
+        background: transparent;
+        transition: background-color var(--gp-transition), box-shadow var(--gp-transition);
         flex: 0 0 auto;
       }
-      [data-gp-icon-palette] .gp-template-chip {
-        --gp-chip-accent: var(--gp-icon-palette-color);
-      }
       .gp-template-chip:hover {
-        border-color: transparent;
-        background: var(--gp-hover);
-        transform: none;
+        background: var(--gp-chip-hover-bg);
       }
       .gp-template-chip:active { transform: translateY(0); }
       .gp-template-chip.selected {
-        border-color: color-mix(in srgb, var(--gp-chip-accent) var(--gp-chip-selected-border-mix), transparent);
-        background: color-mix(in srgb, var(--gp-chip-accent) var(--gp-chip-selected-bg-mix), var(--gp-surface));
+        background: var(--gp-selected);
         color: var(--gp-fg);
-        box-shadow: 0 0 0 2.5px color-mix(in srgb, var(--gp-chip-accent) var(--gp-chip-selected-ring-mix), transparent);
+        box-shadow: var(--gp-selected-pillow-shadow);
         border-radius: var(--gp-radius-pill);
       }
       .gp-template-chip svg {
         width: 24px;
         height: 24px;
         stroke-width: 1.8;
+        opacity: var(--gp-chip-idle-opacity);
+        transition: opacity var(--gp-transition), transform var(--gp-transition);
+      }
+      .gp-template-chip:hover svg {
+        opacity: .95;
+      }
+      .gp-template-chip.selected svg {
+        opacity: 1;
+        transform: scale(1.06);
       }
       .gp-template-chip:focus-visible, .gp-color-dot:focus-visible, .gp-modal-close:focus-visible, .gp-tool-button:focus-visible, .gp-primary:focus-visible { outline: 2px solid var(--gp-focus); outline-offset: 2px; }
 
@@ -1399,33 +1401,40 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 100%;
         aspect-ratio: 1;
         border-radius: var(--gp-radius-circle);
-        border: 1.5px solid transparent;
+        border: 0;
         background: transparent;
         cursor: pointer;
         padding: 0;
         position: relative;
-        transition: border-color var(--gp-transition), background-color var(--gp-transition);
+        transition: background-color var(--gp-transition), box-shadow var(--gp-transition);
       }
-      .gp-color-dot::before { content: ''; position: absolute; inset: 5px; border-radius: var(--gp-radius-circle); background: var(--gp-choice-color); }
-      .gp-color-dot:hover { background: var(--gp-hover); }
-      .gp-color-dot.selected { border-color: var(--gp-choice-color); }
+      .gp-color-dot::before {
+        content: '';
+        position: absolute;
+        inset: 6px;
+        border-radius: var(--gp-radius-circle);
+        background: var(--gp-choice-color);
+        opacity: .56;
+        transform: scale(.86);
+        transition: opacity var(--gp-transition), transform var(--gp-transition), box-shadow var(--gp-transition);
+      }
+      .gp-color-dot:hover { background: var(--gp-chip-hover-bg); }
+      .gp-color-dot:hover::before { opacity: .92; transform: scale(.96); }
+      .gp-color-dot.selected {
+        background: var(--gp-selected);
+        box-shadow: var(--gp-selected-pillow-shadow);
+      }
+      .gp-color-dot.selected::before {
+        opacity: 1;
+        transform: scale(1);
+        box-shadow: 0 1px 3px rgb(20 20 19 / .16);
+      }
       .gp-color-adaptive { --gp-choice-color: var(--gp-fg); }
       .gp-color-multicolor {
         --gp-choice-color: conic-gradient(${MULTICOLOR_ICON_PALETTE.map((color, index) => {
           const step = 1 / MULTICOLOR_ICON_PALETTE.length;
           return `${color} ${index * step}turn ${(index + 1) * step}turn`;
         }).join(', ')});
-      }
-      .gp-color-multicolor.selected {
-        border-color: transparent;
-        background:
-          linear-gradient(var(--gp-surface), var(--gp-surface)) padding-box,
-          var(--gp-choice-color) border-box;
-      }
-      .gp-color-multicolor.selected:hover {
-        background:
-          linear-gradient(var(--gp-hover), var(--gp-hover)) padding-box,
-          var(--gp-choice-color) border-box;
       }
 
       .gp-modal-actions {
