@@ -25,11 +25,7 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 
 ## 下载
 
-请到 [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases) 页面下载最新版 zip。
-
-当前版本对应文件：
-
-- `gemini-projects-2.0.9-webstore-*.zip`
+已发布的最新版 ZIP 可在 [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases/latest) 下载。如需安装当前源码版本，请按下文步骤构建 ZIP。
 
 ## 手动安装
 

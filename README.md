@@ -1,121 +1,119 @@
 # Projects for Gemini™: Projects and Prompt Manager
 
-Add local Projects and a Prompt Library to Gemini.
+Add local project folders and a Prompt Library to Gemini.
 
 English | [简体中文](README.zh-CN.md)
 
 ## What It Does
 
-Gemini Projects helps you organize Gemini chats into local project folders in the sidebar. It is useful when you work across topics, clients, classes, writing projects, research threads, or anything else that needs a cleaner history than one long chat list.
+Gemini Projects adds project folders to the Gemini sidebar. Group chats by topic, class, client, writing project, or research so you can find related conversations in one place.
 
-It also includes a local Prompt Library, so you can save prompts you reuse often and insert them quickly while writing in Gemini.
+The built-in Prompt Library lets you save prompts you use often, then search for and insert them directly in Gemini's message box.
 
-## Highlights
+## Key Features
 
-- Create local Projects in the Gemini sidebar
-- Move existing chats into Projects
-- Remove a chat from a Project without deleting the original Gemini chat
-- See when a Project chat is missing because it was deleted from Gemini history on another device
-- Choose Project icons with a multicolor palette or a preset color
-- Choose Outline, Solid, or Duotone separately for each project
-- Use the compact Project menu to pin, edit, or delete a Project. Pinned Projects stay above other Projects after reload; unpinning restores their original order.
-- Back up and restore your local Projects and prompts
-- Save, search, edit, and reuse prompts from a local Prompt Library
-- Keep your organization data in browser-local storage
+- Create local projects in the Gemini sidebar
+- Move existing chats into projects
+- Remove chats from a project while keeping them in Gemini
+- See when a project chat is missing because it was deleted from Gemini history on another device
+- Pick a project icon and choose a multicolor palette or a preset color
+- Set each project's icon style to Outline, Solid, or Duotone
+- Pin, edit, or delete projects from the project menu. Pinned projects stay at the top after a refresh. Unpin a project to return it to its original position.
+- Back up and restore projects and prompts
+- Save, search, edit, and reuse prompts in the Prompt Library
+- Keep project and prompt data in your browser's local storage
 
 ## Download
 
-Download the latest zip from the [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases) page.
+Download the latest available ZIP from [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases/latest). To install the current source version, build a ZIP using the steps below.
 
-For the current release, use:
+## Manual Installation
 
-- `gemini-projects-2.0.9-webstore-*.zip`
-
-## Install Manually
-
-1. Download the zip file from Releases.
+1. Download the ZIP from GitHub Releases.
 2. Extract it to a local folder.
 3. Open `chrome://extensions`.
-4. Enable `Developer mode`.
-5. Click `Load unpacked`.
-6. Select the extracted folder that contains `manifest.json`.
+4. Turn on **Developer mode**.
+5. Click **Load unpacked**.
+6. Select the extracted folder containing `manifest.json`.
 
-Gemini Projects is designed for Chrome and Chromium-based browsers.
+Gemini Projects is built for Chrome and other Chromium-based browsers.
 
 ## Privacy
 
-- Projects and prompts are stored locally with Chrome extension storage.
-- The extension does not require a separate account or backend.
-- The extension does not proactively upload your Projects, prompts, or chat organization data.
-- Gemini itself still runs on Google's website, so Gemini account activity is governed by Google's own policies.
+- Projects and prompts use Chrome's local extension storage.
+- The extension uses your existing Gemini session and runs entirely in your browser.
+- Your projects, prompts, and chat organization data stay on your device.
+- Google's policies govern your Gemini account and activity on the Gemini website.
 
-## Build and package
+## Build and Package
 
-Run `npm ci`, `npm run lint`, then `npm run package:store`. Packaging uses Node.js and the system `zip` utility on macOS/Linux, or PowerShell on Windows. The release ZIP contains only manifest-referenced runtime scripts and icons; source maps, unused legacy scripts, local data and development notes are excluded. Generated files stay under `release/` and are not committed.
+Run `npm ci`, `npm run lint`, and `npm run package:store` in that order. Packaging uses Node.js and the system `zip` utility on macOS and Linux, or PowerShell on Windows. The ZIP contains only the runtime files listed in the manifest, keeping source maps, unused legacy scripts, personal data, and development notes outside the archive. Generated files stay in `release/`, outside version control.
 
-For local testing, build first and load the folder containing the generated `manifest.json`. In this development workspace, the built runtime is synchronized to the sibling `chrome/` folder. Disable the Web Store installation before enabling the unpacked build to avoid duplicate injections. The two extension IDs have separate local storage; disabling the store build preserves its data. After local validation, create a separate upload ZIP with `npm run package:store`.
-
-The Prompt Library uses the color roles, typography scale, and form structure from the [MCP Apps for Claude UI kit](https://www.figma.com/community/file/1597641111449594397/mcp-apps-for-claude): 14px body text, 40px inputs, 36px buttons, and 16px textarea padding. Forms use the Primary surface with separate container, control, and secondary-button border strengths. Fonts use system fallbacks when Anthropic Sans Text or JetBrains Mono is unavailable; no font files are bundled. Peer headings in the library, prompt editors, and project dialogs share the same 24px system-serif type with weight 600. The unified serif headings and 28px panel, 16px row, and 12px control corners are project adaptations rather than the kit's default desktop component specifications.
-
-## Current Version
+## Changelog
 
 ### v2.0.9
 
-- Added Duotone icons and per-project icon styles.
-- Added a multicolor icon palette for new projects and kept the existing color presets.
+- Added Duotone icons and let each project save its own icon style.
+- Made the multicolor palette the default for new projects. Preset colors are still available.
 
 ### v2.0.8
 
-- Added Outline and Solid project icons and matched selected color rings to the chosen swatch.
-- Added chat drag-and-drop and keyboard navigation for project menus.
-- Updated Prompt Library shortcuts and kept drafts and selections intact when inserting prompts.
-- Improved multi-tab changes and validated backups before restoring them.
+- Added Outline and Solid icons. The selection ring now matches the chosen color swatch.
+- Added drag-and-drop for chats and improved keyboard navigation in project menus.
+- Updated Prompt Library shortcuts and preserved drafts and active selections when inserting a prompt.
+- Improved syncing across tabs and added full validation before restoring a backup.
 
 ### v2.0.6
 
-- Fixed the Prompt Library entry being inserted into Gemini's relocated Chat/Task switch during initial page rendering. The input toolbar's Upload & tools control is now preferred, and mode switches are excluded.
-- Refreshed the Prompt Library and editor with neutral light/dark surfaces, unified stronger serif headings, generous concentric corners and equal button insets, full two-line previews, an explicit New Prompt action, keyboard focus states, and save feedback. Peer headings in new/edit prompt and new/edit project dialogs share the same typography.
-- Switched the entry button to native, theme-aware hover styling and added a subtle surface and border to the edit control.
-- Kept the picker within the viewport when its search results or window size change.
+- Fixed the Prompt Library button appearing in Gemini's Chat / Task switch on initial load. The extension now looks for **Upload & tools** and skips the mode switch.
+- Updated the Prompt Library and its editor with neutral light and dark surfaces, consistent serif headings, larger concentric corner radii, and even spacing around controls. Added full two-line previews, a dedicated **New Prompt** button, clearer keyboard focus, and save feedback. Project and prompt dialogs now share the same heading style.
+- Gave the Prompt Library button a circular hover state that follows Gemini's theme, and added a subtle background and border to the edit button.
+- Kept the picker within the viewport when search results or window dimensions change.
 
 ### v2.0.4
 
-- Added persistent Project pinning and compact Project menus with action icons.
-- Made chat action menus and Project destinations fit their labels, with viewport bounds and scrolling for large lists.
-- Fixed an idle response-folding scan loop caused by repeated DOM writes.
+- Saved pinned projects across sessions and added icons to the compact project menu.
+- Sized chat menus and project destination lists to fit their labels. Long lists scroll within the viewport.
+- Fixed a loop where folding responses repeatedly updated the page while idle.
 
 ### v2.0.3
 
 - Renamed the extension to `Gemini Folders — Projects & Prompt Library`.
-- Added the Conversation Index icon to the Chrome toolbar and extension management page, matching the store listing.
+- Used the same Conversation Index icon in the Chrome toolbar, on the extensions page, and in the store listing.
 
 ### v2.0.2
 
-- Fixed sidebar jitter caused by Projects being mounted beside Gemini's native navigation.
-- Updated chat-history detection for Gemini's current Chat and Spark sidebar layout.
+- Fixed sidebar jitter when the Projects panel was inserted outside Gemini's main navigation.
+- Updated chat history detection for Gemini's Chat and Spark sidebars.
 - Kept Projects visible when Recents is collapsed or the account has no chat history.
-- Restored Projects reliably after switching from Spark back to Chat.
-- Fixed duplicated response-fold controls and Project/chat menus that closed immediately.
+- Fixed Projects disappearing when switching from Spark back to Chat.
+- Fixed duplicate response-fold buttons and project and chat menus that closed as soon as they opened.
 
 ### v2.0.1
 
-- Narrowed website access to Gemini only for Chrome Web Store compliance.
-- Removed unused ChatGPT and legacy ChatGPT host access from the extension manifest.
+- Limited website access to Gemini to meet Chrome Web Store requirements.
+- Removed permissions for ChatGPT and its legacy domain from the extension manifest.
 
 ### v2.0.0
 
-- Restores Project support for Gemini's updated sidebar.
-- Improves the New Project window with icon and color selection.
-- Adds clearer handling for chats deleted from Gemini history on another device.
-- Marks missing Project chats instead of breaking the Project list.
-- Improves Project and chat menus for moving, removing, editing, and deleting items.
-- Adds backup and restore controls for local data.
-- Polishes the Prompt Library layout and controls.
+- Restored Projects after the Gemini sidebar update.
+- Made it easier to choose icons and colors in the **New Project** dialog.
+- Improved how projects handle chats deleted from Gemini history on another device.
+- Marked missing chats so the rest of the project list stays intact.
+- Improved menus for moving, removing, editing, and deleting projects or chats.
+- Added controls for backing up and restoring local data.
+- Refined the Prompt Library layout and controls.
 
-## Notes
+## About
 
-Gemini Projects is an unofficial extension and is not affiliated with Google or Gemini.
+Gemini Projects is an independent, unofficial extension.
 
 ## Credits
 
-Duotone project icons are from Kubai Icons by Kubai (@kubai087), under the MIT License. [Website](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+Kubai (@kubai087) provides the Duotone project icons through Kubai Icons under the MIT License. [Website](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+
+## Local Testing
+
+Build the extension, then load the folder containing the generated `manifest.json`. In this development workspace, the build is copied to the sibling `chrome/` folder. Disable the Web Store installation before enabling the unpacked build so only one copy runs on Gemini. The two installations have separate IDs and local storage. Disabling the store installation preserves its data. After testing, run `npm run package:store` to create a separate ZIP for upload.
+
+The Prompt Library borrows its colors, type scale, and form layout from the [MCP Apps for Claude UI Kit](https://www.figma.com/community/file/1597641111449594397/mcp-apps-for-claude). It uses 14px body text, 40px inputs, 36px buttons, and 16px textarea padding. Forms use the Primary background, with different border strengths for panels, inputs, and secondary buttons. The extension uses system fallbacks when Anthropic Sans Text or JetBrains Mono is unavailable. Headings in the Prompt Library and project and prompt editors use a 24px serif at weight 600, with fonts such as Iowan Old Style, Palatino, and Georgia. The shared heading style and the corner radii of 28px for panels, 16px for rows, and 12px for controls are specific to this project.
