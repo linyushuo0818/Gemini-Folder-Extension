@@ -2,10 +2,16 @@ import { PROJECT_ICON_STYLES } from '../../shared/types';
 
 export const PROJECT_ICON_STYLE_CSS = `
   :host {
-    --gp-icon-switcher-active-shadow: 0 1px 2px rgb(20 20 19 / .08), 0 0 0 .5px var(--gp-border);
+    --gp-icon-switcher-track: #eae7df;
+    --gp-icon-switcher-track-shadow: inset 0 1px 2px rgb(20 20 19 / .05);
+    --gp-icon-switcher-active-bg: #ffffff;
+    --gp-icon-switcher-active-shadow: 0 1px 3px rgb(20 20 19 / .12), 0 .5px 1px rgb(20 20 19 / .06);
   }
   :host(.dark), :host([data-gp-theme="dark"]) {
-    --gp-icon-switcher-active-shadow: 0 1px 2px rgb(0 0 0 / .24), 0 0 0 .5px var(--gp-border);
+    --gp-icon-switcher-track: #1d1d1b;
+    --gp-icon-switcher-track-shadow: inset 0 1px 2px rgb(0 0 0 / .24);
+    --gp-icon-switcher-active-bg: #40403c;
+    --gp-icon-switcher-active-shadow: inset 0 1px 0 rgb(255 255 255 / .12), 0 1px 4px rgb(0 0 0 / .36);
   }
   .gp-icon-toolbar {
     display: flex;
@@ -21,10 +27,11 @@ export const PROJECT_ICON_STYLE_CSS = `
     grid-template-columns: repeat(${PROJECT_ICON_STYLES.length}, minmax(0, 1fr));
     align-items: center;
     gap: 2px;
-    padding: 2px;
+    padding: 3px;
     border-radius: var(--gp-radius-pill);
-    background: var(--gp-surface-sunken);
-    border: 1px solid var(--gp-border);
+    background: var(--gp-icon-switcher-track);
+    box-shadow: var(--gp-icon-switcher-track-shadow);
+    border: .5px solid var(--gp-border);
     max-width: 100%;
     flex-shrink: 0;
   }
@@ -77,7 +84,7 @@ export const PROJECT_ICON_STYLE_CSS = `
     color: var(--gp-fg-secondary);
   }
   .gp-icon-style-option input:checked + span {
-    background: var(--gp-surface-elevated);
+    background: var(--gp-icon-switcher-active-bg);
     color: var(--gp-fg);
     box-shadow: var(--gp-icon-switcher-active-shadow);
   }
