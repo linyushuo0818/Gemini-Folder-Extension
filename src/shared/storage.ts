@@ -1,4 +1,4 @@
-import { ChatRef, Project, ProjectIcon, StoredState } from './types';
+import { ChatRef, DEFAULT_PROJECT_ICON_STYLE, Project, ProjectIcon, ProjectIconStyle, PROJECT_ICON_STYLES, StoredState } from './types';
 import { storageLocalGet, storageLocalSet } from './webext';
 
 export const STORAGE_KEY = 'gemini_projects_v1';
@@ -14,6 +14,10 @@ export function isSafeId(value: unknown): value is string {
 
 export function isProjectColor(value: unknown): value is string {
   return typeof value === 'string' && /^#(?:[a-f0-9]{3,4}|[a-f0-9]{6}|[a-f0-9]{8})$/i.test(value);
+}
+
+export function isProjectIconStyle(value: unknown): value is ProjectIconStyle {
+  return PROJECT_ICON_STYLES.some((style) => style === value);
 }
 
 export function normalizeChatUrl(value: unknown, conversationId: string): string | undefined {
@@ -36,7 +40,7 @@ export function createEmptyState(): StoredState {
     schemaVersion: CURRENT_SCHEMA_VERSION,
     projects: [],
     chatIndex: {},
-    uiPrefs: { projectsCollapsed: false, projectIconStyle: 'outline' }
+    uiPrefs: { projectsCollapsed: false, projectIconStyle: DEFAULT_PROJECT_ICON_STYLE }
   };
 }
 
@@ -126,12 +130,13 @@ export function normalizeProjectsState(raw: unknown, strict = false): StoredStat
   }
 
   const projectIconStyle = raw.uiPrefs?.projectIconStyle;
-  if (strict && projectIconStyle !== undefined && projectIconStyle !== 'outline' && projectIconStyle !== 'solid') {
+  const validIconStyle = isProjectIconStyle(projectIconStyle);
+  if (strict && projectIconStyle !== undefined && !validIconStyle) {
     return null;
   }
   const uiPrefs: StoredState['uiPrefs'] = {
     projectsCollapsed: raw.uiPrefs?.projectsCollapsed === true,
-    projectIconStyle: projectIconStyle === 'solid' ? 'solid' : 'outline'
+    projectIconStyle: validIconStyle ? projectIconStyle : DEFAULT_PROJECT_ICON_STYLE
   };
 
   return {

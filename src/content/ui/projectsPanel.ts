@@ -1,6 +1,7 @@
-import { ChatRef, Project, ProjectIcon, ProjectIconStyle, RuntimeState } from '../../shared/types';
+import { ChatRef, DEFAULT_PROJECT_ICON_STYLE, Project, ProjectIcon, ProjectIconStyle, PROJECT_ICON_STYLES, RuntimeState } from '../../shared/types';
 import { exportAllData, triggerImport } from '../../shared/backup';
-import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg, PROJECT_ICON_RENDER_CSS } from './icons';
+import { isProjectIconStyle } from '../../shared/storage';
+import { ICON_OPTIONS, COLOR_OPTIONS, getIconLabel, renderIconSvg, resolveProjectIconColor, PROJECT_ICON_RENDER_CSS } from './icons';
 import { showSurface, hideSurface, setSurfaceOrigin, installMotionStyles, shouldAnimateMotion, MOTION_EASE } from './motion';
 import { PROJECT_ICON_STYLE_CSS } from './projectIconStyle';
 import { PANEL_TITLE_TYPOGRAPHY } from './typography';
@@ -67,19 +68,17 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
   const iconStyleInputs = modal.element.querySelectorAll<HTMLInputElement>('[name="gp-project-icon-style"]');
   function syncProjectIconStyle(style: ProjectIconStyle) {
-    const solid = style === 'solid';
-    options.shadow.host.toggleAttribute('data-gp-solid-project-icons', solid);
-    options.overlayShadow.host.toggleAttribute('data-gp-solid-project-icons', solid);
+    options.shadow.host.setAttribute('data-gp-project-icon-style', style);
+    options.overlayShadow.host.setAttribute('data-gp-project-icon-style', style);
     iconStyleInputs.forEach((input) => { input.checked = input.value === style; });
   }
 
   modal.element.addEventListener('change', (event) => {
     const input = event.target;
-    if (!(input instanceof HTMLInputElement) || input.name !== 'gp-project-icon-style') return;
-    const style = input.value === 'solid' ? 'solid' : 'outline';
-    void options.onSetProjectIconStyle(style).catch((error) => {
+    if (!(input instanceof HTMLInputElement) || input.name !== 'gp-project-icon-style' || !isProjectIconStyle(input.value)) return;
+    void options.onSetProjectIconStyle(input.value).catch((error) => {
       console.warn('[Gemini Projects] Could not change project icon style', error);
-      syncProjectIconStyle(currentState?.uiPrefs.projectIconStyle ?? 'outline');
+      syncProjectIconStyle(currentState?.uiPrefs.projectIconStyle ?? DEFAULT_PROJECT_ICON_STYLE);
       showToast('Could not change icon style. Please try again.');
     });
   }, { signal: lifecycleController.signal });
@@ -339,9 +338,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
   function updateIconButton() {
     if (iconButton) {
-      // Use currentColor (undefined) for Black option to adapt to theme
-      const color = modalSelectedColor === '#1f1f1f' ? undefined : modalSelectedColor;
-      iconButton.innerHTML = renderIconSvg(modalSelectedIcon, color);
+      iconButton.innerHTML = renderIconSvg(modalSelectedIcon, modalSelectedColor);
     }
   }
 
@@ -365,6 +362,8 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   }
 
   function syncModalColorSelection() {
+    const color = resolveProjectIconColor(modalSelectedColor);
+    modal.element.style.setProperty('--gp-grid-icon-color', color ?? '');
     modal.element.querySelectorAll<HTMLElement>('[data-gp-color]').forEach((option) => {
       const isSelected = option.dataset.gpColor === modalSelectedColor;
       option.classList.toggle('selected', isSelected);
@@ -1658,14 +1657,12 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
         <div class="gp-icon-heading">
           <span class="gp-choice-label" id="gp-icon-label">Icon</span>
           <div class="gp-icon-style-switcher" role="radiogroup" aria-label="Icon style for all projects">
-            <label class="gp-icon-style-option">
-              <input type="radio" name="gp-project-icon-style" value="outline" checked>
-              <span>Outline</span>
-            </label>
-            <label class="gp-icon-style-option">
-              <input type="radio" name="gp-project-icon-style" value="solid">
-              <span>Solid</span>
-            </label>
+            ${PROJECT_ICON_STYLES.map((style) => `
+              <label class="gp-icon-style-option">
+                <input type="radio" name="gp-project-icon-style" value="${style}" ${style === DEFAULT_PROJECT_ICON_STYLE ? 'checked' : ''}>
+                <span>${style[0].toUpperCase() + style.slice(1)}</span>
+              </label>
+            `).join('')}
           </div>
         </div>
         <div class="gp-template-grid">

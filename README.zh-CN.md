@@ -17,7 +17,7 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 - 从 Project 中移除聊天，但不删除原始 Gemini 聊天
 - 当某个 Project 聊天已在手机或其他设备上从 Gemini 历史记录中删除时，会显示缺失状态
 - 为 Project 选择图标和颜色
-- 在项目弹窗中为所有项目切换线条（Outline）或实心（Solid）图标
+- 在项目弹窗中为所有项目切换线条（Outline）、实心（Solid）或双色（Duotone）图标
 - 在紧凑的 Project 菜单中置顶、编辑或删除项目；置顶项目刷新后仍排在前面，取消置顶后恢复原来的排序位置
 - 备份和恢复本地 Projects 与提示词数据
 - 保存、搜索、编辑和复用常用提示词
@@ -106,6 +106,10 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 ## 说明
 
 Gemini Projects 是非官方扩展，与 Google 或 Gemini 官方无关。
+
+## 致谢
+
+双色项目图标来自 Kubai（@kubai087）的 Kubai Icons，采用 MIT 许可。[官网](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [第三方许可](THIRD_PARTY_NOTICES.md)
 
 ## 本地测试流程
 

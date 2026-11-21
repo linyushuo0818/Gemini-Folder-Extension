@@ -1,4 +1,5 @@
-// 项目弹窗 Icon 标题行与 Outline / Solid 胶囊切换器样式；沿用暖灰表面体系与克制交互。
+import { PROJECT_ICON_STYLES } from '../../shared/types';
+
 export const PROJECT_ICON_STYLE_CSS = `
   :host {
     --gp-icon-switcher-active-shadow: 0 1px 2px rgb(20 20 19 / .08), 0 0 0 .5px var(--gp-border);
@@ -17,7 +18,7 @@ export const PROJECT_ICON_STYLE_CSS = `
   }
   .gp-icon-style-switcher {
     display: inline-grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(${PROJECT_ICON_STYLES.length}, minmax(0, 1fr));
     align-items: center;
     gap: 2px;
     padding: 2px;
@@ -26,6 +27,9 @@ export const PROJECT_ICON_STYLE_CSS = `
     border: 1px solid var(--gp-border);
     max-width: 100%;
     flex-shrink: 0;
+  }
+  .gp-template-grid [data-gp-icon-duotone] {
+    color: var(--gp-grid-icon-color, inherit);
   }
   .gp-icon-style-option {
     position: relative;

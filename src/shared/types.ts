@@ -54,7 +54,9 @@ export interface ChatRef {
 
 export type NativeChatMetadata = Pick<ChatRef, 'conversationId' | 'title' | 'lastUrl'>;
 
-export type ProjectIconStyle = 'outline' | 'solid';
+export const PROJECT_ICON_STYLES = ['outline', 'solid', 'duotone'] as const;
+export type ProjectIconStyle = typeof PROJECT_ICON_STYLES[number];
+export const DEFAULT_PROJECT_ICON_STYLE: ProjectIconStyle = 'duotone';
 
 export interface UiPrefs {
   projectsCollapsed: boolean;
