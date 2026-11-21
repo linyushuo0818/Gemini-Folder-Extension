@@ -111,9 +111,3 @@ Gemini Projects 是非官方扩展，与 Google 或 Gemini 官方无关。
 ## 致谢
 
 双色项目图标来自 Kubai（@kubai087）的 Kubai Icons，采用 MIT 许可。[官网](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [第三方许可](THIRD_PARTY_NOTICES.md)
-
-## 本地测试流程
-
-先构建，再加载包含生成的 `manifest.json` 的目录。本开发工作区将构建结果同步到相邻的 `chrome/` 文件夹；测试前停用商店版，仅启用该本地版，避免双重注入。两者扩展 ID 不同，本地存储相互独立；停用商店版会保留其原有数据。完成本地验证后，再运行 `npm run package:store` 生成独立上传 ZIP。
-
-Prompt Library 的颜色、文字层级和表单结构参考 [MCP Apps for Claude UI Kit](https://www.figma.com/community/file/1597641111449594397/mcp-apps-for-claude)：正文 14px、输入框高 40px、按钮高 36px，文本域内边距 16px；表单使用 Primary 背景，并区分容器、控件和次级按钮的边框强度。Anthropic Sans Text 和 JetBrains Mono 不可用时使用系统回退字体，扩展不附带字体文件。Prompt Library、新建／编辑提示词和新建／编辑项目的同级主标题共用 24px、字重 600 的 Iowan Old Style、Palatino 或 Georgia 等本机衬线字体。统一衬线主标题、28px 面板、16px 列表行和 12px 操作控件圆角是本项目的视觉调整，并非 UI Kit 默认桌面组件规格。

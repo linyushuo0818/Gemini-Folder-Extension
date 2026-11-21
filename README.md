@@ -111,9 +111,3 @@ Gemini Projects is an independent, unofficial extension.
 ## Credits
 
 Kubai (@kubai087) provides the Duotone project icons through Kubai Icons under the MIT License. [Website](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [Third-party notices](THIRD_PARTY_NOTICES.md)
-
-## Local Testing
-
-Build the extension, then load the folder containing the generated `manifest.json`. In this development workspace, the build is copied to the sibling `chrome/` folder. Disable the Web Store installation before enabling the unpacked build so only one copy runs on Gemini. The two installations have separate IDs and local storage. Disabling the store installation preserves its data. After testing, run `npm run package:store` to create a separate ZIP for upload.
-
-The Prompt Library borrows its colors, type scale, and form layout from the [MCP Apps for Claude UI Kit](https://www.figma.com/community/file/1597641111449594397/mcp-apps-for-claude). It uses 14px body text, 40px inputs, 36px buttons, and 16px textarea padding. Forms use the Primary background, with different border strengths for panels, inputs, and secondary buttons. The extension uses system fallbacks when Anthropic Sans Text or JetBrains Mono is unavailable. Headings in the Prompt Library and project and prompt editors use a 24px serif at weight 600, with fonts such as Iowan Old Style, Palatino, and Georgia. The shared heading style and the corner radii of 28px for panels, 16px for rows, and 12px for controls are specific to this project.
