@@ -617,7 +617,7 @@ function ensureSubmenuStyles(shadow: ShadowRoot) {
       overflow-y: auto;
       box-sizing: border-box;
       padding: var(--gp-menu-inset, 6px);
-      border-radius: var(--gp-radius-menu, 16px);
+      border-radius: var(--gp-radius-menu, 25px);
       background: var(--gp-surface, #ffffff);
       color: var(--gp-fg, #141413);
       border: 1px solid var(--gp-border, rgb(31 30 29 / .15));

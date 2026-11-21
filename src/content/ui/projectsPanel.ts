@@ -1170,7 +1170,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-modal {
         --gp-icon-columns: 10;
         --gp-action-width: 124px;
-        --gp-action-height: 40px;
+        --gp-action-height: var(--gp-project-action-height);
         --gp-panel-inset: 24px;
         background: var(--gp-surface);
         box-sizing: border-box;
@@ -1179,7 +1179,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         max-height: calc(100dvh - 32px);
         box-shadow: var(--gp-shadow);
         border: .5px solid var(--gp-border);
-        border-radius: var(--gp-radius-modal);
+        border-radius: var(--gp-radius-project-modal);
         display: flex;
         flex-direction: column;
         overflow: hidden;
@@ -1192,7 +1192,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         overflow-y: auto;
         overscroll-behavior: contain;
         scrollbar-width: thin;
-        padding: var(--gp-panel-inset);
+        padding: 20px var(--gp-panel-inset) 22px;
         display: flex;
         flex-direction: column;
         gap: 20px;
@@ -1211,7 +1211,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         align-items: center;
         justify-content: space-between;
         gap: 16px;
-        padding: var(--gp-panel-inset) var(--gp-panel-inset) 0;
+        padding: 18px 18px 0 var(--gp-panel-inset);
         width: 100%;
         font-size: 19px;
         font-weight: 800;
@@ -1245,14 +1245,13 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       .gp-modal-close svg { width: 18px; height: 18px; }
       .gp-modal-close:hover { background: var(--gp-hover); }
       .gp-namebox {
-        --gp-radius-name-icon: max(0px, calc(var(--gp-radius-control) - var(--gp-name-inset)));
         display: flex;
         align-items: center;
-        gap: 12px;
+        gap: 10px;
         width: 100%;
         border: 1px solid var(--gp-control-border);
-        border-radius: var(--gp-radius-control);
-        padding: var(--gp-name-inset);
+        border-radius: var(--gp-radius-pill);
+        padding: var(--gp-name-inset) 16px var(--gp-name-inset) var(--gp-name-inset);
         position: relative;
         background: var(--gp-surface-sunken);
         transition: border-color var(--gp-transition), box-shadow var(--gp-transition);
@@ -1265,7 +1264,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 38px;
         height: 38px;
         border: none;
-        border-radius: var(--gp-radius-name-icon);
+        border-radius: var(--gp-radius-circle);
         background: var(--gp-surface-sunken);
         display: inline-flex;
         align-items: center;
@@ -1373,7 +1372,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         grid-template-columns: minmax(0, var(--gp-action-width)) minmax(0, var(--gp-action-width)) 1fr minmax(0, var(--gp-action-width));
         align-items: center;
         column-gap: 8px;
-        padding: var(--gp-modal-inset);
+        padding: var(--gp-project-footer-inset);
         border-top: 1px solid var(--gp-border);
         background: var(--gp-surface-footer);
       }
