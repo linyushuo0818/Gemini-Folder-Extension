@@ -116,4 +116,4 @@ Gemini Projects 是非官方扩展，与 Google 或 Gemini 官方无关。
 
 ## 致谢
 
-双色项目图标来自 Kubai（@kubai087）的 Kubai Icons，采用 MIT 许可。[官网](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [第三方许可](THIRD_PARTY_NOTICES.md)
+线条、实心与双色项目图标均来自 Kubai（@kubai087）的 Kubai Icons，采用 MIT 许可。[官网](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [第三方许可](THIRD_PARTY_NOTICES.md)

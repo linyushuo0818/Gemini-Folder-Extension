@@ -1,145 +1,73 @@
+/**
+ * Kubai Icons (Line / Fill (Solid)) by Kubai (@kubai087), MIT License.
+ * https://icons.kubai.design/ · https://github.com/kubai087/kubai-icons
+ * Copyright (c) 2026 Kubai087 and the Kubai Icons contributors
+ * Static SVG exported from icons-line/ at 29b163323bb8a6ec228776b122f7ca41800f8c1a
+ * using variant="fill" and strokeWidth=1.75 on a 24 × 24 viewBox.
+ * See THIRD_PARTY_NOTICES.md for the complete license.
+ */
+
 import type { ProjectIcon } from '../../shared/types';
 
-/**
- * 原创实心项目图标集（24×24 viewBox）。
- * 外层 <g data-gp-icon-solid> 负责注入 fill（currentColor 或项目色）并关闭 stroke，
- * 因此所有内部镂空均采用 fill-rule="evenodd" 或分块正负形实现，确保深浅主题与任意项目色下清晰一致。
- */
 export const SOLID_PROJECT_ICONS: Record<ProjectIcon, string> = {
-  // Row 1
-  default:
-    '<path d="M4 4h4.6a2 2 0 0 1 1.6.8l.9 1.2H20a2 2 0 0 1 2 2v.2H2V6a2 2 0 0 1 2-2Z"/>' +
-    '<path d="M3 9.6h18a1 1 0 0 1 1 1V18a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2v-7.4a1 1 0 0 1 1-1Z"/>',
-
-  investing:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M4.5 5.5h15A2.5 2.5 0 0 1 22 8v8a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 16V8a2.5 2.5 0 0 1 2.5-2.5ZM12 9.3a2.7 2.7 0 1 0 0 5.4 2.7 2.7 0 0 0 0-5.4Zm-6 1.55a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Zm12 0a1.15 1.15 0 1 0 0 2.3 1.15 1.15 0 0 0 0-2.3Z"/>',
-
-  phone:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M8.1 2h7.8a2.6 2.6 0 0 1 2.6 2.6v14.8a2.6 2.6 0 0 1-2.6 2.6H8.1a2.6 2.6 0 0 1-2.6-2.6V4.6A2.6 2.6 0 0 1 8.1 2Zm2.6 2.5a.7.7 0 0 0 0 1.4h2.6a.7.7 0 0 0 0-1.4h-2.6Zm1.3 12.35a1.35 1.35 0 1 0 0 2.7 1.35 1.35 0 0 0 0-2.7Z"/>',
-
-  homework:
-    '<path d="M11.35 3.35a1.4 1.4 0 0 1 1.3 0l9 4.5a.85.85 0 0 1 0 1.52l-9 4.5a1.4 1.4 0 0 1-1.3 0l-9-4.5a.85.85 0 0 1 0-1.52l9-4.5Z"/>' +
-    '<path d="M5.6 12.4 12 15.6l6.4-3.2v4.3c0 .68-.36 1.3-.95 1.64A11 11 0 0 1 12 19.8c-1.95 0-3.85-.5-5.45-1.46a1.9 1.9 0 0 1-.95-1.64v-4.3Z"/>' +
-    '<path d="M20.4 10.6a.95.95 0 0 1 .95.95v3.55a1.4 1.4 0 1 1-1.9 0v-3.55a.95.95 0 0 1 .95-.95Z"/>',
-
-  writing:
-    '<path d="M5.4 5h9.2L8.4 11.2a2.4 2.4 0 0 0-.62 1.07l-.84 3.05a1.65 1.65 0 0 0 2.04 2.04l3.05-.84a2.4 2.4 0 0 0 1.07-.62L19 10v8.6a2.4 2.4 0 0 1-2.4 2.4H5.4A2.4 2.4 0 0 1 3 18.6V7.4A2.4 2.4 0 0 1 5.4 5Z"/>' +
-    '<path d="M17.85 4.25a1.63 1.63 0 0 1 2.3 2.3l-8 8-2.7.77q-.6.18-.42-.42l.82-2.65 8-8Z"/>',
-
-  // Row 2
-  pen:
-    '<path d="M16.95 3.65a2.35 2.35 0 0 1 3.32 3.32l-1.15 1.15-3.32-3.32 1.15-1.15Z"/>' +
-    '<path d="M14.7 5.9 18.02 9.22l-8.4 8.4-4.47 2.28a.85.85 0 0 1-1.13-1.13L6.3 14.3 14.7 5.9Z"/>',
-
-  coding:
-    '<path d="M8.85 7.25a1.25 1.25 0 0 1 0 1.77L5.88 12l2.97 2.98a1.25 1.25 0 0 1-1.77 1.77l-3.85-3.87a1.25 1.25 0 0 1 0-1.76l3.85-3.87a1.25 1.25 0 0 1 1.77 0Z"/>' +
-    '<path d="M15.15 7.25a1.25 1.25 0 0 0 0 1.77L18.12 12l-2.97 2.98a1.25 1.25 0 1 0 1.77 1.77l3.85-3.87a1.25 1.25 0 0 0 0-1.76l-3.85-3.87a1.25 1.25 0 0 0-1.77 0Z"/>' +
-    '<path d="M14.96 5.09l-3.6 14.4a1.2 1.2 0 0 1-2.32-.58l3.6-14.4a1.2 1.2 0 1 1 2.32.58Z"/>',
-
-  terminal:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M5 3.5h14a3 3 0 0 1 3 3v11a3 3 0 0 1-3 3H5a3 3 0 0 1-3-3v-11a3 3 0 0 1 3-3Zm.9 4.7a1 1 0 0 0 0 1.41L8.29 12 5.9 14.39a1 1 0 1 0 1.41 1.41l3.1-3.1a1 1 0 0 0 0-1.4l-3.1-3.1a1 1 0 0 0-1.41 0Zm6.9 6a1 1 0 1 0 0 2h4.4a1 1 0 1 0 0-2h-4.4Z"/>',
-
-  music:
-    '<path d="M19.25 3.05 8.65 4.93A1.4 1.4 0 0 0 7.5 6.31v8.38a3.3 3.3 0 1 0 2.2 3.11V8.45l8.8-1.32v5.56a3.3 3.3 0 1 0 2.2 3.11V4.43a1.4 1.4 0 0 0-1.45-1.38Z"/>',
-
-  popcorn:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M4.9 3h14.2a2.4 2.4 0 0 1 2.4 2.4v13.2a2.4 2.4 0 0 1-2.4 2.4H4.9a2.4 2.4 0 0 1-2.4-2.4V5.4A2.4 2.4 0 0 1 4.9 3Zm.2 2.2a.6.6 0 0 0-.6.6V7a.6.6 0 0 0 .6.6H6a.6.6 0 0 0 .6-.6V5.8a.6.6 0 0 0-.6-.6h-.9Zm0 5.6a.6.6 0 0 0-.6.6v1.2a.6.6 0 0 0 .6.6H6a.6.6 0 0 0 .6-.6v-1.2a.6.6 0 0 0-.6-.6h-.9Zm0 5.6a.6.6 0 0 0-.6.6v1.2a.6.6 0 0 0 .6.6H6a.6.6 0 0 0 .6-.6V17a.6.6 0 0 0-.6-.6h-.9ZM18 5.2a.6.6 0 0 0-.6.6V7a.6.6 0 0 0 .6.6h.9a.6.6 0 0 0 .6-.6V5.8a.6.6 0 0 0-.6-.6H18Zm0 5.6a.6.6 0 0 0-.6.6v1.2a.6.6 0 0 0 .6.6h.9a.6.6 0 0 0 .6-.6v-1.2a.6.6 0 0 0-.6-.6H18Zm0 5.6a.6.6 0 0 0-.6.6v1.2a.6.6 0 0 0 .6.6h.9a.6.6 0 0 0 .6-.6V17a.6.6 0 0 0-.6-.6H18Zm-7.2-7.65a.85.85 0 0 0-1.3.72v5.06a.85.85 0 0 0 1.3.72l4.2-2.53a.85.85 0 0 0 0-1.44l-4.2-2.53Z"/>',
-
-  // Row 3
-  travel:
-    '<path d="M3.1 5.5 8.2 3.2v15.2l-4.3 1.95A1 1 0 0 1 2.5 19.44V6.4a1 1 0 0 1 .6-.9Z"/>' +
-    '<path d="M9.6 3.2 14.4 5.4v15.4l-4.8-2.2V3.2Z"/>' +
-    '<path d="M15.8 5.4 20.1 3.45a1 1 0 0 1 1.4.91V17.4a1 1 0 0 1-.6.92L15.8 20.6V5.4Z"/>',
-
-  palette:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M12 2.2C6.59 2.2 2.2 6.59 2.2 12s4.39 9.8 9.8 9.8c1.1 0 1.9-.86 1.9-1.92 0-.5-.18-.94-.46-1.26-.28-.32-.44-.72-.44-1.17a1.8 1.8 0 0 1 1.8-1.8h1.8c2.87 0 5.2-2.33 5.2-5.2 0-4.66-4.39-8.25-9.8-8.25ZM7.2 10.75a1.45 1.45 0 1 0 0 2.9 1.45 1.45 0 0 0 0-2.9Zm1.6-4.6a1.45 1.45 0 1 0 0 2.9 1.45 1.45 0 0 0 0-2.9Zm4.8-.9a1.45 1.45 0 1 0 0 2.9 1.45 1.45 0 0 0 0-2.9Zm3.7 3.4a1.45 1.45 0 1 0 0 2.9 1.45 1.45 0 0 0 0-2.9Z"/>',
-
-  health:
-    '<path d="M6.5 3.5h11a4 4 0 0 1 4 4v3.35h-4.78l-1.49 2.18a.8.8 0 0 1-1.32 0L9.96 7.22a.72.72 0 0 0-1.18 0l-2.46 3.63H2.5V7.5a4 4 0 0 1 4-4Z"/>' +
-    '<path d="M2.5 13.15h4.78l1.49-2.18a.8.8 0 0 1 1.32 0l3.95 5.81a.72.72 0 0 0 1.18 0l2.46-3.63H21.5v3.35a4 4 0 0 1-4 4h-11a4 4 0 0 1-4-4v-3.35Z"/>',
-
-  flower:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M8.41 7.06a3.75 3.75 0 1 1 7.18 0 3.75 3.75 0 1 1 2.21 6.83 3.75 3.75 0 1 1-5.8 4.21 3.75 3.75 0 1 1-5.8-4.21 3.75 3.75 0 1 1 2.21-6.83ZM12 9.35a2.65 2.65 0 1 0 0 5.3 2.65 2.65 0 0 0 0-5.3Z"/>',
-
-  lotus:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M20.3 3.2c-6.15.05-11.6 1.75-14.2 6.05-1.85 3.05-1.7 6.35-.35 8.85l-2.55 2.3a1 1 0 1 0 1.34 1.48l2.48-2.25c3.1 1.85 7.55 1.8 10.8-1.45 3.6-3.6 3.95-9.25 3.25-14.25a.78.78 0 0 0-.77-.73Zm-4.95 5.8a.9.9 0 0 1 0 1.27l-5.7 5.6a.9.9 0 1 1-1.26-1.28l5.7-5.6a.9.9 0 0 1 1.26.01Z"/>',
-
-  // Row 4
-  briefcase:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M9.5 3h5A2.5 2.5 0 0 1 17 5.5V7h2.6A2.4 2.4 0 0 1 22 9.4v3.35c-2.95 1.02-6.3 1.6-10 1.6s-7.05-.58-10-1.6V9.4A2.4 2.4 0 0 1 4.4 7H7V5.5A2.5 2.5 0 0 1 9.5 3Zm-.7 4h6.4V5.5a.7.7 0 0 0-.7-.7h-5a.7.7 0 0 0-.7.7V7Zm1.8 4.2a.85.85 0 0 0 0 1.7h2.8a.85.85 0 0 0 0-1.7h-2.8Z"/>' +
-    '<path d="M2 14.3c2.95 1 6.3 1.55 10 1.55s7.05-.55 10-1.55v4.3A2.4 2.4 0 0 1 19.6 21H4.4A2.4 2.4 0 0 1 2 18.6v-4.3Z"/>',
-
-  chart:
-    '<rect x="3" y="12" width="4.8" height="8.5" rx="1.5"/>' +
-    '<rect x="9.6" y="3.5" width="4.8" height="17" rx="1.5"/>' +
-    '<rect x="16.2" y="8" width="4.8" height="12.5" rx="1.5"/>',
-
-  apple:
-    '<path d="M12 7.5c-1.2-.8-2.75-1.3-4.2-1.15C4.85 6.65 3.2 9.4 3.6 13c.45 4.05 2.85 8.5 5.4 8.5 1.1 0 1.85-.65 3-.65s1.9.65 3 .65c2.55 0 4.95-4.45 5.4-8.5.4-3.6-1.25-6.35-4.2-6.65-1.45-.15-3 .35-4.2 1.15Z"/>' +
-    '<path d="M12.2 6.15c-.25-2.3 1.55-4.15 4.5-4.15.25 2.45-1.45 4.35-4.5 4.15Z"/>',
-
-  dumbbell:
-    '<g transform="rotate(45 12 12)">' +
-    '<rect x="1.8" y="8.5" width="2.5" height="7" rx="1.2"/>' +
-    '<rect x="5.4" y="6.5" width="3" height="11" rx="1.3"/>' +
-    '<rect x="8.1" y="10.7" width="7.8" height="2.6"/>' +
-    '<rect x="15.6" y="6.5" width="3" height="11" rx="1.3"/>' +
-    '<rect x="19.7" y="8.5" width="2.5" height="7" rx="1.2"/>' +
-    '</g>',
-
-  notebook:
-    '<rect x="2.5" y="5.3" width="3.5" height="1.8" rx="0.9"/>' +
-    '<rect x="2.5" y="9.2" width="3.5" height="1.8" rx="0.9"/>' +
-    '<rect x="2.5" y="13.1" width="3.5" height="1.8" rx="0.9"/>' +
-    '<rect x="2.5" y="17" width="3.5" height="1.8" rx="0.9"/>' +
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M7.2 2.5h11.1a2.2 2.2 0 0 1 2.2 2.2v14.6a2.2 2.2 0 0 1-2.2 2.2H7.2A2.2 2.2 0 0 1 5 19.3V4.7a2.2 2.2 0 0 1 2.2-2.2Zm2.6 4.7a.8.8 0 0 0 0 1.6h6.4a.8.8 0 0 0 0-1.6H9.8Zm0 4a.8.8 0 0 0 0 1.6h6.4a.8.8 0 0 0 0-1.6H9.8Zm0 4a.8.8 0 0 0 0 1.6H14a.8.8 0 0 0 0-1.6H9.8Z"/>',
-
-  // Row 5
-  scale:
-    '<path d="M12 2.8a1.45 1.45 0 0 1 1.4 1.8l-.05.8H19a.9.9 0 1 1 0 1.8h-6V19h3.5a1 1 0 1 1 0 2h-9a1 1 0 1 1 0-2H11V7.2H5a.9.9 0 1 1 0-1.8h5.65l-.05-.8A1.45 1.45 0 0 1 12 2.8Z"/>' +
-    '<path d="M5.5 7.2 2.2 13.6h1.7l1.6-3.25 1.6 3.25h1.7L5.5 7.2Z"/>' +
-    '<path d="M2.2 13.5h6.6a3.3 3.3 0 0 1-6.6 0Z"/>' +
-    '<path d="M18.5 7.2 15.2 13.6h1.7l1.6-3.25 1.6 3.25h1.7L18.5 7.2Z"/>' +
-    '<path d="M15.2 13.5h6.6a3.3 3.3 0 0 1-6.6 0Z"/>',
-
-  globe:
-    '<path d="M12 2.2c2.1 2.2 3.35 5.45 3.4 9.05H8.6C8.65 7.65 9.9 4.4 12 2.2Z"/>' +
-    '<path d="M8.6 12.75h6.8c-.05 3.6-1.3 6.85-3.4 9.05-2.1-2.2-3.35-5.45-3.4-9.05Z"/>' +
-    '<path d="M9.85 2.44A9.8 9.8 0 0 0 2.23 11.25h4.92c.06-3.35 1-6.5 2.7-8.81Z"/>' +
-    '<path d="M14.15 2.44c1.7 2.31 2.64 5.46 2.7 8.81h4.92a9.8 9.8 0 0 0-7.62-8.81Z"/>' +
-    '<path d="M7.15 12.75H2.23a9.8 9.8 0 0 0 7.62 8.81c-1.7-2.31-2.64-5.46-2.7-8.81Z"/>' +
-    '<path d="M16.85 12.75c-.06 3.35-1 6.5-2.7 8.81a9.8 9.8 0 0 0 7.62-8.81h-4.92Z"/>',
-
-  airplane:
-    '<path transform="rotate(45 12 12)" d="M12 1.8c.9 0 1.45 1.15 1.45 2.8v4.2l7.95 4.45a.85.85 0 0 1 .43.74v1.15a.6.6 0 0 1-.79.57L13.45 13.5v4.45l2.85 2.05a.7.7 0 0 1 .3.57v.93a.5.5 0 0 1-.66.47L12 20.7l-3.94 1.27a.5.5 0 0 1-.66-.47v-.93a.7.7 0 0 1 .3-.57l2.85-2.05V13.5l-7.59 2.21a.6.6 0 0 1-.79-.57v-1.15a.85.85 0 0 1 .43-.74l7.95-4.45V4.6c0-1.65.55-2.8 1.45-2.8Z"/>',
-
-  world:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M12 2.2a9.8 9.8 0 1 0 0 19.6 9.8 9.8 0 0 0 0-19.6Zm4.7 5.1L9.7 9.7l-2.4 7 7-2.4 2.4-7ZM12 10.75a1.25 1.25 0 1 0 0 2.5 1.25 1.25 0 0 0 0-2.5Z"/>',
-
-  paw:
-    '<ellipse cx="4.5" cy="11" rx="2.05" ry="2.75" transform="rotate(-22 4.5 11)"/>' +
-    '<ellipse cx="9" cy="6.6" rx="2.1" ry="2.95" transform="rotate(-8 9 6.6)"/>' +
-    '<ellipse cx="15" cy="6.6" rx="2.1" ry="2.95" transform="rotate(8 15 6.6)"/>' +
-    '<ellipse cx="19.5" cy="11" rx="2.05" ry="2.75" transform="rotate(22 19.5 11)"/>' +
-    '<path d="M12 11.8c2.65 0 5.45 2.4 5.75 5.35.22 2.15-1.35 3.65-3.25 3.65-1.1 0-1.7-.45-2.5-.45s-1.4.45-2.5.45c-1.9 0-3.47-1.5-3.25-3.65.3-2.95 3.1-5.35 5.75-5.35Z"/>',
-
-  // Row 6
-  people:
-    '<circle cx="9" cy="7.5" r="3.6"/>' +
-    '<path d="M2.5 19.2c0-3.35 2.9-5.8 6.5-5.8s6.5 2.45 6.5 5.8a1.3 1.3 0 0 1-1.3 1.3H3.8a1.3 1.3 0 0 1-1.3-1.3Z"/>' +
-    '<circle cx="16.9" cy="8.5" r="2.75"/>' +
-    '<path d="M16.4 13.55c2.9.25 5.1 2.35 5.1 5.45v.3a1.2 1.2 0 0 1-1.2 1.2h-3.2a2.7 2.7 0 0 0 .15-.9c0-2.4-.78-4.5-2.08-5.95.4-.08.81-.11 1.23-.1Z"/>',
-
-  beaker:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M9 2.2h6a1 1 0 1 1 0 2h-.7v4.35a2 2 0 0 0 .27 1l5.13 8.85A2.1 2.1 0 0 1 17.88 21.5H6.12A2.1 2.1 0 0 1 4.3 18.4l5.13-8.85a2 2 0 0 0 .27-1V4.2H9a1 1 0 1 1 0-2Zm.75 10.05a.78.78 0 0 0 0 1.56h4.5a.78.78 0 0 0 0-1.56h-4.5Zm.25 3.85a1.35 1.35 0 1 0 0 2.7 1.35 1.35 0 0 0 0-2.7Zm4.3.75a1.05 1.05 0 1 0 0 2.1 1.05 1.05 0 0 0 0-2.1Z"/>',
-
-  clover:
-    '<path d="M10.5 5.4c.42 0 .79.28.91.69l1.23 4.44a2.1 2.1 0 0 0 1.43 1.43l4.44 1.23a.95.95 0 0 1 0 1.82l-4.44 1.23a2.1 2.1 0 0 0-1.43 1.43l-1.23 4.44a.95.95 0 0 1-1.82 0l-1.23-4.44a2.1 2.1 0 0 0-1.43-1.43l-4.44-1.23a.95.95 0 0 1 0-1.82l4.44-1.23a2.1 2.1 0 0 0 1.43-1.43l1.23-4.44c.12-.41.49-.69.91-.69Z"/>' +
-    '<path d="M18.7 2.2c.28 0 .52.19.6.46l.52 1.72c.13.44.48.79.92.92l1.72.52a.62.62 0 0 1 0 1.2l-1.72.52a1.4 1.4 0 0 0-.92.92l-.52 1.72a.62.62 0 0 1-1.2 0l-.52-1.72a1.4 1.4 0 0 0-.92-.92l-1.72-.52a.62.62 0 0 1 0-1.2l1.72-.52a1.4 1.4 0 0 0 .92-.92l.52-1.72c.08-.27.32-.46.6-.46Z"/>',
-
-  heart:
-    '<path d="M12 20.7a1.5 1.5 0 0 1-.94-.33C7.1 17.2 2.5 13.5 2.5 8.85A5.35 5.35 0 0 1 12 5.45a5.35 5.35 0 0 1 9.5 3.4c0 4.65-4.6 8.35-8.56 11.52a1.5 1.5 0 0 1-.94.33Z"/>',
-
-  research:
-    '<path fill-rule="evenodd" clip-rule="evenodd" d="M17.23 14.83 20.9 18.5a1.7 1.7 0 0 1-2.4 2.4l-3.67-3.67A8 8 0 1 1 17.23 14.83ZM10.5 6.3a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Z"/>',
+  // Kubai: folder
+  default: "<path d=\"M3 7.7C3 6.585 3 5.879 3.439 5.439C3.879 5 4.585 5 5.7 5L7.923 5C8.45 5 8.825 5 9.123 5.151C9.422 5.302 9.643 5.605 9.955 6.03L10.915 7.338C11.115 7.611 11.257 7.806 11.449 7.903C11.641 8 11.882 8 12.221 8L16.5 8C18.357 8 19.536 8 20.268 8.732C21 9.464 21 10.643 21 12.5L21 13.6C21 15.829 21 17.243 20.121 18.121C19.243 19 17.829 19 15.6 19L8.4 19C6.171 19 4.757 19 3.879 18.121C3 17.243 3 15.829 3 13.6Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: banknote
+  investing: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M10 12A2 2 0 1 1 14 12A2 2 0 1 1 10 12Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M4.5 12A1 1 0 1 1 6.5 12A1 1 0 1 1 4.5 12ZM17.5 12A1 1 0 1 1 19.5 12A1 1 0 1 1 17.5 12Z\" fill=\"#000\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M3 9.15C3 7.85 3 7.025 3.513 6.513C4.025 6 4.85 6 6.15 6L17.85 6C19.15 6 19.975 6 20.487 6.513C21 7.025 21 7.85 21 9.15L21 14.85C21 16.15 21 16.975 20.487 17.487C19.975 18 19.15 18 17.85 18L6.15 18C4.85 18 4.025 18 3.513 17.487C3 16.975 3 16.15 3 14.85Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: smartphone
+  phone: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M10.2 7L13.8 7\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M6 8.4C6 6.171 6 4.757 6.879 3.879C7.757 3 9.171 3 11.4 3L12.6 3C14.829 3 16.243 3 17.121 3.879C18 4.757 18 6.171 18 8.4L18 15.6C18 17.829 18 19.243 17.121 20.121C16.243 21 14.829 21 12.6 21L11.4 21C9.171 21 7.757 21 6.879 20.121C6 19.243 6 17.829 6 15.6Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: graduation-cap
+  homework: "<path d=\"M7 11.444V16.5A2.5 2.5 0 0 0 9.5 19H13.5A2.5 2.5 0 0 0 16 16.5V11.444\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M10.687 5.226C11.064 5.05 11.334 4.924 11.6 4.924C11.866 4.924 12.136 5.05 12.513 5.226L19.002 8.254C19.662 8.562 19.99 8.715 20 9.021C20.011 9.327 19.695 9.503 19.058 9.856L12.649 13.417C12.216 13.658 11.911 13.827 11.6 13.827C11.289 13.827 10.984 13.658 10.551 13.417L4.142 9.856C3.505 9.503 3.189 9.327 3.2 9.021C3.21 8.715 3.538 8.562 4.198 8.254Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M21 9L21 15\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // Kubai: notepad
+  writing: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M9 11L15 11\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M9 15L12.3 15\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M5 9.5C5 7.643 5 6.464 5.732 5.732C6.464 5 7.643 5 9.5 5L14.5 5C16.357 5 17.536 5 18.268 5.732C19 6.464 19 7.643 19 9.5L19 16.5C19 18.357 19 19.536 18.268 20.268C17.536 21 16.357 21 14.5 21L9.5 21C7.643 21 6.464 21 5.732 20.268C5 19.536 5 18.357 5 16.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g><path d=\"M8 3L8 5M12 3L12 5M16 3L16 5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // Kubai: pencil
+  pen: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M14.38 3.681L20.319 9.62\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M6.049 20.061C4.584 20.655 3.919 20.925 3.497 20.503C3.075 20.081 3.345 19.416 3.939 17.951L4.621 16.267L16.996 3.893C17.206 3.683 17.806 3.083 18.551 3.083C19.297 3.083 19.897 3.683 20.107 3.893L20.107 3.893C20.317 4.103 20.917 4.703 20.917 5.449C20.917 6.194 20.317 6.794 20.107 7.004L7.733 19.379Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: square-code
+  coding: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M10 8.5L6.6 12L10 15.5\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M14 8.5L17.4 12L14 15.5\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M4 9.85C4 7.435 4 5.904 4.952 4.952C5.904 4 7.435 4 9.85 4L14.15 4C16.565 4 18.096 4 19.048 4.952C20 5.904 20 7.435 20 9.85L20 14.15C20 16.565 20 18.096 19.048 19.048C18.096 20 16.565 20 14.15 20L9.85 20C7.435 20 5.904 20 4.952 19.048C4 18.096 4 16.565 4 14.15Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: terminal
+  terminal: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M6.927 9L9.927 12L6.927 15\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M12.573 15L16.573 15\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M3 10.4C3 8.171 3 6.757 3.879 5.879C4.757 5 6.171 5 8.4 5L15.6 5C17.829 5 19.243 5 20.121 5.879C21 6.757 21 8.171 21 10.4L21 13.6C21 15.829 21 17.243 20.121 18.121C19.243 19 17.829 19 15.6 19L8.4 19C6.171 19 4.757 19 3.879 18.121C3 17.243 3 15.829 3 13.6Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: music
+  music: "<path d=\"M8 17.5L8 6L19 4L19 15.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M3 17.5A2.5 2.5 0 1 1 8 17.5A2.5 2.5 0 1 1 3 17.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M14 15.5A2.5 2.5 0 1 1 19 15.5A2.5 2.5 0 1 1 14 15.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: film
+  popcorn: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M8 6L8 18M16 6L16 18\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M2 8L8 8M16 8L22 8M2 12L8 12M16 12L22 12M2 16L8 16M16 16L22 16\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M4 10.3C4 7.7 4 6.05 5.025 5.025C6.05 4 7.7 4 10.3 4L13.7 4C16.3 4 17.95 4 18.975 5.025C20 6.05 20 7.7 20 10.3L20 13.7C20 16.3 20 17.95 18.975 18.975C17.95 20 16.3 20 13.7 20L10.3 20C7.7 20 6.05 20 5.025 18.975C4 17.95 4 16.3 4 13.7Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: map
+  travel: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M9 3L9 19.15\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M15 4.85L15 21\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M3 9.27C3 8.333 3 7.696 3.33 7.238C3.661 6.78 4.265 6.578 5.154 6.282L8.772 5.076C8.866 5.045 8.935 5.022 9 5.022C9.065 5.022 9.134 5.045 9.228 5.076L14.772 6.924C14.866 6.955 14.935 6.978 15 6.978C15.065 6.978 15.134 6.955 15.228 6.924L16.854 6.382C18.565 5.812 19.546 5.485 20.273 6.008C21 6.532 21 7.566 21 9.37L21 14.73C21 15.667 21 16.304 20.67 16.762C20.339 17.22 19.735 17.422 18.846 17.718L15.228 18.924C15.134 18.955 15.065 18.978 15 18.978C14.935 18.978 14.866 18.955 14.772 18.924L9.228 17.076C9.134 17.045 9.065 17.022 9 17.022C8.935 17.022 8.866 17.045 8.772 17.076L7.146 17.618C5.435 18.188 4.454 18.515 3.727 17.992C3 17.468 3 16.434 3 14.63Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: paintbrush
+  palette: "<path d=\"M11.797 12.203L21.555 2.445\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M5.937 19.916C5.028 20.06 4.506 20.142 4.182 19.818C3.858 19.494 3.94 18.972 4.084 18.063L4.099 17.968C4.212 17.252 4.295 16.727 4.511 16.303C4.726 15.88 5.102 15.504 5.614 14.991L6.438 14.168C6.753 13.853 6.953 13.653 7.201 13.653C7.45 13.653 7.65 13.853 7.965 14.168L9.832 16.035C10.147 16.35 10.347 16.55 10.347 16.799C10.347 17.047 10.147 17.247 9.832 17.562L9.009 18.386C8.496 18.898 8.12 19.274 7.697 19.489C7.273 19.705 6.748 19.788 6.032 19.901Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M7.131 13.334L9.365 11.1C9.785 10.679 10.052 10.413 10.383 10.413C10.715 10.413 10.981 10.679 11.401 11.1L12.9 12.599C13.321 13.019 13.587 13.285 13.587 13.617C13.587 13.948 13.321 14.215 12.9 14.635L10.666 16.869Z\" fill=\"currentColor\"/>",
+  // Kubai: heart-pulse
+  health: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M7.245 13L7.75 13L9.25 10.25L12.25 16.25L14.75 10.75L16.25 13L16.755 13\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M9.25 10.25L8.676 13.391A0.585 0.585 0 0 1 9.712 13.41ZM12.25 16.25L11.27 12.053A1 1 0 0 0 13.074 12.02ZM14.75 10.75L14.583 13.535A0.447 0.447 0 0 1 15.362 13.471Z\" fill=\"#000\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M12 20.5L4.37 12.975A4.6 4.6 0 1 1 12 8.358A4.6 4.6 0 1 1 19.63 12.975Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: flower
+  flower: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M10.1 12A1.9 1.9 0 1 1 13.9 12A1.9 1.9 0 1 1 10.1 12Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M8.434 7.091A3.6 3.6 0 1 1 15.566 7.091A3.6 3.6 0 1 1 17.77 13.875A3.6 3.6 0 1 1 12 18.067A3.6 3.6 0 1 1 6.23 13.875A3.6 3.6 0 1 1 8.434 7.091Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: leaf
+  lotus: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M9.033 14.967L14.5 9.5\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M7 14.8C7 10.342 7 7.515 8.757 5.757C10.515 4 13.342 4 17.8 4L20 4L20 6.2C20 10.658 20 13.485 18.243 15.243C16.485 17 13.658 17 9.2 17L7 17Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g><path d=\"M3.7 20.3L6.7 17.3\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // Kubai: briefcase
+  briefcase: "<defs><mask id=\"__K__-m1\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M1 13L23 13\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><path d=\"M9 8V6.5A1.5 1.5 0 0 1 10.5 5H13.5A1.5 1.5 0 0 1 15 6.5V8\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><g mask=\"url(#__K__-m1)\"><path d=\"M3 12.5C3 10.643 3 9.464 3.732 8.732C4.464 8 5.643 8 7.5 8L16.5 8C18.357 8 19.536 8 20.268 8.732C21 9.464 21 10.643 21 12.5L21 14.5C21 16.357 21 17.536 20.268 18.268C19.536 19 18.357 19 16.5 19L7.5 19C5.643 19 4.464 19 3.732 18.268C3 17.536 3 16.357 3 14.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: chart-histogram
+  chart: "<path d=\"M4 12.45C4 12.264 4 12.146 4.073 12.073C4.146 12 4.264 12 4.45 12L6.55 12C6.736 12 6.854 12 6.927 12.073C7 12.146 7 12.264 7 12.45L7 20L4 20Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M11 4.45C11 4.264 11 4.146 11.073 4.073C11.146 4 11.264 4 11.45 4L12.55 4C12.736 4 12.854 4 12.927 4.073C13 4.146 13 4.264 13 4.45L13 20L11 20Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M17 9.45C17 9.264 17 9.146 17.073 9.073C17.146 9 17.264 9 17.45 9L19.55 9C19.736 9 19.854 9 19.927 9.073C20 9.146 20 9.264 20 9.45L20 20L17 20Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: cherry
+  apple: "<path d=\"M6.5 14Q8 7 13 3.5M17.5 12.5Q15.5 7 13 3.5\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M13.5 3.5A4.12 4.12 0 0 1 20 3A4.12 4.12 0 0 1 13.5 3.5Z\" fill=\"currentColor\"/><path d=\"M3 17.5A3.5 3.5 0 1 1 10 17.5A3.5 3.5 0 1 1 3 17.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M14 16A3.5 3.5 0 1 1 21 16A3.5 3.5 0 1 1 14 16Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: dumbbell
+  dumbbell: "<path d=\"M3 12L6 12M9 12L15 12M18 12L21 12\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M6 7.5C6 6.672 6.672 6 7.5 6L7.5 6C8.328 6 9 6.672 9 7.5L9 16.5C9 17.328 8.328 18 7.5 18L7.5 18C6.672 18 6 17.328 6 16.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M15 7.5C15 6.672 15.672 6 16.5 6L16.5 6C17.328 6 18 6.672 18 7.5L18 16.5C18 17.328 17.328 18 16.5 18L16.5 18C15.672 18 15 17.328 15 16.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: notebook
+  notebook: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M11 8L15 8\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M11 12L13.2 12\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M7 7.5C7 5.643 7 4.464 7.732 3.732C8.464 3 9.643 3 11.5 3L14.5 3C16.357 3 17.536 3 18.268 3.732C19 4.464 19 5.643 19 7.5L19 16.5C19 18.357 19 19.536 18.268 20.268C17.536 21 16.357 21 14.5 21L11.5 21C9.643 21 8.464 21 7.732 20.268C7 19.536 7 18.357 7 16.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g><path d=\"M5 7L7 7M5 12L7 12M5 17L7 17\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // Kubai: landmark
+  scale: "<path d=\"M9.568 9C7.517 9 6.707 9 6.504 8.379C6.302 7.758 6.957 7.28 8.613 6.071L10.302 4.839C11.003 4.327 11.478 3.981 12 3.981C12.522 3.981 12.997 4.327 13.698 4.839L15.387 6.071C17.043 7.28 17.698 7.758 17.496 8.379C17.293 9 16.483 9 14.432 9Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M6 9L6 20M10 9L10 20M14 9L14 20M18 9L18 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M4 20L20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // Kubai: globe
+  globe: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M12 5A4.057 7 0 0 0 12 19\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M12 5A4.057 7 0 0 1 12 19\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/><path d=\"M5.05 12L18.95 12\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M3 12A9 9 0 1 1 21 12A9 9 0 1 1 3 12Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: plane
+  airplane: "<path d=\"M18.654 3.212C19.976 2.76 21.24 4.024 20.788 5.346L20.788 5.346C20.696 5.616 20.543 5.861 20.341 6.063L16.935 9.469L18.311 18.619C18.327 18.728 18.367 18.991 18.292 19.217C18.218 19.444 18.029 19.632 17.951 19.71L17.951 19.71C17.724 19.937 17.29 20.371 16.77 20.272C16.25 20.173 16.007 19.61 15.879 19.315L13.223 13.181L10.402 16.002L10.85 19.738C10.859 19.812 10.883 20.017 10.823 20.191C10.763 20.365 10.617 20.511 10.564 20.564L10.564 20.564C10.433 20.694 10.131 20.997 9.759 20.964C9.387 20.931 9.142 20.58 9.036 20.429L7.716 18.538C7.694 18.505 7.677 18.481 7.66 18.461C7.643 18.441 7.622 18.42 7.594 18.392L5.608 16.406C5.58 16.378 5.559 16.357 5.539 16.34C5.519 16.323 5.495 16.306 5.462 16.284L3.571 14.964C3.42 14.858 3.069 14.613 3.036 14.241C3.003 13.869 3.306 13.567 3.436 13.436L3.436 13.436C3.489 13.383 3.635 13.237 3.809 13.177C3.983 13.117 4.188 13.141 4.262 13.15L7.998 13.598L10.819 10.777L4.685 8.121C4.39 7.993 3.827 7.75 3.728 7.23C3.629 6.71 4.063 6.276 4.29 6.049L4.29 6.049C4.368 5.971 4.556 5.782 4.783 5.708C5.009 5.633 5.272 5.673 5.381 5.689L14.531 7.065L17.937 3.659C18.139 3.457 18.384 3.304 18.654 3.212Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: compass
+  world: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M13.053 8.854C14.457 8.314 15.111 8.062 15.524 8.476C15.938 8.889 15.686 9.543 15.146 10.947L14.21 13.383C14.115 13.629 14.047 13.806 13.927 13.927C13.806 14.047 13.629 14.115 13.383 14.21L10.947 15.146C9.543 15.686 8.889 15.938 8.476 15.524C8.062 15.111 8.314 14.457 8.854 13.053L9.79 10.617C9.885 10.371 9.953 10.194 10.073 10.073C10.194 9.953 10.371 9.885 10.617 9.79Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M3 12A9 9 0 1 1 21 12A9 9 0 1 1 3 12Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g>",
+  // Kubai: paw
+  paw: "<path d=\"M8.136 15.321C9.067 14.424 10.387 13.153 12 13.153C13.613 13.153 14.933 14.424 15.864 15.321L16.421 15.857C17.047 16.46 17.4 17.291 17.4 18.159L17.4 18.159C17.4 19.728 16.128 21 14.559 21L9.441 21C7.872 21 6.6 19.728 6.6 18.159L6.6 18.159C6.6 17.291 6.953 16.46 7.579 15.857Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M2.02 9.4A2.08 2.08 0 1 1 6.18 9.4A2.08 2.08 0 1 1 2.02 9.4Z\" fill=\"currentColor\"/><path d=\"M6.72 4.3A2.08 2.08 0 1 1 10.88 4.3A2.08 2.08 0 1 1 6.72 4.3Z\" fill=\"currentColor\"/><path d=\"M13.12 4.3A2.08 2.08 0 1 1 17.28 4.3A2.08 2.08 0 1 1 13.12 4.3Z\" fill=\"currentColor\"/><path d=\"M17.82 9.4A2.08 2.08 0 1 1 21.98 9.4A2.08 2.08 0 1 1 17.82 9.4Z\" fill=\"currentColor\"/>",
+  // Kubai: users
+  people: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M5.25 8.25A3.25 3.25 0 1 1 11.75 8.25A3.25 3.25 0 1 1 5.25 8.25Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"5\" stroke-linejoin=\"round\"/><path d=\"M3 18.2C3 16.433 4.433 15 6.2 15L10.8 15C12.567 15 14 16.433 14 18.2L14 18.2C14 18.642 13.642 19 13.2 19L3.8 19C3.358 19 3 18.642 3 18.2Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"5\" stroke-linejoin=\"round\"/></mask><mask id=\"__K__-m1\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M5.25 8.25A3.25 3.25 0 1 1 11.75 8.25A3.25 3.25 0 1 1 5.25 8.25Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"5\" stroke-linejoin=\"round\"/><path d=\"M3 18.2C3 16.433 4.433 15 6.2 15L10.8 15C12.567 15 14 16.433 14 18.2L14 18.2C14 18.642 13.642 19 13.2 19L3.8 19C3.358 19 3 18.642 3 18.2Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"5\" stroke-linejoin=\"round\"/></mask><mask id=\"__K__-m2\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M3 18.2C3 16.433 4.433 15 6.2 15L10.8 15C12.567 15 14 16.433 14 18.2L14 18.2C14 18.642 13.642 19 13.2 19L3.8 19C3.358 19 3 18.642 3 18.2Z\" fill=\"#000\" stroke=\"#000\" stroke-width=\"5\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M15.331 9.779A2.6 2.6 0 1 0 15.007 5.67A7 7 0 0 1 15.331 9.779Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g><g mask=\"url(#__K__-m1)\"><path d=\"M16.969 15L18 15C19.657 15 21 16.343 21 18L21 18C21 18.552 20.552 19 20 19L17.679 19Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g><g mask=\"url(#__K__-m2)\"><path d=\"M5.25 8.25A3.25 3.25 0 1 1 11.75 8.25A3.25 3.25 0 1 1 5.25 8.25Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g><path d=\"M3 18.2C3 16.433 4.433 15 6.2 15L10.8 15C12.567 15 14 16.433 14 18.2L14 18.2C14 18.642 13.642 19 13.2 19L3.8 19C3.358 19 3 18.642 3 18.2Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: beaker
+  beaker: "<defs><mask id=\"__K__-m0\" maskUnits=\"userSpaceOnUse\" x=\"-6\" y=\"-6\" width=\"36\" height=\"36\"><rect x=\"-6\" y=\"-6\" width=\"36\" height=\"36\" fill=\"#fff\"/><path d=\"M5 14L19 14\" fill=\"none\" stroke=\"#000\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></mask></defs><g mask=\"url(#__K__-m0)\"><path d=\"M7 3L17 3L17 16.5C17 18.357 17 19.536 16.268 20.268C15.536 21 14.357 21 12.5 21L11.5 21C9.643 21 8.464 21 7.732 20.268C7 19.536 7 18.357 7 16.5Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/></g><path d=\"M5 3L19 3\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
+  // Kubai: sparkles
+  clover: "<path d=\"M9.441 8.114C10.084 5.831 10.319 5 11 5C11.681 5 11.916 5.831 12.559 8.114L13.154 10.224C13.211 10.424 13.25 10.565 13.343 10.657C13.435 10.75 13.576 10.789 13.776 10.846L15.886 11.441C18.169 12.084 19 12.319 19 13C19 13.681 18.169 13.916 15.886 14.559L13.776 15.154C13.576 15.211 13.435 15.25 13.343 15.343C13.25 15.435 13.211 15.576 13.154 15.776L12.559 17.886C11.916 20.169 11.681 21 11 21C10.319 21 10.084 20.169 9.441 17.886L8.846 15.776C8.789 15.576 8.75 15.435 8.657 15.343C8.565 15.25 8.424 15.211 8.224 15.154L6.114 14.559C3.831 13.916 3 13.681 3 13C3 12.319 3.831 12.084 6.114 11.441L8.224 10.846C8.424 10.789 8.565 10.75 8.657 10.657C8.75 10.565 8.789 10.424 8.846 10.224Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M18.396 3.148C18.646 2.314 18.739 2 19 2C19.261 2 19.354 2.314 19.604 3.148L19.835 3.923C19.858 4 19.875 4.054 19.91 4.09C19.946 4.125 20 4.142 20.077 4.165L20.852 4.396C21.686 4.646 22 4.739 22 5C22 5.261 21.686 5.354 20.852 5.604L20.077 5.835C20 5.858 19.946 5.875 19.91 5.91C19.875 5.946 19.858 6 19.835 6.077L19.604 6.852C19.354 7.686 19.261 8 19 8C18.739 8 18.646 7.686 18.396 6.852L18.165 6.077C18.142 6 18.125 5.946 18.09 5.91C18.054 5.875 18 5.858 17.923 5.835L17.148 5.604C16.314 5.354 16 5.261 16 5C16 4.739 16.314 4.646 17.148 4.396L17.923 4.165C18 4.142 18.054 4.125 18.09 4.09C18.125 4.054 18.142 4 18.165 3.923Z\" fill=\"currentColor\"/>",
+  // Kubai: heart
+  heart: "<path d=\"M12 20.5L4.37 12.975A4.6 4.6 0 1 1 12 8.358A4.6 4.6 0 1 1 19.63 12.975Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/>",
+  // Kubai: search
+  research: "<path d=\"M4 10A6 6 0 1 1 16 10A6 6 0 1 1 4 10Z\" fill=\"currentColor\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linejoin=\"round\"/><path d=\"M14.243 14.243L20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.75\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/>",
 };

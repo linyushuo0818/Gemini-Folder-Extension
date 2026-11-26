@@ -1,9 +1,10 @@
 # Third-party notices
 
-## Kubai Icons (Duotone)
+## Kubai Icons
 
-The static Duotone project icons are from the MIT-licensed [icon definitions](https://github.com/kubai087/kubai-icons/tree/ef31a206cc139fc83fec2ca9397749262f8c033e/icons-duotone).
-The [original icon license](https://github.com/kubai087/kubai-icons/blob/ef31a206cc139fc83fec2ca9397749262f8c033e/LICENSE-ICONS) follows.
+The static Outline and Solid project icons are exported from the MIT-licensed [line icon definitions](https://github.com/kubai087/kubai-icons/tree/29b163323bb8a6ec228776b122f7ca41800f8c1a/icons-line) (`outline` and `fill` variants at stroke width `1.75`).
+The static Duotone project icons are from the MIT-licensed [duotone icon definitions](https://github.com/kubai087/kubai-icons/tree/ef31a206cc139fc83fec2ca9397749262f8c033e/icons-duotone).
+The [original icon license](https://github.com/kubai087/kubai-icons/blob/29b163323bb8a6ec228776b122f7ca41800f8c1a/LICENSE-ICONS) follows.
 
 ~~~text
 MIT License
@@ -31,7 +32,7 @@ SOFTWARE.
 
 ## Lucide Icons
 
-The Outline project icons include Lucide artwork. The [upstream license](https://github.com/lucide-icons/lucide/blob/c1a02a04d4f3f7049d44567d62b8b06cff0b9103/LICENSE)
+The extension UI control icons include Lucide artwork. The [upstream license](https://github.com/lucide-icons/lucide/blob/c1a02a04d4f3f7049d44567d62b8b06cff0b9103/LICENSE)
 includes the ISC terms and the MIT terms for icons derived from Feather.
 
 ~~~text

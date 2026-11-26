@@ -116,4 +116,4 @@ Gemini Projects is an independent, unofficial extension.
 
 ## Credits
 
-Kubai (@kubai087) provides the Duotone project icons through Kubai Icons under the MIT License. [Website](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+Kubai (@kubai087) provides the Outline, Solid, and Duotone project icons through Kubai Icons under the MIT License. [Website](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [Third-party notices](THIRD_PARTY_NOTICES.md)
