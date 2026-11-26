@@ -9,6 +9,7 @@ import {
   getConversationIdFromChatRow
 } from './anchors';
 import { renderIconSvg } from '../ui/icons';
+import { renderUiIcon } from '../ui/uiIcons';
 import { MENU_ITEM_RADIUS } from '../ui/radii';
 import { resolveGeminiTheme } from '../ui/theme';
 
@@ -456,13 +457,7 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
   icon.style.display = 'inline-flex';
   icon.style.alignItems = 'center';
   icon.style.justifyContent = 'center';
-  icon.innerHTML = `
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 2H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" />
-      <path d="m12 10 3 3-3 3" />
-      <path d="M15 13H8" />
-    </svg>
-  `;
+  icon.innerHTML = renderUiIcon('folderPlus', 20);
 
   const label = document.createElement('span');
   label.textContent = 'Move to Project';
@@ -477,11 +472,7 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
   arrow.style.flex = '0 0 20px';
   arrow.style.alignItems = 'center';
   arrow.style.opacity = '0.6';
-  arrow.innerHTML = `
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M10 17l5-5-5-5"/>
-    </svg>
-  `;
+  arrow.innerHTML = renderUiIcon('chevronRight', 20);
 
   item.appendChild(icon);
   item.appendChild(label);

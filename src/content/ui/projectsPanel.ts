@@ -5,6 +5,7 @@ import {
   ADAPTIVE_PROJECT_COLOR, COLOR_OPTIONS, ICON_OPTIONS, MULTICOLOR_ICON_PALETTE,
   getIconLabel, getPaletteIconColor, renderIconSvg, resolveProjectIconColor
 } from './icons';
+import { renderUiIcon, UiIconName } from './uiIcons';
 import { showSurface, hideSurface, setSurfaceOrigin, installMotionStyles, shouldAnimateMotion, MOTION_EASE } from './motion';
 import { PROJECT_ICON_STYLE_CSS } from './projectIconStyle';
 import { PANEL_TITLE_TYPOGRAPHY } from './typography';
@@ -31,15 +32,15 @@ const MULTICOLOR = 'multicolor';
 const PANEL_COLLAPSE_ANIMATION_MS = 190;
 const PROJECT_COLLAPSE_ANIMATION_MS = 180;
 
-const PROJECT_ACTION_PATHS = {
-  pin: '<path d="M9 3h6v5l3 4v3H6v-3l3-4V3Z"/><path d="M12 15v6"/>',
-  unpin: '<path d="m3 3 18 18M9 3h6v5l3 4v3h-3M9 9l-3 3v3h5M12 15v6"/>',
-  edit: '<path d="m16 4 4 4M4 20l4-1L20 7a2.8 2.8 0 0 0-4-4L4 15l-1 6Z"/>',
-  delete: '<path d="M3 6h18M9 6V3h6v3M5 6l1 14h12l1-14M10 10v6M14 10v6"/>'
+const PROJECT_ACTION_ICONS: Record<'pin' | 'unpin' | 'edit' | 'delete', UiIconName> = {
+  pin: 'pin',
+  unpin: 'pinOff',
+  edit: 'pencil',
+  delete: 'trash'
 };
 
-function renderProjectActionIcon(action: keyof typeof PROJECT_ACTION_PATHS): string {
-  return `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${PROJECT_ACTION_PATHS[action]}</svg>`;
+function renderProjectActionIcon(action: keyof typeof PROJECT_ACTION_ICONS): string {
+  return renderUiIcon(PROJECT_ACTION_ICONS[action], 18);
 }
 
 export function createProjectsPanel(options: ProjectsPanelOptions) {
@@ -614,7 +615,7 @@ export function renderProjectsSection(
                             <span class="gp-chat-title">${escapeHtml(chat.title || 'Untitled chat')}</span>
                             ${isMissing ? '<span class="gp-chat-missing">Missing</span>' : ''}
                           </a>
-                          <button class="gp-chat-kebab" draggable="false" data-gp-action="chat-menu" aria-label="Chat menu"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+                          <button class="gp-chat-kebab" draggable="false" data-gp-action="chat-menu" aria-label="Chat menu">${renderUiIcon('moreVertical', 18)}</button>
                         </div>
                       `
               }
@@ -633,7 +634,7 @@ export function renderProjectsSection(
             ${project.isPinned ? `<span class="gp-project-pin" role="img" aria-label="Pinned project" title="Pinned project">${renderProjectActionIcon('pin')}</span>` : ''}
             <span class="gp-row-trailing">
               ${chats.length > 0 ? `<span class="gp-project-count" aria-hidden="true">${chats.length}</span>` : ''}
-              <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg></button>
+              <button class="gp-kebab" data-gp-action="project-menu" aria-label="Project menu">${renderUiIcon('moreVertical', 20)}</button>
             </span>
           </div>
           <div class="gp-project-collapse ${isExpanded ? '' : 'collapsed'}" ${isExpanded ? '' : 'inert'}>
@@ -741,7 +742,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       .gp-chevron svg {
         width: 18px;
         height: 18px;
-        fill: currentColor;
+        fill: none;
         display: block;
       }
 
@@ -1100,11 +1101,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
 
 function buildPanelMarkup(state: RuntimeState): string {
   const collapsed = state.uiPrefs.projectsCollapsed;
-  const chevronSvg = `
-    <svg viewBox="0 0 24 24">
-      <path d="M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z"/>
-    </svg>
-  `;
+  const chevronSvg = renderUiIcon('chevronDown', 18);
 
   return `
     <div class="gp-panel">
@@ -1118,7 +1115,7 @@ function buildPanelMarkup(state: RuntimeState): string {
       <div class="gp-list-container ${collapsed ? 'collapsed' : ''}" data-gp-list-container>
         <div class="gp-list-content">
           <div class="gp-row gp-new" data-gp-action="new-project" role="button" tabindex="0">
-            <span class="gp-icon"><svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"/><path d="M5 12h14"/></svg></span>
+            <span class="gp-icon">${renderUiIcon('plus', 20)}</span>
             <span class="gp-label">New Project</span>
           </div>
           ${renderProjectsSection(
@@ -1165,8 +1162,8 @@ function ProjectNameInputWithIcon(): string {
   `;
 }
 
-const BACKUP_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4v10"/><path d="m7.5 10 4.5 4.5 4.5-4.5"/><path d="M5.5 20h13"/></svg>`;
-const RESTORE_ICON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.35-5.65"/><path d="M4 4.5v5h5"/></svg>`;
+const BACKUP_ICON = renderUiIcon('download', 20);
+const RESTORE_ICON = renderUiIcon('rotateCcw', 20);
 
 function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
   let layer = shadow.getElementById('gp-overlay-layer') as HTMLElement | null;
@@ -1492,10 +1489,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         width: 20px;
         height: 20px;
         fill: none;
-        stroke: currentColor;
-        stroke-width: 1.8;
-        stroke-linecap: round;
-        stroke-linejoin: round;
         flex: 0 0 20px;
         display: block;
       }
@@ -1719,9 +1712,7 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
       <div class="gp-modal-header">
         <h2 id="gp-project-dialog-title" data-gp-modal-title>Create Project</h2>
         <button class="gp-modal-close" data-gp-action="close" aria-label="Close">
-          <svg viewBox="0 0 24 24" aria-hidden="true">
-            <path d="M6 6l12 12M18 6L6 18" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-          </svg>
+          ${renderUiIcon('x', 18)}
         </button>
       </div>
       <div class="gp-modal-body">
@@ -2044,24 +2035,14 @@ function createChatMenu(layer: HTMLElement, getProjects: () => Project[], signal
 
     menu.innerHTML = `
       <button type="button" role="menuitem" class="gp-menu-item" data-gp-chat-action="remove">
-        <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
-          <polyline points="16 17 21 12 16 7"/>
-          <line x1="21" y1="12" x2="9" y2="12"/>
-        </svg>
+        ${renderUiIcon('logOut', 18)}
         <span>Remove from ${escapeHtml(projectName)}</span>
       </button>
       ${otherProjects.length > 0 ? `
         <button type="button" role="menuitem" aria-haspopup="menu" aria-expanded="false" class="gp-menu-item gp-submenu-trigger" data-gp-chat-action="move-trigger">
-          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/>
-            <line x1="12" y1="11" x2="12" y2="17"/>
-            <line x1="9" y1="14" x2="15" y2="14"/>
-          </svg>
+          ${renderUiIcon('folderPlus', 18)}
           <span>Move to Project</span>
-          <svg class="gp-submenu-arrow" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-            <polyline points="9 18 15 12 9 6"/>
-          </svg>
+          ${renderUiIcon('chevronRight', 16, 'gp-submenu-arrow')}
         </button>
         <div class="gp-submenu" role="menu" aria-label="Move to Project">
           ${otherProjects.map(p => `

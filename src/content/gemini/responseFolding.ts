@@ -2,6 +2,7 @@ import { storageLocalGet, storageLocalSet } from '../../shared/webext';
 import { getConversationId } from '../dom/anchors';
 import { PILL_RADIUS } from '../ui/radii';
 import { observeGeminiTheme } from '../ui/theme';
+import { renderUiIcon } from '../ui/uiIcons';
 
 const STYLE_ID = 'gp-response-fold-style';
 const FEATURE_ENABLED_KEY = 'gp_feature_response_folding_enabled';
@@ -304,8 +305,7 @@ function isFoldable(content: HTMLElement): boolean {
   return fullHeight > runtime.collapsedHeight + 20 || fullHeight - visibleHeight > 20;
 }
 
-const CHEVRON_SVG =
-  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg>';
+const CHEVRON_SVG = renderUiIcon('chevronUp', 14);
 
 function ensureToggleButton(root: HTMLElement): HTMLButtonElement {
   let button = root.querySelector<HTMLButtonElement>(`:scope > .${BUTTON_CLASS}`);

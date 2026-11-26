@@ -1,4 +1,5 @@
 import { CIRCLE_RADIUS } from '../ui/radii';
+import { renderUiIcon } from '../ui/uiIcons';
 const PROMPT_BTN_ATTR = 'data-gp-prompt-btn';
 const PROMPT_BTN_ID = 'gp-prompt-btn';
 const TOOL_HINTS = ['tools', '\u5de5\u5177'];
@@ -14,13 +15,7 @@ const MIC_HINTS = ['mic', 'microphone', '\u9ea6\u514b\u98ce'];
 const SPEED_HINTS = ['fast', 'quick', '\u5feb\u901f'];
 const THINKING_HINTS = ['thinking', 'reasoning', '\u601d\u8003', '\u63a8\u7406'];
 
-const PROMPT_ICON_SVG = `
-<svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-  <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4z"/>
-  <path d="M8 8h8"/>
-  <path d="M8 12h5"/>
-</svg>
-`;
+const PROMPT_ICON_SVG = renderUiIcon('messageSquareText', 24);
 
 let observer: MutationObserver | null = null;
 let currentButton: HTMLElement | null = null;

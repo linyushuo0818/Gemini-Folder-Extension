@@ -4,14 +4,15 @@ import { showSurface, hideSurface, setSurfaceOrigin } from '../ui/motion';
 import { PANEL_TITLE_TYPOGRAPHY } from '../ui/typography';
 import { SURFACE_THEME_CSS } from '../ui/surfaceTheme';
 import { observeGeminiTheme, resolveGeminiTheme } from '../ui/theme';
+import { renderUiIcon } from '../ui/uiIcons';
 
 const PICKER_ID = 'gp-prompt-picker-root';
 
 const ICONS = {
-  search: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>`,
-  plus: `<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>`,
-  close: `<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>`,
-  edit: `<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`
+  search: renderUiIcon('search', 18),
+  plus: renderUiIcon('plus', 16),
+  close: renderUiIcon('x', 20),
+  edit: renderUiIcon('pencilLine', 18)
 };
 
 // 兼顾中英文混排的粗略 token 估算（中日韩字符约 1 token，其余字符约 0.25 token）。
