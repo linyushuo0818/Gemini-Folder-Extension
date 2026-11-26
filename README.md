@@ -51,6 +51,12 @@ Run `npm ci`, `npm run lint`, and `npm run package:store` in that order. Packagi
 
 ## Changelog
 
+### v2.0.11
+
+- Replaced the Outline and Solid project icon sets with Kubai Icons (`icons-line/` at stroke width `1.75`) so Outline, Solid, and Duotone icons share one consistent visual language.
+- Unified extension UI control icons (Prompt Library entry and editor actions, sidebar and chat menus, backup/restore controls, and response folding toggle) with Kubai Icons.
+- Added per-instance SVG mask and clip-path IDs across all Kubai icons to prevent cross-icon rendering conflicts, and updated third-party notices and credits.
+
 ### v2.0.10
 
 - Unified pill curvature and concentric outer corner radii across project dialogs, the Prompt Library, prompt editors, and context menus.
@@ -116,4 +122,4 @@ Gemini Projects is an independent, unofficial extension.
 
 ## Credits
 
-Kubai (@kubai087) provides the Outline, Solid, and Duotone project icons through Kubai Icons under the MIT License. [Website](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [Third-party notices](THIRD_PARTY_NOTICES.md)
+Kubai (@kubai087) provides the Outline, Solid, Duotone, and UI control icons through Kubai Icons under the MIT License. [Website](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [Third-party notices](THIRD_PARTY_NOTICES.md)

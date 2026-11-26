@@ -51,6 +51,12 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 
 ## 当前版本
 
+### v2.0.11
+
+- 将线条（Outline）与实心（Solid）项目图标统一替换为 Kubai Icons（`icons-line/`，默认 `1.75` 描边宽度），使三种图标风格保持一致的视觉语言与比例。
+- 同步将扩展界面控件图标（提示词库入口与编辑按钮、侧边栏与聊天菜单、备份/恢复按钮及长回复折叠箭头等）全部统一替换为 Kubai Icons。
+- 为所有含蒙版/裁切路径的 Kubai 图标补充实例级 ID 以避免同页渲染冲突，并同步更新第三方许可与致谢说明。
+
 ### v2.0.10
 
 - 统一项目弹窗、Prompt Library、提示词编辑器与右键菜单的胶囊曲率和同心外圆角比例。
@@ -116,4 +122,4 @@ Gemini Projects 是非官方扩展，与 Google 或 Gemini 官方无关。
 
 ## 致谢
 
-线条、实心与双色项目图标均来自 Kubai（@kubai087）的 Kubai Icons，采用 MIT 许可。[官网](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [第三方许可](THIRD_PARTY_NOTICES.md)
+线条、实心、双色项目图标以及界面控件图标均来自 Kubai（@kubai087）的 Kubai Icons，采用 MIT 许可。[官网](https://icons.kubai.design/) · [GitHub](https://github.com/kubai087/kubai-icons) · [第三方许可](THIRD_PARTY_NOTICES.md)
