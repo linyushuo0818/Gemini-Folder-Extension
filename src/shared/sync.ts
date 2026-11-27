@@ -15,7 +15,7 @@ import {
   normalizeChatUrl,
   sanitizeProject
 } from './storage';
-import { Prompt, PromptsData, sanitizePrompt } from './prompts';
+import { matchUnmodifiedSeedId, Prompt, PromptsData, sanitizePrompt } from './prompts';
 
 export const SYNC_LOCAL_META_KEY = 'gp_sync_local_meta_v1';
 export const DRIVE_AUTH_STORAGE_KEY = 'gp_drive_auth_v1';
@@ -780,6 +780,36 @@ export function mergeSyncData(
         usageCount: localFull?.usageCount ?? 0,
         lastUsedAt: localFull?.lastUsedAt ?? 0
       };
+    }
+  }
+
+  // 对旧版随机 UUID 产生的未修改默认提示词重复项做确定性去重，并写入墓碑以收敛远端与其它设备。
+  const seedGroups = new Map<string, Prompt[]>();
+  for (const prompt of Object.values(mergedPromptsMap)) {
+    const seedId = matchUnmodifiedSeedId(prompt.title, prompt.content);
+    if (!seedId) continue;
+    const group = seedGroups.get(seedId);
+    if (group) {
+      group.push(prompt);
+    } else {
+      seedGroups.set(seedId, [prompt]);
+    }
+  }
+
+  for (const [seedId, entries] of seedGroups) {
+    if (entries.length <= 1) continue;
+    entries.sort((a, b) => a.createdAt - b.createdAt || compareAscii(a.id, b.id));
+    const survivor = entries.find((entry) => entry.id === seedId) ?? entries[0];
+    survivor.usageCount = Math.max(...entries.map((entry) => entry.usageCount));
+    survivor.lastUsedAt = Math.max(...entries.map((entry) => entry.lastUsedAt));
+    for (const dup of entries) {
+      if (dup.id === survivor.id) continue;
+      delete mergedPromptsMap[dup.id];
+      mergedTombstones.prompts[dup.id] = Math.max(
+        now,
+        dup.updatedAt,
+        mergedTombstones.prompts[dup.id] ?? 0
+      );
     }
   }
 

@@ -22,10 +22,12 @@ import {
   sanitizeLocalMeta,
   SYNC_LOCAL_META_KEY,
   SYNC_STALE_INTERVAL_MS,
-  SyncLocalMeta
+  SyncLocalMeta,
+  SyncPrompt,
+  SyncSnapshot
 } from '../src/shared/sync';
 import { CURRENT_SCHEMA_VERSION, STORAGE_KEY } from '../src/shared/storage';
-import { PROMPTS_KEY } from '../src/shared/prompts';
+import { createSeedData, PROMPTS_KEY } from '../src/shared/prompts';
 import { Project, StoredState } from '../src/shared/types';
 
 function clone<T>(value: T): T {
@@ -1802,4 +1804,179 @@ test('15. Atomic restoreBackup, remote-aware tombstones, offline push warning, a
   deviceA.dispose();
   deviceB.dispose();
   offlineDevice.dispose();
+});
+
+// 16. Default seed prompt deduplication across multi-device local-first init, edits/deletes, and legacy random-UUID duplicates
+test('16. Default seed prompts: deterministic IDs prevent multi-device duplicates, preserve edits/deletes, and self-heal legacy UUID duplicates', async () => {
+  // 16a. Multi-device open-before-connect (3 devices)
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+
+  const deviceA = createDriveDevice(server, clock);
+  const deviceB = createDriveDevice(server, clock);
+  const deviceC = createDriveDevice(server, clock);
+
+  const expectedSeedIds = ['seed-bug-fix', 'seed-code-review', 'seed-email-polish', 'seed-summarize'];
+
+  const localA = (await deviceA.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  const localB = (await deviceB.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  const localC = (await deviceC.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  assert.deepEqual(Object.keys(localA.prompts).sort(), expectedSeedIds);
+  assert.deepEqual(Object.keys(localB.prompts).sort(), expectedSeedIds);
+  assert.deepEqual(Object.keys(localC.prompts).sort(), expectedSeedIds);
+
+  assert.equal((await deviceA.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  clock.tick(10);
+  assert.equal((await deviceB.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  clock.tick(10);
+  assert.equal((await deviceC.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  clock.tick(10);
+  assert.equal((await deviceA.service.handleMessage({ type: 'syncNow' })).ok, true);
+  assert.equal((await deviceB.service.handleMessage({ type: 'syncNow' })).ok, true);
+
+  for (const device of [deviceA, deviceB, deviceC]) {
+    const prompts = (await device.service.handleMessage({ type: 'getPrompts' })).prompts!;
+    assert.deepEqual(Object.keys(prompts.prompts).sort(), expectedSeedIds);
+    assert.equal(Object.keys(prompts.prompts).length, 4);
+  }
+
+  // 16b. Edited & deleted seed preservation when a brand new device runs locally before connecting
+  clock.tick(100);
+  const editedTitle = 'Summarize (Edited)';
+  const editedContent = 'Custom summary prompt body';
+  assert.equal(
+    (
+      await deviceA.service.handleMessage({
+        type: 'savePrompt',
+        prompt: { id: 'seed-summarize', title: editedTitle, content: editedContent }
+      })
+    ).ok,
+    true
+  );
+  clock.tick(10);
+  assert.equal(
+    (await deviceA.service.handleMessage({ type: 'deletePrompt', id: 'seed-email-polish' })).ok,
+    true
+  );
+
+  const deviceD = createDriveDevice(server, clock);
+  const localD = (await deviceD.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  assert.deepEqual(Object.keys(localD.prompts).sort(), expectedSeedIds);
+
+  clock.tick(10);
+  assert.equal((await deviceD.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  const mergedD = (await deviceD.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  assert.deepEqual(Object.keys(mergedD.prompts).sort(), ['seed-bug-fix', 'seed-code-review', 'seed-summarize']);
+  assert.equal(mergedD.prompts['seed-summarize'].title, editedTitle);
+  assert.equal(mergedD.prompts['seed-summarize'].content, editedContent);
+  assert.equal(mergedD.prompts['seed-email-polish'], undefined, 'Deleted seed must NOT be resurrected');
+
+  assert.equal((await deviceA.service.handleMessage({ type: 'syncNow' })).ok, true);
+  const mergedA = (await deviceA.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  assert.deepEqual(Object.keys(mergedA.prompts).sort(), ['seed-bug-fix', 'seed-code-review', 'seed-summarize']);
+  assert.equal(mergedA.prompts['seed-summarize'].title, editedTitle);
+  assert.equal(mergedA.prompts['seed-email-polish'], undefined);
+
+  deviceA.dispose();
+  deviceB.dispose();
+  deviceC.dispose();
+  deviceD.dispose();
+
+  // 16c. Legacy random-UUID duplicate self-healing (3 copies of 4 unmodified seeds + 2 custom = 14 -> 6)
+  const legacyClock = createClock();
+  const legacyServer = new MockGoogleDriveServer();
+  const baseTs = legacyClock.now();
+  const baseSeeds = Object.values(createSeedData().prompts);
+  const legacyPrompts: SyncPrompt[] = [];
+  const expectedSurvivorIds: string[] = [];
+  const expectedDupIds: string[] = [];
+
+  for (let i = 0; i < baseSeeds.length; i += 1) {
+    const seed = baseSeeds[i];
+    const id1 = `11111111-0000-4000-8000-0000000000${i}a`;
+    const id2 = `22222222-0000-4000-8000-0000000000${i}b`;
+    const id3 = `33333333-0000-4000-8000-0000000000${i}c`;
+    legacyPrompts.push(
+      { id: id1, title: seed.title, content: seed.content, createdAt: baseTs - 300, updatedAt: baseTs - 300 },
+      { id: id2, title: seed.title, content: seed.content, createdAt: baseTs - 200, updatedAt: baseTs - 200 },
+      { id: id3, title: seed.title, content: seed.content, createdAt: baseTs - 100, updatedAt: baseTs - 100 }
+    );
+    expectedSurvivorIds.push(id1);
+    expectedDupIds.push(id2, id3);
+  }
+  legacyPrompts.push(
+    { id: 'custom-1', title: 'Custom One', content: 'User body 1', createdAt: baseTs - 50, updatedAt: baseTs - 50 },
+    { id: 'custom-2', title: 'Custom Two', content: 'User body 2', createdAt: baseTs - 40, updatedAt: baseTs - 40 }
+  );
+  assert.equal(legacyPrompts.length, 14);
+
+  const legacySnapshot: SyncSnapshot = {
+    projects: [],
+    chats: [],
+    prompts: legacyPrompts,
+    tombstones: createEmptyTombstones()
+  };
+  const legacyEnvelope: DriveSyncEnvelopeV1 = {
+    v: 1,
+    clientId: 'legacy-client',
+    rev: 1,
+    updatedAt: baseTs,
+    hash: computeSnapshotHash(legacySnapshot),
+    snapshot: legacySnapshot
+  };
+  legacyServer.seedFile(JSON.stringify(legacyEnvelope), baseTs);
+
+  const deviceE = createDriveDevice(legacyServer, legacyClock);
+  const deviceF = createDriveDevice(legacyServer, legacyClock);
+  // Pre-seed deviceF locally with all 14 legacy prompts (and usage stats on duplicates) as if synced prior to upgrading
+  await deviceF.local.set({
+    [PROMPTS_KEY]: {
+      version: 1,
+      prompts: Object.fromEntries(
+        legacyPrompts.map((p) => [
+          p.id,
+          { ...p, usageCount: p.id.endsWith('b') ? 3 : 0, lastUsedAt: p.id.endsWith('c') ? 999 : 0 }
+        ])
+      )
+    }
+  });
+
+  legacyClock.tick(100);
+  assert.equal((await deviceF.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+
+  const promptsF = (await deviceF.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  const expectedFinalIds = [...expectedSurvivorIds, 'custom-1', 'custom-2'].sort();
+  assert.deepEqual(Object.keys(promptsF.prompts).sort(), expectedFinalIds);
+  assert.equal(Object.keys(promptsF.prompts).length, 6);
+  assert.equal(promptsF.prompts['custom-1'].content, 'User body 1');
+  assert.equal(promptsF.prompts['custom-2'].content, 'User body 2');
+  for (const survivorId of expectedSurvivorIds) {
+    assert.equal(promptsF.prompts[survivorId].usageCount, 3, 'Usage count must be preserved across deduplicated seeds');
+    assert.equal(promptsF.prompts[survivorId].lastUsedAt, 999, 'lastUsedAt must be preserved across deduplicated seeds');
+  }
+
+  const metaF = deviceF.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta;
+  for (const dupId of expectedDupIds) {
+    assert.ok((metaF.tombstones.prompts[dupId] ?? 0) > 0, `Duplicate ${dupId} must be tombstoned`);
+  }
+
+  legacyClock.tick(50);
+  assert.equal((await deviceE.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  const promptsE = (await deviceE.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  assert.deepEqual(Object.keys(promptsE.prompts).sort(), expectedFinalIds);
+  assert.equal(Object.keys(promptsE.prompts).length, 6);
+
+  // Verify Drive snapshot converged to 6 prompts and 8 tombstones
+  const healedDriveEnv = JSON.parse(legacyServer.files[0].content) as DriveSyncEnvelopeV1;
+  assert.equal(healedDriveEnv.snapshot.prompts.length, 6);
+  assert.deepEqual(
+    healedDriveEnv.snapshot.prompts.map((p) => p.id).sort(),
+    expectedFinalIds
+  );
+  for (const dupId of expectedDupIds) {
+    assert.ok((healedDriveEnv.snapshot.tombstones.prompts[dupId] ?? 0) > 0);
+  }
+
+  deviceE.dispose();
+  deviceF.dispose();
 });

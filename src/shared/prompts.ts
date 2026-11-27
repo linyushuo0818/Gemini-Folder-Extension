@@ -16,37 +16,48 @@ export interface PromptsData {
 }
 
 export const PROMPTS_KEY = 'gp_prompts_store';
+// 使用基线时间戳 1，避免本地离线生成的默认提示词覆盖其他设备的修改或复活已删除条目。
+export const SEED_PROMPT_TIMESTAMP = 1;
 
-const SEED_PROMPTS: Array<{ title: string; content: string }> = [
+const SEED_PROMPTS: Array<{ id: string; title: string; content: string }> = [
   {
+    id: 'seed-summarize',
     title: 'Summarize',
     content: 'Please summarize the following text into bullet points, capturing the key insights and main arguments:'
   },
   {
+    id: 'seed-code-review',
     title: 'Code Review',
     content: 'Review the following code for bugs, performance issues, and best practices. Suggest improvements with code examples:'
   },
   {
+    id: 'seed-bug-fix',
     title: 'Bug Fix',
     content: 'I am encountering a bug. Here is the error message: "{{error}}". Here is the relevant code snippet: "{{code}}". Please analyze the root cause and provide a fix.'
   },
   {
+    id: 'seed-email-polish',
     title: 'Email Polish',
     content: 'Rewrite the following email to be more professional and concise, while maintaining a friendly tone:'
   }
 ];
 
+export function matchUnmodifiedSeedId(title: string, content: string): string | null {
+  for (const seed of SEED_PROMPTS) {
+    if (title === seed.title && content === seed.content) return seed.id;
+  }
+  return null;
+}
+
 export function createSeedData(): PromptsData {
-  const now = Date.now();
   const prompts: Record<string, Prompt> = {};
   for (const seed of SEED_PROMPTS) {
-    const id = crypto.randomUUID();
-    prompts[id] = {
-      id,
+    prompts[seed.id] = {
+      id: seed.id,
       title: seed.title,
       content: seed.content,
-      createdAt: now,
-      updatedAt: now,
+      createdAt: SEED_PROMPT_TIMESTAMP,
+      updatedAt: SEED_PROMPT_TIMESTAMP,
       usageCount: 0,
       lastUsedAt: 0
     };
