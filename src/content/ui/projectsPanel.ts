@@ -458,9 +458,8 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     inputDirty = false;
     const input = modal.element.querySelector<HTMLInputElement>('[data-gp-name-input]');
     const confirm = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="confirm"]');
+    const cancelButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="cancel"]');
     const iconRow = modal.element.querySelector<HTMLElement>('[data-gp-template-row]');
-    const backupButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="backup"]');
-    const restoreButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-action="restore"]');
     iconButton = modal.element.querySelector<HTMLButtonElement>('[data-gp-current-icon]');
 
     if (input) {
@@ -521,12 +520,8 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
       }
     };
 
-    if (backupButton) {
-      backupButton.onclick = handleBackupClick;
-    }
-
-    if (restoreButton) {
-      restoreButton.onclick = handleRestoreClick;
+    if (cancelButton) {
+      cancelButton.onclick = () => modal.close();
     }
 
     iconOptions.forEach((chip) => {
@@ -1379,8 +1374,6 @@ function ProjectNameInputWithIcon(): string {
   `;
 }
 
-const BACKUP_ICON = renderUiIcon('download', 20);
-const RESTORE_ICON = renderUiIcon('rotateCcw', 20);
 
 function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
   let layer = shadow.getElementById('gp-overlay-layer') as HTMLElement | null;
@@ -1652,24 +1645,17 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
 
       .gp-modal-actions {
-        display: grid;
-        grid-template-columns: minmax(0, var(--gp-action-width)) minmax(0, var(--gp-action-width)) 1fr minmax(0, var(--gp-action-width));
+        display: flex;
         align-items: center;
-        column-gap: 8px;
+        justify-content: flex-end;
+        gap: 8px;
         padding: var(--gp-project-footer-inset);
         border-top: 1px solid var(--gp-border);
         background: var(--gp-surface-footer);
       }
-      .gp-modal-tools {
-        display: contents;
-      }
-      .gp-action-spacer {
-        min-width: 0;
-      }
       .gp-primary,
       .gp-tool-button {
-        width: 100%;
-        min-width: 0;
+        min-width: 92px;
         height: var(--gp-action-height);
         border-radius: var(--gp-radius-pill);
         font-family: var(--gp-font);
@@ -1815,27 +1801,37 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         opacity: 0.6;
       }
       .gp-section-menu {
-        min-width: 224px;
+        min-width: 256px;
         width: max-content;
         max-width: calc(100vw - 16px);
         box-sizing: border-box;
-        padding: var(--gp-menu-inset);
-        border-radius: var(--gp-radius-menu);
+        padding: 6px;
+        border-radius: 20px;
       }
-      .gp-menu .gp-sync-toggle-item {
-        justify-content: space-between;
-        align-items: center;
-        gap: 14px;
-        padding: 7px 12px;
-        min-height: 44px;
+      .gp-section-menu-list {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
       }
-      .gp-menu .gp-drive-item {
-        align-items: center;
+      .gp-section-menu .gp-menu-item {
+        min-height: 36px;
+        padding: 6px 12px;
         gap: 10px;
-        padding: 7px 12px;
+        border-radius: 14px;
+      }
+      .gp-section-menu .gp-menu-item svg {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 18px;
+        display: block;
+      }
+      .gp-section-menu .gp-sync-row {
         min-height: 44px;
+        padding: 7px 12px;
+        align-items: center;
       }
       .gp-sync-copy {
+        flex: 1 1 auto;
         display: flex;
         flex-direction: column;
         gap: 1px;
@@ -1854,9 +1850,13 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         color: var(--gp-muted);
       }
       .gp-switch {
-        position: relative;
+        box-sizing: border-box;
+        display: inline-flex;
+        align-items: center;
         width: 34px;
         height: 20px;
+        padding: 2px;
+        margin-left: 12px;
         flex: 0 0 34px;
         border-radius: var(--gp-radius-pill);
         background: var(--gp-surface-selected);
@@ -1864,18 +1864,21 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transition: background-color var(--gp-transition), border-color var(--gp-transition);
       }
       .gp-switch.on {
+        background: #2f2e2b;
+        border-color: transparent;
+      }
+      :host(.dark) .gp-switch.on,
+      :host([data-gp-theme="dark"]) .gp-switch.on {
         background: var(--gp-accent);
-        border-color: var(--gp-accent);
+        border-color: transparent;
       }
       .gp-switch-thumb {
-        position: absolute;
-        top: 2px;
-        left: 2px;
         width: 14px;
         height: 14px;
         border-radius: var(--gp-radius-circle);
         background: var(--gp-surface);
-        box-shadow: 0 1px 2px rgb(20 20 19 / .18);
+        box-shadow: 0 1px 2px rgb(20 20 19 / .22);
+        transform: translateX(0);
         transition: transform var(--gp-transition), background-color var(--gp-transition);
       }
       :host(.dark) .gp-switch-thumb,
@@ -1886,10 +1889,25 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         transform: translateX(14px);
         background: var(--gp-on-accent);
       }
+      .gp-drive-status-dot {
+        width: 7px;
+        height: 7px;
+        flex: 0 0 7px;
+        margin-left: 10px;
+        border-radius: var(--gp-radius-circle);
+        background: #2f9e5b;
+      }
+      .gp-drive-status-dot.warn {
+        background: #b5653f;
+      }
+      :host(.dark) .gp-drive-status-dot.warn,
+      :host([data-gp-theme="dark"]) .gp-drive-status-dot.warn {
+        background: #e0a28b;
+      }
       .gp-menu-divider {
         height: 1px;
         background: var(--gp-border);
-        margin: 5px 10px;
+        margin: 4px 12px;
       }
 
       /* Chat menu item with icons */
@@ -1964,15 +1982,10 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
       }
       @media (max-width: 560px) {
         .gp-modal { --gp-icon-columns: 8; }
-        .gp-modal-actions { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-        .gp-action-spacer { display: none; }
       }
       @media (max-width: 440px) {
         .gp-modal { --gp-icon-columns: 6; }
         .gp-template-grid { gap: 4px; }
-        .gp-tool-button { white-space: nowrap; gap: 6px; padding: 0 6px; font-size: 12px; }
-        .gp-tool-button svg { width: 16px; height: 16px; flex-basis: 16px; }
-        .gp-primary { padding: 0 8px; }
       }
       @media (max-width: 360px) { .gp-modal { --gp-icon-columns: 5; } }
       @media (prefers-reduced-motion: reduce) { .gp-modal *, .gp-menu *, .gp-submenu * { transition: none !important; } }
@@ -2043,15 +2056,7 @@ function createModal(layer: HTMLElement, signal: AbortSignal) {
       </div>
       </div>
       <div class="gp-modal-actions">
-        <div class="gp-modal-tools" aria-label="Project data tools">
-          <button class="gp-tool-button" type="button" data-gp-action="backup" data-gp-press title="Backup projects and prompts">
-            ${BACKUP_ICON}<span>Backup</span>
-          </button>
-          <button class="gp-tool-button" type="button" data-gp-action="restore" data-gp-press title="Restore from backup file">
-            ${RESTORE_ICON}<span>Restore</span>
-          </button>
-        </div>
-        <div class="gp-action-spacer" aria-hidden="true"></div>
+        <button class="gp-tool-button" type="button" data-gp-action="cancel" data-gp-press>Cancel</button>
         <button class="gp-primary" data-gp-action="confirm" data-gp-press disabled>Done</button>
       </div>
     </div>
@@ -2316,32 +2321,34 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
     let syncSectionMarkup = '';
     if (isGoogleDrive) {
       const isExpired = status.state === 'auth_expired';
+      const hasDriveWarning = isExpired || status.state === 'error' || status.state === 'quota_exceeded';
       const driveMeta = connectingDrive
         ? 'Reconnecting…'
         : formatDriveStatusLabel(status);
       const primaryActionDisabled = busy || status.state === 'syncing' || !status.driveAvailable;
       syncSectionMarkup = `
-        <button type="button" role="menuitem" class="gp-menu-item gp-drive-item" data-gp-section-action="drive-header"${primaryActionDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
-          ${renderUiIcon('globe', 18)}
+        <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="drive-header"${primaryActionDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+          ${renderUiIcon('googleDrive', 18)}
           <span class="gp-sync-copy">
             <span class="gp-sync-title">Google Drive</span>
             <span class="gp-sync-meta">${escapeHtml(driveMeta)}</span>
           </span>
+          <span class="gp-drive-status-dot${hasDriveWarning ? ' warn' : ''}" aria-hidden="true"></span>
         </button>
         ${isExpired ? `
           <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="connect-drive"${primaryActionDisabled ? ' disabled' : ''}>
-            ${renderUiIcon('rotateCcw', 18)}
+            ${renderUiIcon('refreshCw', 18)}
             <span>${connectingDrive ? 'Reconnecting…' : 'Reconnect'}</span>
           </button>
         ` : `
           <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="sync-now"${primaryActionDisabled ? ' disabled' : ''}>
-            ${renderUiIcon('rotateCcw', 18)}
+            ${renderUiIcon('refreshCw', 18)}
             <span>${status.state === 'syncing' ? 'Syncing…' : 'Sync now'}</span>
           </button>
         `}
         <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="disconnect-drive"${busy ? ' disabled' : ''}>
           ${renderUiIcon('logOut', 18)}
-          <span>Disconnect Google Drive</span>
+          <span>Disconnect</span>
         </button>
       `;
     } else {
@@ -2351,7 +2358,8 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
       const toggleDisabled = !status.available || busy;
       const syncNowDisabled = busy || status.state === 'syncing';
       syncSectionMarkup = `
-        <button type="button" role="menuitemcheckbox" aria-checked="${String(checked)}" class="gp-menu-item gp-sync-toggle-item" data-gp-section-action="toggle-sync"${toggleDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+        <button type="button" role="menuitemcheckbox" aria-checked="${String(checked)}" class="gp-menu-item gp-sync-row" data-gp-section-action="toggle-sync"${toggleDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+          ${renderUiIcon('globe', 18)}
           <span class="gp-sync-copy">
             <span class="gp-sync-title">Browser Sync</span>
             <span class="gp-sync-meta">${escapeHtml(statusLabel)}</span>
@@ -2362,13 +2370,13 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
         </button>
         ${showSyncNow ? `
           <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="sync-now"${syncNowDisabled ? ' disabled' : ''}>
-            ${renderUiIcon('rotateCcw', 18)}
+            ${renderUiIcon('refreshCw', 18)}
             <span>${status.state === 'syncing' ? 'Syncing…' : 'Sync now'}</span>
           </button>
         ` : ''}
         ${status.driveAvailable ? `
-          <button type="button" role="menuitem" class="gp-menu-item gp-drive-item" data-gp-section-action="connect-drive"${busy ? ' disabled' : ''}>
-            ${renderUiIcon('globe', 18)}
+          <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="connect-drive"${busy ? ' disabled' : ''}>
+            ${renderUiIcon('googleDrive', 18)}
             <span class="gp-sync-copy">
               <span class="gp-sync-title">Google Drive</span>
               <span class="gp-sync-meta">${connectingDrive ? 'Connecting…' : 'Connect · Cross-browser'}</span>
@@ -2379,16 +2387,18 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
     }
 
     menu.innerHTML = `
-      ${syncSectionMarkup}
-      <div class="gp-menu-divider" role="separator"></div>
-      <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="backup">
-        ${renderUiIcon('download', 18)}
-        <span>Backup</span>
-      </button>
-      <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="restore">
-        ${renderUiIcon('rotateCcw', 18)}
-        <span>Restore</span>
-      </button>
+      <div class="gp-section-menu-list">
+        ${syncSectionMarkup}
+        <div class="gp-menu-divider" role="separator"></div>
+        <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="backup">
+          ${renderUiIcon('download', 18)}
+          <span>Backup</span>
+        </button>
+        <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="restore">
+          ${renderUiIcon('rotateCcw', 18)}
+          <span>Restore</span>
+        </button>
+      </div>
     `;
 
     if (preserveFocusAction) {
