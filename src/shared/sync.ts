@@ -85,6 +85,7 @@ export interface SyncLocalMeta {
   clientId: string;
   driveFileId?: string;
   driveLastModifiedTime?: string;
+  driveLastVersion?: string;
   lastSyncedRev: number;
   lastSyncedHash: string;
   lastSyncedAt: number | null;
@@ -488,6 +489,8 @@ export function sanitizeLocalMeta(
     typeof raw.driveLastModifiedTime === 'string' && raw.driveLastModifiedTime.length > 0
       ? raw.driveLastModifiedTime
       : undefined;
+  const rawVersion = typeof raw.driveLastVersion === 'string' ? raw.driveLastVersion.trim() : '';
+  const driveLastVersion = rawVersion.length > 0 && rawVersion.length <= 64 ? rawVersion : undefined;
 
   const rawRev = legacyProvider !== null ? raw.driveLastSyncedRev : raw.lastSyncedRev;
   const lastSyncedRev =
@@ -549,6 +552,7 @@ export function sanitizeLocalMeta(
     clientId,
     ...(driveFileId ? { driveFileId } : {}),
     ...(driveLastModifiedTime ? { driveLastModifiedTime } : {}),
+    ...(driveLastVersion ? { driveLastVersion } : {}),
     lastSyncedRev,
     lastSyncedHash,
     lastSyncedAt,

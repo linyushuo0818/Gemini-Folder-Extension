@@ -192,7 +192,7 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
       title: nextTitle,
       isPinned: existing?.isPinned ?? false,
       projectId: existing?.projectId ?? null,
-      updatedAt: existing ? (existing.projectId && metadataChanged ? now : existing.updatedAt) : now,
+      updatedAt: existing ? (existing.projectId && metadataChanged ? Math.max(now, existing.updatedAt + 1) : existing.updatedAt) : now,
       lastUrl: nextUrl
     };
   }
@@ -251,7 +251,7 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
         }
         case 'syncIfStale': {
           await cloudSync.ensureInitialized();
-          const result = await cloudSync.syncIfStale();
+          const result = await cloudSync.syncIfStale(Boolean(message.bypassBackoff));
           return result.ok
             ? { ok: true, syncStatus: result.status }
             : { ok: false, error: result.error ?? 'Sync failed.', syncStatus: result.status };

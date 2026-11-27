@@ -108,7 +108,7 @@ export type BackgroundRequest =
   | { type: 'syncNow' }
   | { type: 'connectGoogleDrive' }
   | { type: 'disconnectGoogleDrive' }
-  | { type: 'syncIfStale' };
+  | { type: 'syncIfStale'; bypassBackoff?: boolean };
 
 export type BackgroundResponse =
   | { ok: true; state?: StoredState; prompts?: PromptsData; syncStatus?: CloudSyncStatus }

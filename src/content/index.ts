@@ -249,6 +249,7 @@ function installLifecycleRescans() {
     scheduleRescan(0);
     requestSyncIfStale();
   });
+  window.addEventListener('online', () => requestSyncIfStale(true));
   window.addEventListener('popstate', () => scheduleRescan(0));
   document.addEventListener('visibilitychange', () => {
     updateDrivePolling();
@@ -458,9 +459,9 @@ async function handleDisconnectGoogleDrive(): Promise<CloudSyncStatus> {
   return response.syncStatus ?? syncStatus;
 }
 
-function requestSyncIfStale() {
+function requestSyncIfStale(bypassBackoff = false) {
   if (!syncStatus.enabled || !syncStatus.available || syncStatus.state === 'auth_expired') return;
-  void sendMessage({ type: 'syncIfStale' })
+  void sendMessage({ type: 'syncIfStale', ...(bypassBackoff ? { bypassBackoff: true } : {}) })
     .then((response) => {
       if (response.syncStatus) updateSyncStatus(response.syncStatus);
     })

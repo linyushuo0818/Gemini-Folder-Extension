@@ -4,6 +4,7 @@ import { createBackgroundService, BackgroundService } from '../src/background/se
 import { StorageAreaLike } from '../src/background/cloudSync';
 import {
   DRIVE_SESSION_EXPIRED_MESSAGE,
+  DriveApiError,
   GOOGLE_DRIVE_CLIENT_ID,
   GOOGLE_DRIVE_SCOPE,
   GoogleDriveSyncClient,
@@ -71,12 +72,21 @@ interface StoredDriveFile {
   parents: string[];
   createdTime: number;
   modifiedTime: string;
+  version: number;
   content: string;
+}
+
+interface InjectedDriveFault {
+  status?: number;
+  throwError?: Error;
+  delayMs?: number;
+  retryAfter?: string;
 }
 
 class MockGoogleDriveServer {
   public files: StoredDriveFile[] = [];
   public validTokens = new Set<string>();
+  public failNextRequests: InjectedDriveFault[] = [];
   public listCalls = 0;
   public readCalls = 0;
   public createCalls = 0;
@@ -95,6 +105,7 @@ class MockGoogleDriveServer {
       parents: ['appDataFolder'],
       createdTime,
       modifiedTime: `2026-11-27T00:00:${String(this.modSeq).padStart(2, '0')}.000Z`,
+      version: 1,
       content
     };
     this.files.push(file);
@@ -105,8 +116,50 @@ class MockGoogleDriveServer {
     this.validTokens.clear();
   }
 
+  private pickRequestedFields(file: StoredDriveFile, fields: Set<string>): Record<string, unknown> {
+    const out: Record<string, unknown> = {};
+    if (fields.size === 0 || fields.has('id')) out.id = file.id;
+    if (fields.has('modifiedTime')) out.modifiedTime = file.modifiedTime;
+    if (fields.has('version')) out.version = String(file.version);
+    return out;
+  }
+
   public fetchImpl: typeof fetch = async (input, init = {}) => {
     this.totalRequests += 1;
+    const fault = this.failNextRequests.shift();
+    if (fault?.delayMs && fault.delayMs > 0) {
+      await new Promise<void>((resolve, reject) => {
+        if (init.signal?.aborted) {
+          reject(new DOMException('The operation was aborted', 'AbortError'));
+          return;
+        }
+        const onAbort = () => {
+          clearTimeout(timer);
+          reject(new DOMException('The operation was aborted', 'AbortError'));
+        };
+        const timer = setTimeout(() => {
+          init.signal?.removeEventListener('abort', onAbort);
+          resolve();
+        }, fault.delayMs);
+        init.signal?.addEventListener('abort', onAbort, { once: true });
+      });
+    }
+    if (fault?.throwError) {
+      throw fault.throwError;
+    }
+    if (fault?.status) {
+      return new Response(
+        JSON.stringify({ error: { code: fault.status, message: 'Injected fault' } }),
+        {
+          status: fault.status,
+          headers: {
+            'Content-Type': 'application/json',
+            ...(fault.retryAfter !== undefined ? { 'Retry-After': fault.retryAfter } : {})
+          }
+        }
+      );
+    }
+
     const urlStr = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(urlStr);
     const method = (init.method ?? 'GET').toUpperCase();
@@ -121,14 +174,22 @@ class MockGoogleDriveServer {
       });
     }
 
-    // List files in appDataFolder
+    // List files in appDataFolder (enforces real Drive v3 `fields=files(...)` selection)
     if (method === 'GET' && url.pathname === '/drive/v3/files') {
       this.listCalls += 1;
       assert.equal(url.searchParams.get('spaces'), 'appDataFolder');
+      const fieldsParam = url.searchParams.get('fields') || '';
+      const listFieldsMatch = /files\(([^)]+)\)/.exec(fieldsParam);
+      const requested = new Set(
+        (listFieldsMatch ? listFieldsMatch[1] : '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
       const matching = [...this.files]
         .filter((f) => f.name === DRIVE_SYNC_FILENAME && f.parents.includes('appDataFolder'))
         .sort((a, b) => a.createdTime - b.createdTime)
-        .map((f) => ({ id: f.id, modifiedTime: f.modifiedTime }));
+        .map((f) => this.pickRequestedFields(f, requested));
       return new Response(JSON.stringify({ files: matching }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
@@ -149,7 +210,7 @@ class MockGoogleDriveServer {
       });
     }
 
-    // Create file (multipart/related)
+    // Create file (multipart/related; enforces real Drive v3 `fields=...` selection)
     if (method === 'POST' && url.pathname === '/upload/drive/v3/files') {
       this.createCalls += 1;
       assert.equal(url.searchParams.get('uploadType'), 'multipart');
@@ -173,16 +234,23 @@ class MockGoogleDriveServer {
         parents: metaJson.parents,
         createdTime: Date.now() + this.fileSeq,
         modifiedTime: `2026-11-27T00:00:${String(this.modSeq).padStart(2, '0')}.000Z`,
+        version: 1,
         content: mediaText
       };
       this.files.push(file);
-      return new Response(JSON.stringify({ id: file.id }), {
+      const requested = new Set(
+        (url.searchParams.get('fields') || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+      return new Response(JSON.stringify(this.pickRequestedFields(file, requested)), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
     }
 
-    // Update file (PATCH uploadType=media)
+    // Update file (PATCH uploadType=media; enforces real Drive v3 `fields=...` selection)
     if (method === 'PATCH' && url.pathname.startsWith('/upload/drive/v3/files/')) {
       this.updateCalls += 1;
       assert.equal(url.searchParams.get('uploadType'), 'media');
@@ -194,7 +262,14 @@ class MockGoogleDriveServer {
       this.modSeq += 1;
       file.content = typeof init.body === 'string' ? init.body : '';
       file.modifiedTime = `2026-11-27T00:00:${String(this.modSeq).padStart(2, '0')}.000Z`;
-      return new Response(JSON.stringify({ id: file.id, modifiedTime: file.modifiedTime }), {
+      file.version += 1;
+      const requested = new Set(
+        (url.searchParams.get('fields') || '')
+          .split(',')
+          .map((s) => s.trim())
+          .filter(Boolean)
+      );
+      return new Response(JSON.stringify(this.pickRequestedFields(file, requested)), {
         status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
@@ -316,6 +391,9 @@ function createDriveDevice(
     driveUnavailable?: boolean;
     debounceMs?: number;
     staleIntervalMs?: number;
+    requestTimeoutMs?: number;
+    uploadTimeoutMs?: number;
+    retryDelayMs?: number;
   } = {}
 ): DriveTestDevice {
   const local = opts.local ?? new MockLocalStorage();
@@ -329,7 +407,10 @@ function createDriveDevice(
           local,
           identity,
           fetchImpl: server.fetchImpl,
-          now: clock.now
+          now: clock.now,
+          requestTimeoutMs: opts.requestTimeoutMs,
+          uploadTimeoutMs: opts.uploadTimeoutMs,
+          retryDelayMs: opts.retryDelayMs
         });
     service = createBackgroundService({
       local,
@@ -1013,7 +1094,7 @@ test('8. syncIfStale throttles to 15s intervals, skips unchanged downloads, and 
 
   // When auth_expired, syncIfStale must not spam silent OAuth calls
   server.revokeAllTokens();
-  deviceB.identity.nextSilentBehavior = 'fail';
+  deviceB.identity.nextSilentBehavior = 'interaction_required';
   await deviceB.service.handleMessage({ type: 'syncNow' });
   assert.equal((await deviceB.service.handleMessage({ type: 'getSyncStatus' })).syncStatus?.state, 'auth_expired');
   const silentBeforeStale = deviceB.identity.silentCalls;
@@ -1097,4 +1178,308 @@ test('9. Malformed and hostile Google Drive payloads are sanitized or rejected w
   assert.ok(device.local.data[PROMPTS_KEY]);
 
   device.dispose();
+});
+
+// 10. Real Drive fields=id,modifiedTime,version contract & same-millisecond version change detection
+test('10. Real Drive fields=id,modifiedTime,version contract skips unchanged files and catches same-ms version updates', async () => {
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+  const deviceA = createDriveDevice(server, clock);
+  const deviceB = createDriveDevice(server, clock);
+
+  // createSyncFile must request and persist modifiedTime + version
+  assert.equal((await deviceA.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  const metaAfterCreate = deviceA.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta;
+  assert.ok(metaAfterCreate.driveLastModifiedTime);
+  assert.equal(metaAfterCreate.driveLastVersion, '1');
+
+  // updateSyncFile must request and persist updated modifiedTime + version
+  assert.equal(
+    (
+      await deviceA.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-v2', 'Version 2', clock.tick(100)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+  const metaAfterUpdate = deviceA.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta;
+  assert.equal(metaAfterUpdate.driveLastModifiedTime, server.files[0].modifiedTime);
+  assert.equal(metaAfterUpdate.driveLastVersion, '2');
+
+  // Device B connects and syncs; subsequent syncIfStale skips download while modifiedTime + version match
+  assert.equal((await deviceB.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  const metaB = deviceB.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta;
+  assert.equal(metaB.driveLastVersion, '2');
+
+  clock.tick(16_000);
+  const readsBeforeSkip = server.readCalls;
+  await deviceB.service.handleMessage({ type: 'syncIfStale' });
+  assert.equal(server.readCalls, readsBeforeSkip, 'Unchanged modifiedTime + version must skip downloading Drive body');
+
+  // Remote updates file within the exact same millisecond (same modifiedTime, incremented version)
+  const sameMs = server.files[0].modifiedTime;
+  const remoteSnap = {
+    projects: [
+      projectToSync(makeProject('p-v2', 'Version 2', clock.now())),
+      projectToSync(makeProject('p-same-ms', 'Same Millisecond Update', clock.tick(10)))
+    ],
+    chats: [],
+    prompts: [],
+    tombstones: createEmptyTombstones()
+  };
+  const remoteEnv: DriveSyncEnvelopeV1 = {
+    v: 1,
+    clientId: 'other-device',
+    rev: 99,
+    updatedAt: clock.now(),
+    hash: computeSnapshotHash(remoteSnap),
+    snapshot: remoteSnap
+  };
+  server.files[0].content = JSON.stringify(remoteEnv);
+  server.files[0].modifiedTime = sameMs;
+  server.files[0].version += 1;
+
+  clock.tick(16_000);
+  await deviceB.service.handleMessage({ type: 'syncIfStale' });
+  assert.equal(server.readCalls, readsBeforeSkip + 1, 'Incremented Drive version with identical modifiedTime must trigger download');
+  const stateB = (await deviceB.service.handleMessage({ type: 'getState' })).state!;
+  assert.ok(stateB.projects.some((p) => p.id === 'p-same-ms'));
+  assert.equal((deviceB.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta).driveLastVersion, '3');
+
+  deviceA.dispose();
+  deviceB.dispose();
+});
+
+// 11. Network resilience: timeouts, 1x retry on transient 503/429 (not POST), offline silent auth -> error + backoff + bypassBackoff
+test('11. Network resilience: request timeouts, 1x transient retries, and offline silent-auth backoff/recovery', async () => {
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+  const device = createDriveDevice(server, clock, {
+    requestTimeoutMs: 30,
+    uploadTimeoutMs: 30,
+    retryDelayMs: 0
+  });
+  device.identity.tokenLifetimeSec = 300;
+
+  assert.equal((await device.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+
+  // 11a. Fetch timeout aborts cleanly without hanging local writes
+  server.failNextRequests.push({ delayMs: 150 }, { delayMs: 150 });
+  const timeoutWriteRes = await device.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-timeout', 'Saved Locally On Timeout', clock.tick(100)),
+    editing: false
+  });
+  assert.equal(timeoutWriteRes.ok, true, 'Local write must complete without hanging on Drive timeout');
+  assert.ok(timeoutWriteRes.state?.projects.some((p) => p.id === 'p-timeout'));
+  const timeoutStatus = (await device.service.handleMessage({ type: 'getSyncStatus' })).syncStatus!;
+  assert.equal(timeoutStatus.state, 'error');
+  assert.match(timeoutStatus.lastError ?? '', /timed out/i);
+
+  // 11b. Transient HTTP 503 & 429 retry once and succeed; POST createSyncFile does NOT retry
+  server.failNextRequests.push({ status: 503 });
+  const retry503Res = await device.service.handleMessage({ type: 'syncIfStale', bypassBackoff: true });
+  assert.equal(retry503Res.ok, true);
+  assert.equal(retry503Res.syncStatus?.state, 'synced');
+
+  server.failNextRequests.push({ status: 429, retryAfter: '0' });
+  const retry429Res = await device.service.handleMessage({ type: 'syncIfStale', bypassBackoff: true });
+  assert.equal(retry429Res.ok, true);
+  assert.equal(retry429Res.syncStatus?.state, 'synced');
+
+  const postOnlyLocal = new MockLocalStorage();
+  const postClient = new GoogleDriveSyncClient({
+    local: postOnlyLocal,
+    identity: device.identity,
+    fetchImpl: server.fetchImpl,
+    now: clock.now,
+    requestTimeoutMs: 30,
+    uploadTimeoutMs: 30,
+    retryDelayMs: 0
+  });
+  await postOnlyLocal.set({
+    [DRIVE_AUTH_STORAGE_KEY]: { accessToken: 'tok_post_check', expiresAt: clock.now() + 3_600_000 }
+  });
+  server.validTokens.add('tok_post_check');
+  const reqsBeforePost503 = server.totalRequests;
+  server.failNextRequests.push({ status: 503 });
+  await assert.rejects(
+    () => postClient.createSyncFile('{}'),
+    (err: unknown) => err instanceof DriveApiError && err.status === 503
+  );
+  assert.equal(server.totalRequests, reqsBeforePost503 + 1, 'POST createSyncFile must NOT retry on 503');
+
+  // 11c. Offline silent-renewal failure -> recoverable error (not auth_expired), exponential backoff 15s -> 30s -> 60s, immediate recovery on bypassBackoff
+  clock.tick(200_000); // token enters 120s expiry buffer -> triggers silent auth
+  device.identity.nextSilentBehavior = 'fail';
+  const silentBeforeOffline = device.identity.silentCalls;
+  const offlineRes1 = await device.service.handleMessage({ type: 'syncIfStale' });
+  assert.equal(offlineRes1.ok, false);
+  assert.equal(offlineRes1.syncStatus?.state, 'error', 'Offline silent auth failure must NOT transition to auth_expired');
+  assert.ok(device.local.data[DRIVE_AUTH_STORAGE_KEY], 'Cached token must be kept on transient network error');
+  assert.equal(device.identity.silentCalls, silentBeforeOffline + 1);
+
+  // Within 30s backoff (at +16s), syncIfStale is throttled
+  clock.tick(16_000);
+  await device.service.handleMessage({ type: 'syncIfStale' });
+  assert.equal(device.identity.silentCalls, silentBeforeOffline + 1, '1st error must back off to 30s');
+
+  // At +32s (>= 30s), syncIfStale runs and fails -> backoff doubles to 60s
+  clock.tick(16_000);
+  const offlineRes2 = await device.service.handleMessage({ type: 'syncIfStale' });
+  assert.equal(offlineRes2.ok, false);
+  assert.equal(offlineRes2.syncStatus?.state, 'error');
+  assert.equal(device.identity.silentCalls, silentBeforeOffline + 2);
+
+  // Within 60s backoff (at +32s), syncIfStale is throttled
+  clock.tick(32_000);
+  await device.service.handleMessage({ type: 'syncIfStale' });
+  assert.equal(device.identity.silentCalls, silentBeforeOffline + 2, '2nd error must back off to 60s');
+
+  // Network returns -> bypassBackoff: true runs immediately without waiting 60s
+  device.identity.nextSilentBehavior = 'ok';
+  const recoveredRes = await device.service.handleMessage({ type: 'syncIfStale', bypassBackoff: true });
+  assert.equal(recoveredRes.ok, true);
+  assert.equal(recoveredRes.syncStatus?.state, 'synced');
+  assert.equal(device.identity.silentCalls, silentBeforeOffline + 3);
+
+  device.dispose();
+});
+
+// 12. SW cold restart with slow Drive: getState returns local immediately while background init still pulls remote
+test('12. SW cold restart with slow Drive returns local state immediately and reconciles in background', async () => {
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+  const deviceA = createDriveDevice(server, clock);
+  const deviceB = createDriveDevice(server, clock);
+
+  assert.equal((await deviceA.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  assert.equal(
+    (
+      await deviceA.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-local-existing', 'Existing Local', clock.tick(50)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+
+  // Device B pushes a newer project while Device A is offline/before restart
+  assert.equal((await deviceB.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  assert.equal(
+    (
+      await deviceB.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-remote-new', 'Remote After Restart', clock.tick(50)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+
+  deviceA.restartSw();
+  server.failNextRequests.push({ delayMs: 80 });
+
+  // getState must resolve immediately with local data without waiting 80ms for slow Drive
+  const fastResult = await Promise.race([
+    deviceA.service.handleMessage({ type: 'getState' }),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 25))
+  ]);
+  assert.ok(fastResult !== null && fastResult.ok, 'getState must return immediately when local data exists');
+  assert.deepEqual(fastResult.state?.projects.map((p) => p.id), ['p-local-existing']);
+
+  // Once slow Drive responds, background init reconcile pulls p-remote-new
+  await new Promise((resolve) => setTimeout(resolve, 120));
+  const afterBgState = (await deviceA.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(
+    afterBgState.projects.map((p) => p.id).sort(),
+    ['p-local-existing', 'p-remote-new']
+  );
+
+  deviceA.dispose();
+  deviceB.dispose();
+});
+
+// 13. Clock skew & backwards clock jump: backwards jump does not freeze syncIfStale, and slow-clock rename wins monotonically
+test('13. Backwards clock jump does not freeze syncIfStale and slow-clock chat rename bumps updatedAt monotonically', async () => {
+  const clockFast = createClock(1_700_000_060_000);
+  const clockSlow = createClock(1_700_000_000_000);
+  const server = new MockGoogleDriveServer();
+  const deviceFast = createDriveDevice(server, clockFast, { debounceMs: 15 });
+  const deviceSlow = createDriveDevice(server, clockSlow, { debounceMs: 15 });
+
+  assert.equal((await deviceFast.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  assert.equal((await deviceSlow.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+
+  // 13a. Backwards clock jump on deviceSlow must not freeze syncIfStale
+  assert.equal(
+    (
+      await deviceFast.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-skew', 'Skew Project', clockFast.tick(10)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+  await deviceSlow.service.handleMessage({ type: 'syncNow' });
+
+  assert.equal(
+    (
+      await deviceFast.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-after-clock-back', 'After Backwards Jump', clockFast.tick(10)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+  clockSlow.tick(-3_600_000); // system clock jumps backwards by 1 hour
+  await deviceSlow.service.handleMessage({ type: 'syncIfStale' });
+  const slowStateAfterJump = (await deviceSlow.service.handleMessage({ type: 'getState' })).state!;
+  assert.ok(
+    slowStateAfterJump.projects.some((p) => p.id === 'p-after-clock-back'),
+    'Backwards clock jump must not freeze syncIfStale'
+  );
+
+  // 13b. Fast-clock device assigns a chat; slow-clock device renames it via upsertChatRefs -> rename wins monotonically
+  const fastChatMove = await deviceFast.service.handleMessage({
+    type: 'moveChat',
+    conversationId: 'chat-skew',
+    projectId: 'p-skew',
+    metadata: {
+      conversationId: 'chat-skew',
+      title: 'Old Fast Title',
+      lastUrl: 'https://gemini.google.com/app/chat-skew'
+    }
+  });
+  const fastUpdatedAt = fastChatMove.state!.chatIndex['chat-skew'].updatedAt;
+
+  await deviceSlow.service.handleMessage({ type: 'syncNow' });
+  const slowRename = await deviceSlow.service.handleMessage({
+    type: 'upsertChatRefs',
+    chats: [
+      {
+        conversationId: 'chat-skew',
+        title: 'Renamed On Slow Clock',
+        lastUrl: 'https://gemini.google.com/app/chat-skew'
+      }
+    ]
+  });
+  assert.ok(
+    slowRename.state!.chatIndex['chat-skew'].updatedAt > fastUpdatedAt,
+    'Assigned chat rename must bump updatedAt monotonically above fast-clock timestamp'
+  );
+
+  // Wait for debounced push from deviceSlow, then pull on deviceFast
+  await new Promise((resolve) => setTimeout(resolve, 40));
+  await deviceFast.service.handleMessage({ type: 'syncNow' });
+  const fastFinalState = (await deviceFast.service.handleMessage({ type: 'getState' })).state!;
+  assert.equal(fastFinalState.chatIndex['chat-skew'].title, 'Renamed On Slow Clock');
+
+  deviceFast.dispose();
+  deviceSlow.dispose();
 });

@@ -87,6 +87,8 @@ export class CloudSyncManager {
   private initialized = false;
   private debounceTimer: ReturnType<typeof setTimeout> | null = null;
   private lastDriveAttemptAt = 0;
+  private consecutiveErrorCount = 0;
+  private disposed = false;
 
   constructor(options: CloudSyncOptions) {
     this.local = options.local;
@@ -163,7 +165,23 @@ export class CloudSyncManager {
       return;
     }
 
+    const localData = await this.hooks.readRawLocalSnapshot();
+    if (localData.hasLocalProjects || localData.hasLocalPrompts) {
+      // 本地已有数据时立即返回，后台异步对账以免 SW 冷启动阻塞首屏读取。
+      this.scheduleBackgroundInitReconcile();
+      return;
+    }
+
     await this.reconcileWithDrive('init');
+  }
+
+  private scheduleBackgroundInitReconcile(): void {
+    void Promise.resolve().then(() =>
+      this.hooks.runSerialized(async () => {
+        if (this.disposed || !this.available || !this.localMeta?.enabled) return;
+        await this.reconcileWithDrive('init');
+      })
+    );
   }
 
   public async recordProjectAlive(projectId: string, now: number): Promise<number> {
@@ -359,7 +377,7 @@ export class CloudSyncManager {
     return this.reconcileWithDrive('manual');
   }
 
-  public async syncIfStale(): Promise<SyncActionResult> {
+  public async syncIfStale(bypassBackoff = false): Promise<SyncActionResult> {
     const meta = await this.ensureMetaLoaded();
     if (!meta.enabled) {
       return { ok: true, status: { ...meta.status } };
@@ -373,7 +391,11 @@ export class CloudSyncManager {
     }
     const now = this.clockNow();
     const lastCheck = Math.max(this.lastDriveAttemptAt, meta.lastSyncedAt ?? 0);
-    if (lastCheck > 0 && now - lastCheck < this.staleIntervalMs) {
+    const effectiveIntervalMs = bypassBackoff
+      ? 0
+      : this.staleIntervalMs * (2 ** this.consecutiveErrorCount);
+    const elapsed = now - lastCheck;
+    if (!bypassBackoff && lastCheck > 0 && elapsed >= 0 && elapsed < effectiveIntervalMs) {
       return { ok: true, status: { ...meta.status } };
     }
     return this.reconcileWithDrive('stale');
@@ -402,6 +424,7 @@ export class CloudSyncManager {
       return { ok: false, error: message, status: { ...meta.status } };
     }
 
+    this.consecutiveErrorCount = 0;
     meta.enabled = true;
     meta.status = this.buildStatus(meta, 'syncing', {
       bytesUsed: meta.status.bytesUsed
@@ -413,6 +436,7 @@ export class CloudSyncManager {
 
   public async disconnectGoogleDrive(): Promise<SyncActionResult> {
     this.cancelDebouncedPush();
+    this.consecutiveErrorCount = 0;
     const meta = await this.ensureMetaLoaded();
     this.initialized = true;
 
@@ -421,6 +445,17 @@ export class CloudSyncManager {
     meta.status = this.buildStatus(meta, this.available ? 'disabled' : 'unavailable');
     await this.persistMeta(meta);
     return { ok: true, status: { ...meta.status } };
+  }
+
+  private finishReconcile(result: SyncActionResult): SyncActionResult {
+    if (result.ok) {
+      this.consecutiveErrorCount = 0;
+    } else if (result.status.state === 'error') {
+      this.consecutiveErrorCount = Math.min(this.consecutiveErrorCount + 1, 3);
+    } else {
+      this.consecutiveErrorCount = 0;
+    }
+    return result;
   }
 
   private async reconcileWithDrive(
@@ -445,7 +480,7 @@ export class CloudSyncManager {
       // 写入快速路径：命中已缓存 driveFileId 时直接读取并对账，404 则回退完整列举。
       if (mode === 'push' && meta.driveFileId) {
         const fastResult = await this.tryFastDrivePush(meta, localData, now);
-        if (fastResult !== null) return fastResult;
+        if (fastResult !== null) return this.finishReconcile(fastResult);
       }
 
       const files = await this.drive!.listSyncFiles();
@@ -453,13 +488,14 @@ export class CloudSyncManager {
       if (files.length === 0) {
         meta.driveFileId = undefined;
         meta.driveLastModifiedTime = undefined;
+        meta.driveLastVersion = undefined;
 
         if (mode === 'init' && !localData.hasLocalProjects && !localData.hasLocalPrompts) {
           if (meta.status.state !== 'synced') {
             meta.status = this.buildStatus(meta, 'synced');
             await this.persistMeta(meta);
           }
-          return { ok: true, status: { ...meta.status } };
+          return this.finishReconcile({ ok: true, status: { ...meta.status } });
         }
 
         const snapshot = extractSyncSnapshot(
@@ -484,6 +520,7 @@ export class CloudSyncManager {
 
         meta.driveFileId = created.id;
         meta.driveLastModifiedTime = created.modifiedTime;
+        meta.driveLastVersion = created.version;
         meta.lastSyncedRev = nextRev;
         meta.lastSyncedHash = hash;
         meta.lastSyncedAt = now;
@@ -493,16 +530,20 @@ export class CloudSyncManager {
           bytesUsed: utf8ByteLength(json)
         });
         await this.persistMeta(meta);
-        return { ok: true, status: { ...meta.status } };
+        return this.finishReconcile({ ok: true, status: { ...meta.status } });
       }
 
-      // 焦点轻量检查：若单文件 modifiedTime 未变且本地快照哈希与上次一致，跳过下载。
+      // 焦点轻量检查：若单文件 modifiedTime 与 version 均未变且本地快照哈希与上次一致，跳过下载。
+      const versionMatches =
+        (!files[0].version && !meta.driveLastVersion) ||
+        (Boolean(files[0].version) && files[0].version === meta.driveLastVersion);
       if (
         mode === 'stale' &&
         files.length === 1 &&
         files[0].id === meta.driveFileId &&
         files[0].modifiedTime &&
         files[0].modifiedTime === meta.driveLastModifiedTime &&
+        versionMatches &&
         meta.lastSyncedHash
       ) {
         const localSnapshot = extractSyncSnapshot(
@@ -520,16 +561,16 @@ export class CloudSyncManager {
             });
             await this.persistMeta(meta);
           }
-          return { ok: true, status: { ...meta.status } };
+          return this.finishReconcile({ ok: true, status: { ...meta.status } });
         }
       }
 
       if (files.length === 1) {
-        return await this.reconcileSingleDriveFile(meta, files[0], localData, now);
+        return this.finishReconcile(await this.reconcileSingleDriveFile(meta, files[0], localData, now));
       }
 
       // 并发冷启动产生多份同名同步文件时，合并全部有效副本到最旧主文件并清理多余副本。
-      return await this.healDuplicateDriveFiles(meta, files, localData, now);
+      return this.finishReconcile(await this.healDuplicateDriveFiles(meta, files, localData, now));
     } catch (error) {
       const classified = classifyDriveError(error);
       meta.status = this.buildStatus(meta, classified.state, {
@@ -537,7 +578,7 @@ export class CloudSyncManager {
         bytesUsed: meta.status.bytesUsed
       });
       await this.persistMeta(meta);
-      return { ok: false, error: classified.message, status: { ...meta.status } };
+      return this.finishReconcile({ ok: false, error: classified.message, status: { ...meta.status } });
     }
   }
 
@@ -551,6 +592,7 @@ export class CloudSyncManager {
     if (readRes.kind === 'not_found') {
       meta.driveFileId = undefined;
       meta.driveLastModifiedTime = undefined;
+      meta.driveLastVersion = undefined;
       return null;
     }
     if (readRes.kind === 'corrupt') {
@@ -643,11 +685,13 @@ export class CloudSyncManager {
     if (patchRes.notFound) {
       meta.driveFileId = undefined;
       meta.driveLastModifiedTime = undefined;
+      meta.driveLastVersion = undefined;
       return null;
     }
 
     meta.driveFileId = fileId;
     meta.driveLastModifiedTime = patchRes.modifiedTime;
+    meta.driveLastVersion = patchRes.version;
     meta.lastSyncedRev = nextRev;
     meta.lastSyncedHash = hash;
     meta.lastSyncedAt = now;
@@ -689,6 +733,7 @@ export class CloudSyncManager {
       const created = await this.drive!.createSyncFile(json);
       meta.driveFileId = created.id;
       meta.driveLastModifiedTime = created.modifiedTime;
+      meta.driveLastVersion = created.version;
       meta.lastSyncedRev = nextRev;
       meta.lastSyncedHash = hash;
       meta.lastSyncedAt = now;
@@ -755,6 +800,7 @@ export class CloudSyncManager {
     if (hash === remoteEnv.hash) {
       meta.driveFileId = primary.id;
       meta.driveLastModifiedTime = primary.modifiedTime;
+      meta.driveLastVersion = primary.version;
       meta.lastSyncedRev = remoteEnv.rev;
       meta.lastSyncedHash = remoteEnv.hash;
       meta.lastSyncedAt = now;
@@ -781,14 +827,17 @@ export class CloudSyncManager {
 
     let finalFileId = primary.id;
     let finalModifiedTime = patchRes.notFound ? undefined : patchRes.modifiedTime;
+    let finalVersion = patchRes.notFound ? undefined : patchRes.version;
     if (patchRes.notFound) {
       const created = await this.drive!.createSyncFile(json);
       finalFileId = created.id;
       finalModifiedTime = created.modifiedTime;
+      finalVersion = created.version;
     }
 
     meta.driveFileId = finalFileId;
     meta.driveLastModifiedTime = finalModifiedTime;
+    meta.driveLastVersion = finalVersion;
     meta.lastSyncedRev = nextRev;
     meta.lastSyncedHash = hash;
     meta.lastSyncedAt = now;
@@ -889,10 +938,12 @@ export class CloudSyncManager {
     const patchRes = await this.drive!.updateSyncFile(primary.id, json);
     let finalFileId = primary.id;
     let finalModifiedTime = patchRes.notFound ? undefined : patchRes.modifiedTime;
+    let finalVersion = patchRes.notFound ? undefined : patchRes.version;
     if (patchRes.notFound) {
       const created = await this.drive!.createSyncFile(json);
       finalFileId = created.id;
       finalModifiedTime = created.modifiedTime;
+      finalVersion = created.version;
     }
 
     for (const duplicate of duplicates) {
@@ -905,6 +956,7 @@ export class CloudSyncManager {
 
     meta.driveFileId = finalFileId;
     meta.driveLastModifiedTime = finalModifiedTime;
+    meta.driveLastVersion = finalVersion;
     meta.lastSyncedRev = nextRev;
     meta.lastSyncedHash = hash;
     meta.lastSyncedAt = now;
@@ -918,6 +970,7 @@ export class CloudSyncManager {
   }
 
   public dispose(): void {
+    this.disposed = true;
     this.cancelDebouncedPush();
   }
 }
