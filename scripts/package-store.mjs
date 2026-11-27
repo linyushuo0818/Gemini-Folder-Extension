@@ -42,6 +42,10 @@ for (const file of files) {
   if (file.endsWith('.js')) {
     const text = await readFile(source, 'utf8');
     await writeFile(target, text.replace(/^\/\/# sourceMappingURL=.*(?:\r?\n|$)/gm, ''));
+  } else if (file === 'manifest.json') {
+    // 商店上传包不能携带开发用固定公钥 key。
+    const { key: _devKey, ...storeManifest } = manifest;
+    await writeFile(target, `${JSON.stringify(storeManifest, null, 4)}\n`);
   } else {
     await copyFile(source, target);
   }

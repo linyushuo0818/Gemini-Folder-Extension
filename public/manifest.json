@@ -2,6 +2,7 @@
     "manifest_version": 3,
     "name": "Projects for Gemini™: Projects and Prompt Manager",
     "version": "2.0.11",
+    "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAq+VR+mj2lbAo/yaXTqVExty6pVagMgsV6RgFO3qwsJa4JbN8SHjznCjdCV5VzSRGdrEZrKsl9rBWl+ETZhYxRVlCVXTpWRTke/rndzZturEvekgE9fqnKRAcN5zqKREylrmbrsnEtEATPTO4/mdqLSF4FZIva9GfsSLoUQCJGmAZXBgHRIcObUD5CbFIpuuRtOTG+gIC5TCmomrcwH8N4ckbJBMrbEAHq6oHrmFajqgex1wetuCGj04xdDVz/0mMIuw8muX4o+EnzDKSsq1O/mpjI4uhO15p2LCmcUv8SqJl2otl1cBinLgqssEdGADMGOLMq4QVUA+AYyEbebbRXwIDAQAB",
     "description": "Group Gemini chats into local Projects.",
     "permissions": [
         "storage"
