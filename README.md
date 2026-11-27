@@ -24,6 +24,23 @@ The built-in Prompt Library lets you save prompts you use often, then search for
 - Save, search, edit, and reuse prompts in the Prompt Library
 - Local-first storage: all data is stored in your browser's local storage by default
 
+## Google Drive Sync & Backup
+
+Google Drive Sync is **off by default** — you can use the extension strictly locally with zero network requests.
+
+### How to Enable Cross-Browser Sync
+
+1. Click the **`⋮`** button next to **Projects** in the Gemini sidebar.
+2. Click **Google Drive · Connect** and sign in with your Google account.
+3. Repeat on each browser or device you want to keep in sync (Chrome, Edge, Brave, Aside, Arc, etc.).
+
+### How Sync & Backup Work
+
+- **What syncs**: Projects, project chat assignments, and prompts sync through a single hidden file (`gemini-projects-sync-v1.json`) in your Google Drive `appDataFolder`. The extension never sees or accesses your regular Drive files.
+- **When it syncs**: Local edits upload right away; open tabs check for remote updates roughly every 15 seconds (and when returning to the tab or reconnecting online), or immediately when you click **Sync now**.
+- **Disconnect anytime**: Disconnecting clears local OAuth credentials and pauses sync without deleting your local or Google Drive data.
+- **Local Backup & Restore**: **Backup** downloads a local JSON file to your computer (never containing auth tokens). **Restore** validates and imports a local JSON file; if Google Drive is connected, the restored snapshot automatically syncs to Drive and your other connected devices.
+
 ## Install
 
 ### Chrome Web Store (Recommended)
@@ -56,6 +73,14 @@ Gemini Projects is built for Chrome and other Chromium-based browsers.
 Run `npm ci`, `npm run lint`, and `npm run package:store` in that order. Packaging uses Node.js and the system `zip` utility on macOS and Linux, or PowerShell on Windows. The ZIP contains only the runtime files listed in the manifest, keeping source maps, unused legacy scripts, personal data, and development notes outside the archive. Generated files stay in `release/`, outside version control.
 
 ## Changelog
+
+### v3.0.0
+
+- Added optional **Google Drive Sync** (`appDataFolder`) for cross-device and cross-browser syncing of Projects, project chat assignments, and the Prompt Library across Chrome, Edge, Brave, Aside, Arc, and other Chromium browsers (pure local-only by default).
+- Unified Google Drive controls (Connect, Sync now, Reconnect, Disconnect), inline `?` help guide, and local Backup / Restore into the Projects header `⋮` menu.
+- Hardened multi-device sync reliability: per-entity conflict merging with 30-day tombstones, deterministic default prompt IDs with automatic duplicate cleanup, multi-account silent token renewal with account verification, non-blocking local cold start, request timeouts, transient retry, and offline backoff recovery.
+- Upgraded local Backup Restore to write atomically and propagate cleanly to connected Google Drive devices.
+- Fixed Gemini's native chat menu remaining open after clicking a destination inside **Move to Project**.
 
 ### v2.0.11
 

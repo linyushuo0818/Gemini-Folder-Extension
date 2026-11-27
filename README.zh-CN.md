@@ -24,6 +24,23 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 - 保存、搜索、编辑和复用常用提示词
 - 本地优先存储：所有数据默认仅保存在浏览器本地
 
+## Google Drive 同步与备份说明
+
+Google Drive 同步**默认关闭**——如果不连接，扩展完全纯本地运行，不会发起任何同步网络请求。
+
+### 如何开启跨浏览器同步
+
+1. 在 Gemini 侧边栏 **Projects** 标题右侧点击 **`⋮`** 按钮。
+2. 点击 **Google Drive · Connect** 并登录你的 Google 账号完成授权。
+3. 在其他需要同步的电脑或浏览器（Chrome、Edge、Brave、Aside、Arc 等）上同样点击连接同一 Google 账号即可互通。
+
+### 同步与本地备份机制
+
+- **同步范围**：Projects、已归属聊天和 Prompt Library 通过你 Google Drive 隐藏应用数据目录（`appDataFolder`）中的单个文件 `gemini-projects-sync-v1.json` 同步；扩展无法看到或访问你的普通网盘文件。
+- **同步时机**：本地编辑会立即同步；前台打开 Gemini 时约每 15 秒自动轻量检查远端变化（切回标签页或断网重连也会自动触发），也可随时点 **Sync now** 立即同步。
+- **随时断开**：点击 **Disconnect** 会清除本地授权令牌并停止同步，不会删除本地或 Google Drive 里的已有数据。
+- **本地 Backup / Restore**：**Backup** 会将本地数据导出为电脑上的 `.json` 文件（不包含任何授权令牌）；**Restore** 从本地 `.json` 校验恢复，若当前已连接 Google Drive，恢复结果会自动同步覆盖到云端及其他已连接设备。
+
 ## 安装
 
 ### Chrome 应用商店（推荐）
@@ -56,6 +73,14 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 依次运行 `npm ci`、`npm run lint` 和 `npm run package:store`。打包使用 Node.js，macOS/Linux 需要系统 `zip` 工具，Windows 使用 PowerShell。发布 ZIP 只包含清单引用的运行脚本和图标，不包含 source map、未使用的历史脚本、个人数据或开发笔记。生成文件保存在 `release/`，不提交到源码仓库。
 
 ## 当前版本
+
+### v3.0.0
+
+- 新增可选的 **Google Drive 同步**（基于私密隐藏目录 `appDataFolder`），支持在 Chrome、Edge、Brave、Aside、Arc 等多设备与跨浏览器之间同步 Projects、已归属聊天与 Prompt Library；默认纯本地运行，按需开启。
+- 将 Google Drive 控制项（连接、立即同步、重连、断开）、点击展开的行内 `?` 说明与本地 Backup / Restore 统一收敛至 Projects 标题栏 `⋮` 菜单。
+- 加固多端同步可靠性：支持实体级冲突合并与 30 天删除墓碑、内置默认提示词固定 ID 与历史重复项自动去重、多账号静默续签与账号绑定校验、本地冷启动非阻塞读取、请求超时/瞬时重试与离线退避自愈。
+- 优化本地恢复（Restore）：原子写入本地状态与删除墓碑，并在已连接 Google Drive 时联动同步至其他设备。
+- 修复从 **Move to Project** 子菜单移入聊天后，Gemini 原生菜单短暂残留在页面上的问题。
 
 ### v2.0.11
 

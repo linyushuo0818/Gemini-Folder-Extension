@@ -1,13 +1,14 @@
 {
   "name": "gemini-project-extension",
   "private": true,
-  "version": "2.0.11",
+  "version": "3.0.0",
   "type": "module",
   "scripts": {
     "build": "node ./scripts/build.mjs",
     "lint": "tsc -p tsconfig.json --noEmit",
     "test": "node ./scripts/test.mjs",
-    "package:store": "node ./scripts/package-store.mjs"
+    "package:store": "node ./scripts/package-store.mjs",
+    "package:github": "node ./scripts/package-store.mjs --github"
   },
   "devDependencies": {
     "@types/chrome": "^0.0.262",

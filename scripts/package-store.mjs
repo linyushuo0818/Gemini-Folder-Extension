@@ -10,14 +10,25 @@ function run(command, args, cwd = root) {
   if (result.status !== 0) throw new Error(`${command} exited with status ${result.status}`);
 }
 
+const isGithubUnpacked = process.argv.includes('--github');
 run(process.execPath, [resolve(root, 'scripts/build.mjs')]);
 const dist = resolve(root, 'dist');
 const manifest = JSON.parse(await readFile(resolve(dist, 'manifest.json'), 'utf8'));
 if (!/^\d+(?:\.\d+){0,3}$/.test(manifest.version)) throw new Error('Invalid extension version');
 const stamp = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d+Z$/, 'Z');
-const output = resolve(root, `release/store-upload-${manifest.version}-${stamp}`);
+const output = resolve(
+  root,
+  isGithubUnpacked
+    ? `release/github-release-${manifest.version}-${stamp}`
+    : `release/store-upload-${manifest.version}-${stamp}`
+);
 const unpacked = resolve(output, 'unpacked');
-const archive = resolve(output, `gemini-projects-${manifest.version}-webstore-${stamp}.zip`);
+const archive = resolve(
+  output,
+  isGithubUnpacked
+    ? `gemini-projects-${manifest.version}-github-${stamp}.zip`
+    : `gemini-projects-${manifest.version}-webstore-${stamp}.zip`
+);
 
 // 仅打包清单实际引用的资源，排除 source map、历史脚本和开发文档。
 const files = new Set(['manifest.json']);
@@ -43,9 +54,13 @@ for (const file of files) {
     const text = await readFile(source, 'utf8');
     await writeFile(target, text.replace(/^\/\/# sourceMappingURL=.*(?:\r?\n|$)/gm, ''));
   } else if (file === 'manifest.json') {
-    // 商店上传包不能携带开发用固定公钥 key。
-    const { key: _devKey, ...storeManifest } = manifest;
-    await writeFile(target, `${JSON.stringify(storeManifest, null, 4)}\n`);
+    // 商店上传包不能携带公钥 key；GitHub 手动加载包保留固定公钥以保证 OAuth 重定向 ID 一致。
+    if (isGithubUnpacked) {
+      await writeFile(target, `${JSON.stringify(manifest, null, 4)}\n`);
+    } else {
+      const { key: _devKey, ...storeManifest } = manifest;
+      await writeFile(target, `${JSON.stringify(storeManifest, null, 4)}\n`);
+    }
   } else {
     await copyFile(source, target);
   }
