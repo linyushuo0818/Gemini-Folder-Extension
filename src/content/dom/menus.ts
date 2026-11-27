@@ -479,14 +479,19 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
   item.setAttribute('role', 'menuitem');
   item.setAttribute(MENU_ITEM_ATTR, 'move-to-project');
 
+  const nativeItemStyle = deleteItem ? getComputedStyle(deleteItem) : null;
+  const padLeft = nativeItemStyle?.paddingLeft && nativeItemStyle.paddingLeft !== '0px' ? nativeItemStyle.paddingLeft : '8px';
+  const padRight = nativeItemStyle?.paddingRight && nativeItemStyle.paddingRight !== '0px' ? nativeItemStyle.paddingRight : '8px';
+  const itemGap = nativeItemStyle?.gap && /^\d+(?:\.\d+)?px$/.test(nativeItemStyle.gap) ? nativeItemStyle.gap : '12px';
+
   item.style.display = 'flex';
   item.style.alignItems = 'center';
-  item.style.gap = '8px';
+  item.style.gap = itemGap;
   item.style.textAlign = 'start';
   item.style.setProperty('height', '36px', 'important');
   item.style.setProperty('min-height', '36px', 'important');
   item.style.setProperty('max-height', '36px', 'important');
-  item.style.setProperty('padding', '0 8px', 'important');
+  item.style.setProperty('padding', `0 ${padRight} 0 ${padLeft}`, 'important');
   item.style.setProperty('margin', '0', 'important');
   item.style.setProperty('box-sizing', 'border-box', 'important');
   item.style.setProperty('cursor', 'pointer', 'important');
@@ -732,11 +737,17 @@ function findChatRowFromTarget(target: HTMLElement): HTMLElement | null {
 }
 
 function findMenuListContainer(menuRoot: HTMLElement): { container: HTMLElement; deleteItem?: HTMLElement } {
-  const items = Array.from(menuRoot.querySelectorAll<HTMLElement>('[role="menuitem"], button, div'));
-  const deleteItem = items.find(
-    (item) =>
-      (item.textContent || '').toLowerCase().includes('delete') || (item.textContent || '').includes('删除')
-  );
+  // 优先只匹配真实交互菜单项，避免先命中包含所有子文本的外层包裹容器 div.mat-mdc-menu-content。
+  const actionItems = Array.from(menuRoot.querySelectorAll<HTMLElement>('[role="menuitem"], button'));
+  const isDeleteNode = (el: HTMLElement) => {
+    const text = (el.textContent || '').trim().toLowerCase();
+    return text.length > 0 && text.length <= 32 && DELETE_ACTION_TOKENS.some((token) => text.includes(token));
+  };
+  const deleteItem =
+    actionItems.find(isDeleteNode) ??
+    Array.from(menuRoot.querySelectorAll<HTMLElement>('div')).find(
+      (el) => !el.querySelector('[role="menuitem"], button') && isDeleteNode(el)
+    );
   if (deleteItem?.parentElement && menuRoot.contains(deleteItem.parentElement)) {
     return { container: deleteItem.parentElement, deleteItem };
   }
@@ -744,7 +755,7 @@ function findMenuListContainer(menuRoot: HTMLElement): { container: HTMLElement;
   if (innerMenu && innerMenu !== menuRoot && isMenuRootVisible(innerMenu)) {
     return { container: innerMenu };
   }
-  const firstItem = items.find((item) => {
+  const firstItem = actionItems.find((item) => {
     const text = (item.textContent || '').trim();
     if (!text || text.length > 48) return false;
     const rect = item.getBoundingClientRect();
