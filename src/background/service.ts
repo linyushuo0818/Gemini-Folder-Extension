@@ -226,6 +226,20 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
   }
 
   async function handleMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
+    // 已初始化后的纯本地只读请求不排队等待 Google Drive 网络同步，避免刷新页面或新开标签页时侧栏挂载被阻塞。
+    if (cloudSync.isInitialized()) {
+      if (message.type === 'getSyncStatus') {
+        return { ok: true, syncStatus: await cloudSync.getStatus() };
+      }
+      if (message.type === 'getState') {
+        return { ok: true, state: await loadLocalState() };
+      }
+      if (message.type === 'getPrompts') {
+        const existing = await loadLocalPromptsRaw();
+        if (existing) return { ok: true, prompts: existing };
+      }
+    }
+
     return runSerialized<BackgroundResponse>(async () => {
       switch (message.type) {
         case 'getSyncStatus': {

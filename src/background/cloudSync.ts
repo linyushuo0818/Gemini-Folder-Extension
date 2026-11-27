@@ -144,6 +144,10 @@ export class CloudSyncManager {
     await this.local.set({ [SYNC_LOCAL_META_KEY]: meta });
   }
 
+  public isInitialized(): boolean {
+    return this.initialized;
+  }
+
   public async getStatus(): Promise<CloudSyncStatus> {
     const meta = await this.ensureMetaLoaded();
     return { ...meta.status };

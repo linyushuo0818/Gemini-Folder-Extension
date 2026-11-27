@@ -1980,3 +1980,58 @@ test('16. Default seed prompts: deterministic IDs prevent multi-device duplicate
   deviceE.dispose();
   deviceF.dispose();
 });
+
+// 17. Warm read-only requests (getState, getSyncStatus, getPrompts) never block behind slow in-flight Drive HTTP syncs
+test('17. Warm local read requests do not block behind slow in-flight Google Drive pushes', async () => {
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+  const device = createDriveDevice(server, clock);
+
+  assert.equal((await device.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  assert.equal(
+    (
+      await device.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-fast-read', 'Fast Read Project', clock.tick(10)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+  assert.equal((await device.service.handleMessage({ type: 'getPrompts' })).ok, true);
+
+  // Simulate slow Drive network (150ms) during a moveChat push
+  server.failNextRequests.push({ delayMs: 150 });
+  const pendingMove = device.service.handleMessage({
+    type: 'moveChat',
+    conversationId: 'chat-fast-read',
+    projectId: 'p-fast-read',
+    metadata: {
+      conversationId: 'chat-fast-read',
+      title: 'Fast Read Chat',
+      lastUrl: 'https://gemini.google.com/app/chat-fast-read'
+    }
+  });
+
+  // Give moveChat a tick to commit local state and enter the slow Drive fetch
+  await new Promise((resolve) => setTimeout(resolve, 10));
+
+  const fastReads = await Promise.race([
+    Promise.all([
+      device.service.handleMessage({ type: 'getState' }),
+      device.service.handleMessage({ type: 'getSyncStatus' }),
+      device.service.handleMessage({ type: 'getPrompts' })
+    ]),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), 50))
+  ]);
+  assert.ok(fastReads !== null, 'getState/getSyncStatus/getPrompts must return immediately during slow Drive push');
+  assert.equal(fastReads[0].ok, true);
+  assert.equal(fastReads[0].state?.chatIndex['chat-fast-read']?.projectId, 'p-fast-read');
+  assert.equal(fastReads[1].ok, true);
+  assert.equal(fastReads[2].ok, true);
+  assert.ok(Object.keys(fastReads[2].prompts?.prompts ?? {}).length >= 1);
+
+  const moveResult = await pendingMove;
+  assert.equal(moveResult.ok, true);
+  device.dispose();
+});
