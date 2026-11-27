@@ -460,6 +460,120 @@ export function isGeminiChatMenu(root: HTMLElement): boolean {
   return summary.recognizedActionCount >= 2 && (summary.pin || summary.rename || summary.delete);
 }
 
+interface NativeMenuItemMetrics {
+  padStart: number;
+  padEnd: number;
+  iconBoxSize: number;
+  iconVisualSize: number;
+  gap: number;
+  height: number;
+  borderRadius: string;
+  fontFamily: string;
+  fontSize: string;
+  fontWeight: string;
+  lineHeight: string;
+  letterSpacing: string;
+  color: string;
+}
+
+function findNativeMenuLabelInfo(item: HTMLElement): { rect: DOMRect; style: CSSStyleDeclaration } | null {
+  const walker = document.createTreeWalker(item, NodeFilter.SHOW_TEXT);
+  let node: Node | null;
+  while ((node = walker.nextNode())) {
+    const parent = node.parentElement;
+    if (!parent || parent.closest('mat-icon, gem-icon, svg')) continue;
+    const raw = node.textContent || '';
+    const firstNonSpace = raw.search(/\S/);
+    if (firstNonSpace < 0) continue;
+    const end = raw.trimEnd().length;
+    const range = document.createRange();
+    range.setStart(node, firstNonSpace);
+    range.setEnd(node, end);
+    const rect = range.getBoundingClientRect();
+    if (rect.width > 0 && rect.height > 0) {
+      return { rect, style: getComputedStyle(parent) };
+    }
+  }
+  return null;
+}
+
+function measureNativeMenuItemMetrics(referenceItem?: HTMLElement): NativeMenuItemMetrics {
+  const defaults: NativeMenuItemMetrics = {
+    padStart: 8,
+    padEnd: 8,
+    iconBoxSize: 20,
+    iconVisualSize: 18,
+    gap: 8,
+    height: 36,
+    borderRadius: MENU_ITEM_RADIUS,
+    fontFamily: '"Google Sans Flex", "Google Sans", "Helvetica Neue", sans-serif',
+    fontSize: '13px',
+    fontWeight: '400',
+    lineHeight: '17px',
+    letterSpacing: 'normal',
+    color: 'inherit'
+  };
+  if (!referenceItem) return defaults;
+
+  const itemRect = referenceItem.getBoundingClientRect();
+  const itemStyle = getComputedStyle(referenceItem);
+  const isRtl = itemStyle.direction === 'rtl';
+
+  const cssPadStart = parseFloat(isRtl ? itemStyle.paddingRight : itemStyle.paddingLeft);
+  const cssPadEnd = parseFloat(isRtl ? itemStyle.paddingLeft : itemStyle.paddingRight);
+  let padStart = Number.isFinite(cssPadStart) && cssPadStart > 0 ? Math.round(cssPadStart) : defaults.padStart;
+  const padEnd = Number.isFinite(cssPadEnd) && cssPadEnd > 0 ? Math.round(cssPadEnd) : defaults.padEnd;
+
+  const nativeIcon = referenceItem.querySelector<HTMLElement>('mat-icon, gem-icon, svg');
+  const iconRect = nativeIcon?.getBoundingClientRect();
+  const hasIconRect = Boolean(iconRect && iconRect.width >= 12 && iconRect.width <= 32 && itemRect.width > 0);
+  const iconBoxSize = hasIconRect ? Math.round(iconRect!.width) : defaults.iconBoxSize;
+  if (hasIconRect) {
+    const measuredStart = Math.round(isRtl ? itemRect.right - iconRect!.right : iconRect!.left - itemRect.left);
+    if (measuredStart >= 0 && measuredStart <= 32) {
+      padStart = measuredStart;
+    }
+  }
+  // Material font icons (20px box) have ~2px optical inset around the glyph; scaling our 24px-viewBox SVG by -2px matches visual weight and left edge.
+  const iconVisualSize = Math.max(14, iconBoxSize - 2);
+
+  const labelInfo = findNativeMenuLabelInfo(referenceItem);
+  let gap = defaults.gap;
+  if (labelInfo && hasIconRect) {
+    const measuredGap = Math.round(
+      isRtl ? iconRect!.left - labelInfo.rect.right : labelInfo.rect.left - iconRect!.right
+    );
+    if (measuredGap >= 4 && measuredGap <= 28) {
+      gap = measuredGap;
+    }
+  } else if (labelInfo && itemRect.width > 0) {
+    const labelStart = Math.round(isRtl ? itemRect.right - labelInfo.rect.right : labelInfo.rect.left - itemRect.left);
+    const derivedGap = labelStart - padStart - iconBoxSize;
+    if (derivedGap >= 4 && derivedGap <= 28) {
+      gap = derivedGap;
+    }
+  }
+
+  const textStyle = labelInfo?.style ?? itemStyle;
+  const height = itemRect.height >= 28 && itemRect.height <= 56 ? Math.round(itemRect.height) : defaults.height;
+
+  return {
+    padStart,
+    padEnd,
+    iconBoxSize,
+    iconVisualSize,
+    gap,
+    height,
+    borderRadius: itemStyle.borderRadius && itemStyle.borderRadius !== '0px' ? itemStyle.borderRadius : defaults.borderRadius,
+    fontFamily: textStyle.fontFamily || defaults.fontFamily,
+    fontSize: textStyle.fontSize || defaults.fontSize,
+    fontWeight: textStyle.fontWeight || defaults.fontWeight,
+    lineHeight: textStyle.lineHeight && textStyle.lineHeight !== 'normal' ? textStyle.lineHeight : defaults.lineHeight,
+    letterSpacing: textStyle.letterSpacing || defaults.letterSpacing,
+    color: textStyle.color || defaults.color
+  };
+}
+
 function injectMoveToProject(menuRoot: HTMLElement, actions: {
   open: (item: HTMLElement, keyboard: boolean) => void;
   leave: () => void;
@@ -470,6 +584,8 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
     return null;
   }
 
+  const metrics = measureNativeMenuItemMetrics(deleteItem);
+
   const item = document.createElement('button');
   item.type = 'button';
   item.setAttribute('aria-haspopup', 'menu');
@@ -479,39 +595,38 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
   item.setAttribute('role', 'menuitem');
   item.setAttribute(MENU_ITEM_ATTR, 'move-to-project');
 
-  const nativeItemStyle = deleteItem ? getComputedStyle(deleteItem) : null;
-  const padLeft = nativeItemStyle?.paddingLeft && nativeItemStyle.paddingLeft !== '0px' ? nativeItemStyle.paddingLeft : '8px';
-  const padRight = nativeItemStyle?.paddingRight && nativeItemStyle.paddingRight !== '0px' ? nativeItemStyle.paddingRight : '8px';
-  const itemGap = nativeItemStyle?.gap && /^\d+(?:\.\d+)?px$/.test(nativeItemStyle.gap) ? nativeItemStyle.gap : '12px';
-
-  item.style.display = 'flex';
-  item.style.alignItems = 'center';
-  item.style.gap = itemGap;
+  item.style.setProperty('display', 'flex', 'important');
+  item.style.setProperty('align-items', 'center', 'important');
+  item.style.setProperty('gap', `${metrics.gap}px`, 'important');
   item.style.textAlign = 'start';
-  item.style.setProperty('height', '36px', 'important');
-  item.style.setProperty('min-height', '36px', 'important');
-  item.style.setProperty('max-height', '36px', 'important');
-  item.style.setProperty('padding', `0 ${padRight} 0 ${padLeft}`, 'important');
+  item.style.setProperty('height', `${metrics.height}px`, 'important');
+  item.style.setProperty('min-height', `${metrics.height}px`, 'important');
+  item.style.setProperty('max-height', `${metrics.height}px`, 'important');
+  item.style.setProperty('padding-top', '0', 'important');
+  item.style.setProperty('padding-bottom', '0', 'important');
+  item.style.setProperty('padding-inline-start', `${metrics.padStart}px`, 'important');
+  item.style.setProperty('padding-inline-end', `${metrics.padEnd}px`, 'important');
   item.style.setProperty('margin', '0', 'important');
   item.style.setProperty('box-sizing', 'border-box', 'important');
   item.style.setProperty('cursor', 'pointer', 'important');
-  item.style.setProperty('border-radius', MENU_ITEM_RADIUS, 'important');
+  item.style.setProperty('border-radius', metrics.borderRadius, 'important');
   item.style.setProperty('background', 'transparent', 'important');
-  item.style.setProperty('color', 'inherit', 'important');
+  item.style.setProperty('color', metrics.color, 'important');
   item.style.setProperty('border', 'none', 'important');
-  item.style.setProperty('font-family', '"Google Sans Flex", "Google Sans Text", "Google Sans", sans-serif', 'important');
-  item.style.setProperty('font-size', '14px', 'important');
-  item.style.setProperty('font-weight', '500', 'important');
-  item.style.setProperty('line-height', '20px', 'important');
+  item.style.setProperty('font-family', metrics.fontFamily, 'important');
+  item.style.setProperty('font-size', metrics.fontSize, 'important');
+  item.style.setProperty('font-weight', metrics.fontWeight, 'important');
+  item.style.setProperty('line-height', metrics.lineHeight, 'important');
+  item.style.setProperty('letter-spacing', metrics.letterSpacing, 'important');
 
   const icon = document.createElement('span');
-  icon.style.setProperty('width', '20px', 'important');
-  icon.style.setProperty('height', '20px', 'important');
-  icon.style.setProperty('flex', '0 0 20px', 'important');
+  icon.style.setProperty('width', `${metrics.iconBoxSize}px`, 'important');
+  icon.style.setProperty('height', `${metrics.iconBoxSize}px`, 'important');
+  icon.style.setProperty('flex', `0 0 ${metrics.iconBoxSize}px`, 'important');
   icon.style.display = 'inline-flex';
   icon.style.alignItems = 'center';
   icon.style.justifyContent = 'center';
-  icon.innerHTML = renderUiIcon('folderPlus', 20);
+  icon.innerHTML = renderUiIcon('folderPlus', metrics.iconVisualSize);
 
   const label = document.createElement('span');
   label.textContent = 'Move to Project';
@@ -522,11 +637,14 @@ function injectMoveToProject(menuRoot: HTMLElement, actions: {
   label.style.whiteSpace = 'nowrap';
 
   const arrow = document.createElement('span');
-  arrow.style.display = 'flex';
-  arrow.style.flex = '0 0 20px';
+  arrow.style.display = 'inline-flex';
+  arrow.style.flex = '0 0 16px';
+  arrow.style.width = '16px';
+  arrow.style.height = '16px';
   arrow.style.alignItems = 'center';
+  arrow.style.justifyContent = 'center';
   arrow.style.opacity = '0.6';
-  arrow.innerHTML = renderUiIcon('chevronRight', 20);
+  arrow.innerHTML = renderUiIcon('chevronRight', 16);
 
   item.appendChild(icon);
   item.appendChild(label);
