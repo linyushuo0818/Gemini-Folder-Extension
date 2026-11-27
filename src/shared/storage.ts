@@ -1,8 +1,10 @@
-import { ChatRef, DEFAULT_PROJECT_ICON_STYLE, Project, ProjectIcon, ProjectIconStyle, PROJECT_ICON_STYLES, StoredState } from './types';
+import { ChatRef, DEFAULT_PROJECT_ICON_STYLE, Project, ProjectIcon, ProjectIconStyle, PROJECT_ICONS, PROJECT_ICON_STYLES, StoredState } from './types';
 import { storageLocalGet, storageLocalSet } from './webext';
 
 export const STORAGE_KEY = 'gemini_projects_v1';
 export const CURRENT_SCHEMA_VERSION = 1;
+
+const PROJECT_ICON_SET = new Set<string>(PROJECT_ICONS);
 
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
@@ -14,6 +16,10 @@ export function isSafeId(value: unknown): value is string {
 
 export function isProjectColor(value: unknown): value is string {
   return typeof value === 'string' && /^#(?:[a-f0-9]{3,4}|[a-f0-9]{6}|[a-f0-9]{8})$/i.test(value);
+}
+
+export function isProjectIcon(value: unknown): value is ProjectIcon {
+  return typeof value === 'string' && PROJECT_ICON_SET.has(value);
 }
 
 export function isProjectIconStyle(value: unknown): value is ProjectIconStyle {
@@ -60,7 +66,12 @@ function normalizeStoredTitle(title: string): { title: string; isPinned: boolean
   };
 }
 
-function sanitizeProject(raw: unknown, fallbackIndex: number, fallbackIconStyle: ProjectIconStyle, strict: boolean): Project | null {
+export function sanitizeProject(
+  raw: unknown,
+  fallbackIndex: number,
+  fallbackIconStyle: ProjectIconStyle,
+  strict: boolean
+): Project | null {
   if (!isRecord(raw)) return null;
   const candidate = raw as Partial<Project>;
   if (!isSafeId(candidate.id)) return null;
@@ -73,7 +84,7 @@ function sanitizeProject(raw: unknown, fallbackIndex: number, fallbackIconStyle:
   return {
     id: candidate.id,
     name: candidate.name.trim(),
-    icon: (typeof candidate.icon === 'string' && candidate.icon ? candidate.icon : 'default') as ProjectIcon,
+    icon: isProjectIcon(candidate.icon) ? candidate.icon : 'default',
     iconStyle: validIconStyle ? iconStyle : fallbackIconStyle,
     color: isProjectColor(candidate.color) ? candidate.color : undefined,
     useIconPalette: candidate.useIconPalette === true || undefined,

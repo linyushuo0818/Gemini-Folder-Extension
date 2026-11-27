@@ -1,6 +1,7 @@
 import { BackgroundRequest, BackgroundResponse, NativeChatMetadata, Project, RuntimeState, StoredState } from '../shared/types';
 import { createEmptyState, isSafeId, normalizeChatUrl, STORAGE_KEY } from '../shared/storage';
-import { runtimeSendMessage, webext } from '../shared/webext';
+import { CloudSyncStatus, createDefaultSyncStatus, SYNC_LOCAL_META_KEY, SyncLocalMeta } from '../shared/sync';
+import { hasStorageSync, runtimeSendMessage, webext } from '../shared/webext';
 import {
   findChatRowElement,
   findChatsListContainer,
@@ -57,6 +58,7 @@ let stateLoading = false;
 let scanPending = false;
 let unassignZone: HTMLElement | null = null;
 let nativeDragSource: HTMLElement | null = null;
+let syncStatus: CloudSyncStatus = createDefaultSyncStatus(hasStorageSync(), true);
 
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
   return runtimeSendMessage<BackgroundResponse>(message);
@@ -75,17 +77,29 @@ async function bootstrap() {
   runStage('prompts', () => prompts.bootstrap());
 }
 
+function updateSyncStatus(next: CloudSyncStatus | undefined) {
+  if (!next) return;
+  syncStatus = next;
+  panel?.setSyncStatus(syncStatus);
+}
+
 async function loadInitialState() {
   if (stateReady || stateLoading) return;
   stateLoading = true;
   try {
-    const response = await withTimeout(sendMessage({ type: 'getState' }), 1800);
-    if (!response.ok) throw new Error(response.error);
-    if (stateReady || !response.state) return;
+    const [stateResponse, syncResponse] = await Promise.all([
+      withTimeout(sendMessage({ type: 'getState' }), 1800),
+      withTimeout(sendMessage({ type: 'getSyncStatus' }), 1800).catch(() => null)
+    ]);
+    if (syncResponse?.syncStatus) {
+      updateSyncStatus(syncResponse.syncStatus);
+    }
+    if (!stateResponse.ok) throw new Error(stateResponse.error);
+    if (stateReady || !stateResponse.state) return;
     stateReady = true;
-    state.projects = response.state.projects;
-    state.chatIndex = new Map(Object.entries(response.state.chatIndex));
-    state.uiPrefs = response.state.uiPrefs;
+    state.projects = stateResponse.state.projects;
+    state.chatIndex = new Map(Object.entries(stateResponse.state.chatIndex));
+    state.uiPrefs = stateResponse.state.uiPrefs;
   } catch (error) {
     console.warn('[gemini-projects] getState failed', error);
   } finally {
@@ -93,13 +107,18 @@ async function loadInitialState() {
   }
 }
 
-// 监听 storage 变更，保证多标签页和备份恢复后状态实时同步。
+// 监听 storage 变更，保证多标签页、云同步与备份恢复后状态实时同步。
 function installStorageSync() {
   webext.storage?.onChanged?.addListener((
     changes: Record<string, chrome.storage.StorageChange>,
     area: string
   ) => {
-    if (area !== 'local' || !changes[STORAGE_KEY]) return;
+    if (area !== 'local') return;
+    if (changes[SYNC_LOCAL_META_KEY]) {
+      const meta = changes[SYNC_LOCAL_META_KEY].newValue as SyncLocalMeta | undefined;
+      if (meta?.status) updateSyncStatus(meta.status);
+    }
+    if (!changes[STORAGE_KEY]) return;
     const next = changes[STORAGE_KEY].newValue as StoredState | undefined;
     if (!next) return;
     stateReady = true;
@@ -222,6 +241,9 @@ function ensurePanel() {
     panel = createProjectsPanel({
       shadow,
       overlayShadow,
+      getSyncStatus: () => syncStatus,
+      onToggleSync: handleToggleSync,
+      onSyncNow: handleSyncNow,
       onSaveProject: handleSaveProject,
       onToggleProjectPin: handleToggleProjectPin,
       onToggleProjectExpand: handleToggleProjectExpand,
@@ -230,6 +252,7 @@ function ensurePanel() {
       onRemoveChatFromProject: (conversationId) => handleMoveChat(conversationId, null),
       onMoveChatToProject: handleMoveChat
     });
+    panel.setSyncStatus(syncStatus);
     panelHost = host;
     // Gemini 在 Chat 与 Spark 间切换时会替换内部滚动区但保留外层 bard-sidenav，
     // 新挂载的宿主必须强制渲染首帧。
@@ -382,6 +405,20 @@ function getSafeNativeChatRow(
     ? collectNativeChatLinks(row.parentElement).length
     : Number.POSITIVE_INFINITY;
   return parentConversationCount > 1 ? row : null;
+}
+
+async function handleToggleSync(enabled: boolean): Promise<CloudSyncStatus> {
+  const response = await sendMessage({ type: 'setSyncEnabled', enabled });
+  if (response.syncStatus) updateSyncStatus(response.syncStatus);
+  if (!response.ok) throw new Error(response.error);
+  return response.syncStatus ?? syncStatus;
+}
+
+async function handleSyncNow(): Promise<CloudSyncStatus> {
+  const response = await sendMessage({ type: 'syncNow' });
+  if (response.syncStatus) updateSyncStatus(response.syncStatus);
+  if (!response.ok) throw new Error(response.error);
+  return response.syncStatus ?? syncStatus;
 }
 
 async function handleSaveProject(project: Project, editing: boolean) {

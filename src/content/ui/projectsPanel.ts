@@ -1,6 +1,7 @@
 import { ChatRef, DEFAULT_PROJECT_ICON_STYLE, Project, ProjectIcon, ProjectIconStyle, PROJECT_ICON_STYLES, RuntimeState } from '../../shared/types';
 import { exportAllData, triggerImport } from '../../shared/backup';
 import { isProjectIconStyle } from '../../shared/storage';
+import { CloudSyncStatus, createDefaultSyncStatus } from '../../shared/sync';
 import {
   ADAPTIVE_PROJECT_COLOR, COLOR_OPTIONS, ICON_OPTIONS, MULTICOLOR_ICON_PALETTE,
   getIconLabel, getPaletteIconColor, renderIconSvg, resolveProjectIconColor
@@ -18,6 +19,9 @@ import { clearActiveDraggedChat, getActiveDraggedChat, setActiveDraggedChat } fr
 interface ProjectsPanelOptions {
   shadow: ShadowRoot;
   overlayShadow: ShadowRoot;
+  getSyncStatus: () => CloudSyncStatus;
+  onToggleSync: (enabled: boolean) => Promise<CloudSyncStatus>;
+  onSyncNow: () => Promise<CloudSyncStatus>;
   onSaveProject: (project: Project, editing: boolean) => Promise<void>;
   onToggleProjectPin: (projectId: string, isPinned: boolean) => Promise<void>;
   onToggleProjectExpand: (projectId: string) => void;
@@ -50,12 +54,14 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
   const overlayLayer = ensureOverlayLayer(options.overlayShadow);
   const modal = createModal(overlayLayer, lifecycleController.signal);
   const projectMenu = createProjectMenu(overlayLayer, lifecycleController.signal);
+  const sectionMenu = createSectionMenu(overlayLayer, lifecycleController.signal);
   const toast = createToast(overlayLayer);
 
   const stopThemeObserver = attachThemeObserver(panelRoot, overlayLayer);
 
   // 用于存储当前 state 以供 chatMenu 获取项目列表
   let currentState: RuntimeState | null = null;
+  let currentSyncStatus: CloudSyncStatus = options.getSyncStatus?.() ?? createDefaultSyncStatus();
   const chatMenu = createChatMenu(overlayLayer, () => currentState?.projects || [], lifecycleController.signal);
   let panelEventsController: AbortController | null = null;
 
@@ -115,9 +121,10 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     }
     // 仅折叠状态变化时保留节点，避免打断过渡或丢失键盘焦点。
     if (signature !== structureSignature) {
-      panelRoot.innerHTML = buildPanelMarkup(state);
+      panelRoot.innerHTML = buildPanelMarkup(state, currentSyncStatus);
       structureSignature = signature;
     }
+    syncHeaderIndicator();
     setPanelCollapsed(state.uiPrefs.projectsCollapsed);
     panelRoot.querySelectorAll<HTMLElement>('.gp-project').forEach((project) => {
       const expanded = state.expandedProjectIds.has(project.dataset.gpProjectId!);
@@ -150,11 +157,28 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
       const target = event.target as HTMLElement | null;
       if (!target) return;
 
+      const sectionMenuButton = target.closest<HTMLButtonElement>('[data-gp-action="section-menu"]');
+      if (sectionMenuButton) {
+        event.preventDefault();
+        event.stopPropagation();
+        event.stopImmediatePropagation();
+        projectMenu.close();
+        chatMenu.close();
+        if (sectionMenu.isOpen()) {
+          sectionMenu.close(true);
+        } else {
+          openSectionMenu(sectionMenuButton);
+        }
+        return;
+      }
+
       const chatMenuButton = target.closest<HTMLButtonElement>('[data-gp-action="chat-menu"]');
       if (chatMenuButton) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
+        sectionMenu.close();
+        projectMenu.close();
         const chatRow = chatMenuButton.closest<HTMLElement>('[data-gp-chat-id]');
         if (!chatRow) return;
         const chatId = chatRow.dataset.gpChatId as string;
@@ -194,6 +218,8 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         event.preventDefault();
         event.stopPropagation();
         event.stopImmediatePropagation();
+        sectionMenu.close();
+        chatMenu.close();
         const projectRow = projectMenuButton.closest<HTMLElement>('[data-gp-project-id]');
         const projectId = projectRow?.dataset.gpProjectId;
         const project = state.projects.find((item) => item.id === projectId);
@@ -550,9 +576,70 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
     triggerImport((result) => showToast(result.message));
   }
 
+  function syncHeaderIndicator() {
+    const button = panelRoot.querySelector<HTMLButtonElement>('[data-gp-action="section-menu"]');
+    if (!button) return;
+    const warning = getSyncWarningTitle(currentSyncStatus);
+    button.classList.toggle('has-alert', warning !== null);
+    if (warning) button.title = warning;
+    else button.removeAttribute('title');
+    const dot = button.querySelector<HTMLElement>('.gp-sync-dot');
+    dot?.classList.toggle('visible', warning !== null);
+  }
+
+  function setSyncStatus(status: CloudSyncStatus) {
+    currentSyncStatus = status;
+    syncHeaderIndicator();
+    sectionMenu.update(currentSyncStatus);
+  }
+
+  function openSectionMenu(anchor: HTMLButtonElement) {
+    sectionMenu.open(anchor, currentSyncStatus, {
+      onReturnFocus: () => {
+        panelRoot.querySelector<HTMLElement>('[data-gp-action="section-menu"]')?.focus({ preventScroll: true });
+      },
+      onToggleSync: async (enabled) => {
+        const next = await options.onToggleSync(enabled);
+        setSyncStatus(next);
+        if (!enabled) {
+          showToast('Chrome Sync paused');
+        } else if (next.state === 'partial') {
+          showToast('Chrome Sync enabled (storage limit reached)');
+        } else if (next.state === 'quota_exceeded') {
+          showToast('Chrome Sync storage is full');
+        } else {
+          showToast('Chrome Sync enabled');
+        }
+      },
+      onSyncNow: async () => {
+        const next = await options.onSyncNow();
+        setSyncStatus(next);
+        if (next.state === 'partial') {
+          showToast('Synced partially (storage limit reached)');
+        } else if (next.state === 'quota_exceeded') {
+          showToast('Chrome Sync storage is full');
+        } else {
+          showToast('Synced with Chrome');
+        }
+      },
+      onSyncError: (error) => {
+        console.warn('[Gemini Projects] Chrome Sync failed', error);
+        const message = error instanceof Error && error.message
+          ? error.message
+          : 'Chrome Sync failed. Please try again.';
+        showToast(message);
+      },
+      onBackup: () => {
+        void handleBackupClick();
+      },
+      onRestore: () => handleRestoreClick()
+    });
+  }
+
   function closeAllOverlays() {
     modal.close();
     projectMenu.close();
+    sectionMenu.close();
     chatMenu.close();
     toast.hide();
   }
@@ -569,6 +656,7 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
 
   return {
     render,
+    setSyncStatus,
     closeAllOverlays,
     showToast,
     clearDragFeedback,
@@ -704,15 +792,24 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         pointer-events: auto;
       }
 
+      .gp-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 4px;
+      }
+
       .gp-title {
+        flex: 1;
+        min-width: 0;
         display: flex;
         align-items: center;
         justify-content: flex-start;
         gap: 6px;
         margin: 0;
-        padding: 0 14px; 
+        padding: 0 8px 0 14px;
         height: 32px;
-        color: var(--gp-section); 
+        color: var(--gp-section);
         font-family: var(--gp-font);
         font-size: 13px;
         font-weight: 400;
@@ -721,6 +818,62 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
         user-select: none;
         border-radius: var(--gp-radius-pill);
         transition: background 0.1s ease;
+      }
+
+      .gp-header-menu {
+        position: relative;
+        width: 28px;
+        height: 28px;
+        margin-right: 2px;
+        border-radius: var(--gp-radius-circle);
+        border: none;
+        background: transparent;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--gp-section);
+        cursor: pointer;
+        opacity: 0.72;
+        transition: background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+        flex-shrink: 0;
+      }
+
+      .gp-header-menu svg {
+        width: 18px;
+        height: 18px;
+      }
+
+      .gp-header:hover .gp-header-menu,
+      .gp-header-menu:hover,
+      .gp-header-menu:focus-visible,
+      .gp-header-menu[aria-expanded="true"],
+      .gp-header-menu.has-alert {
+        opacity: 1;
+      }
+
+      .gp-header-menu:hover {
+        background: var(--gp-bg-hover);
+        color: var(--gp-fg);
+      }
+
+      .gp-sync-dot {
+        position: absolute;
+        top: 4px;
+        right: 4px;
+        width: 6px;
+        height: 6px;
+        border-radius: var(--gp-radius-circle);
+        background: #b5653f;
+        display: none;
+        pointer-events: none;
+      }
+
+      :host(.dark) .gp-sync-dot {
+        background: #e0a28b;
+      }
+
+      .gp-sync-dot.visible {
+        display: block;
       }
 
       .gp-title:hover {
@@ -781,7 +934,7 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
       }
       .gp-project-collapse.collapsed { grid-template-rows: 0fr; opacity: 0; }
       .gp-project-collapse > .gp-project-chats { min-height: 0; overflow: hidden; }
-      .gp-title:focus-visible, .gp-row:focus-visible,
+      .gp-title:focus-visible, .gp-header-menu:focus-visible, .gp-row:focus-visible,
       .gp-kebab:focus-visible, .gp-chat-kebab:focus-visible, .gp-chat-link:focus-visible {
         outline: 2px solid var(--gp-fg-muted); outline-offset: -2px;
       }
@@ -1099,16 +1252,48 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
   return root;
 }
 
-function buildPanelMarkup(state: RuntimeState): string {
+function getSyncWarningTitle(status: CloudSyncStatus): string | null {
+  if (status.state === 'partial') {
+    const omitted = (status.omittedChats ?? 0) + (status.omittedPrompts ?? 0);
+    return omitted > 0
+      ? `Chrome Sync storage limit reached (${omitted} items kept locally)`
+      : 'Chrome Sync storage limit reached';
+  }
+  if (status.state === 'quota_exceeded') {
+    return status.lastError || 'Chrome Sync storage is full';
+  }
+  if (status.state === 'error') {
+    return status.lastError || 'Chrome Sync error';
+  }
+  return null;
+}
+
+function formatSyncStatusLabel(status: CloudSyncStatus): string {
+  if (!status.available || status.state === 'unavailable') return 'Unavailable';
+  if (!status.enabled || status.state === 'disabled') return 'Off';
+  if (status.state === 'syncing') return 'Syncing…';
+  if (status.state === 'partial' || status.state === 'quota_exceeded') return 'Quota limit';
+  if (status.state === 'error') return 'Error';
+  return 'On';
+}
+
+function buildPanelMarkup(state: RuntimeState, syncStatus: CloudSyncStatus): string {
   const collapsed = state.uiPrefs.projectsCollapsed;
   const chevronSvg = renderUiIcon('chevronDown', 18);
+  const warningTitle = getSyncWarningTitle(syncStatus);
 
   return `
     <div class="gp-panel">
-      <!-- Header with Chevron -->
-      <div class="gp-title ${collapsed ? 'collapsed' : ''}" data-gp-action="toggle-section" tabindex="0" role="button" aria-expanded="${String(!collapsed)}">
-        <span>Projects</span>
-        <span class="gp-chevron">${chevronSvg}</span>
+      <!-- Header with Chevron and Section Options -->
+      <div class="gp-header">
+        <div class="gp-title ${collapsed ? 'collapsed' : ''}" data-gp-action="toggle-section" tabindex="0" role="button" aria-expanded="${String(!collapsed)}">
+          <span>Projects</span>
+          <span class="gp-chevron">${chevronSvg}</span>
+        </div>
+        <button class="gp-header-menu${warningTitle ? ' has-alert' : ''}" type="button" data-gp-action="section-menu" aria-label="Projects options" aria-haspopup="menu" aria-expanded="false"${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+          ${renderUiIcon('moreVertical', 18)}
+          <span class="gp-sync-dot${warningTitle ? ' visible' : ''}" aria-hidden="true"></span>
+        </button>
       </div>
 
       <!-- Collapsible Container -->
@@ -1597,6 +1782,77 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         cursor: wait;
         opacity: 0.6;
       }
+      .gp-section-menu {
+        min-width: 224px;
+        width: max-content;
+        max-width: calc(100vw - 16px);
+        box-sizing: border-box;
+        padding: var(--gp-menu-inset);
+        border-radius: var(--gp-radius-menu);
+      }
+      .gp-menu .gp-sync-toggle-item {
+        justify-content: space-between;
+        align-items: center;
+        gap: 14px;
+        padding: 7px 12px;
+        min-height: 44px;
+      }
+      .gp-sync-copy {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+        min-width: 0;
+      }
+      .gp-sync-title {
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 18px;
+        color: var(--gp-fg);
+      }
+      .gp-sync-meta {
+        font-size: 12px;
+        font-weight: 400;
+        line-height: 15px;
+        color: var(--gp-muted);
+      }
+      .gp-switch {
+        position: relative;
+        width: 34px;
+        height: 20px;
+        flex: 0 0 34px;
+        border-radius: var(--gp-radius-pill);
+        background: var(--gp-surface-selected);
+        border: 1px solid var(--gp-control-border);
+        transition: background-color var(--gp-transition), border-color var(--gp-transition);
+      }
+      .gp-switch.on {
+        background: var(--gp-accent);
+        border-color: var(--gp-accent);
+      }
+      .gp-switch-thumb {
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 14px;
+        height: 14px;
+        border-radius: var(--gp-radius-circle);
+        background: var(--gp-surface);
+        box-shadow: 0 1px 2px rgb(20 20 19 / .18);
+        transition: transform var(--gp-transition), background-color var(--gp-transition);
+      }
+      :host(.dark) .gp-switch-thumb,
+      :host([data-gp-theme="dark"]) .gp-switch-thumb {
+        background: var(--gp-fg-secondary);
+      }
+      .gp-switch.on .gp-switch-thumb {
+        transform: translateX(14px);
+        background: var(--gp-on-accent);
+      }
+      .gp-menu-divider {
+        height: 1px;
+        background: var(--gp-border);
+        margin: 5px 10px;
+      }
 
       /* Chat menu item with icons */
       .gp-chat-menu {
@@ -1985,6 +2241,194 @@ function createProjectMenu(layer: HTMLElement, signal: AbortSignal) {
   window.addEventListener('resize', () => close(), { signal });
 
   return { open, close };
+}
+
+function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
+  const menu = document.createElement('div');
+  menu.className = 'gp-menu gp-section-menu';
+  menu.setAttribute('role', 'menu');
+  menu.setAttribute('aria-label', 'Projects options');
+  layer.appendChild(menu);
+
+  type SectionMenuCallbacks = {
+    onReturnFocus: () => void;
+    onToggleSync: (enabled: boolean) => Promise<void>;
+    onSyncNow: () => Promise<void>;
+    onSyncError: (error: unknown) => void;
+    onBackup: () => void;
+    onRestore: () => void;
+  };
+
+  let callbacks: SectionMenuCallbacks | null = null;
+  let opener: HTMLElement | null = null;
+  let status: CloudSyncStatus = createDefaultSyncStatus();
+  let busy = false;
+
+  function isOpen(): boolean {
+    return menu.dataset.gpMotionState === 'open';
+  }
+
+  function renderItems(preserveFocusAction?: string | null) {
+    const checked = status.available && status.enabled;
+    const statusLabel = formatSyncStatusLabel(status);
+    const warningTitle = getSyncWarningTitle(status);
+    const showSyncNow = status.available && status.enabled;
+    const toggleDisabled = !status.available || busy;
+    const syncNowDisabled = busy || status.state === 'syncing';
+
+    menu.innerHTML = `
+      <button type="button" role="menuitemcheckbox" aria-checked="${String(checked)}" class="gp-menu-item gp-sync-toggle-item" data-gp-section-action="toggle-sync"${toggleDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+        <span class="gp-sync-copy">
+          <span class="gp-sync-title">Chrome Sync</span>
+          <span class="gp-sync-meta">${escapeHtml(statusLabel)}</span>
+        </span>
+        <span class="gp-switch${checked ? ' on' : ''}" aria-hidden="true">
+          <span class="gp-switch-thumb"></span>
+        </span>
+      </button>
+      ${showSyncNow ? `
+        <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="sync-now"${syncNowDisabled ? ' disabled' : ''}>
+          ${renderUiIcon('rotateCcw', 18)}
+          <span>${status.state === 'syncing' ? 'Syncing…' : 'Sync now'}</span>
+        </button>
+      ` : ''}
+      <div class="gp-menu-divider" role="separator"></div>
+      <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="backup">
+        ${renderUiIcon('download', 18)}
+        <span>Backup</span>
+      </button>
+      <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="restore">
+        ${renderUiIcon('rotateCcw', 18)}
+        <span>Restore</span>
+      </button>
+    `;
+
+    if (preserveFocusAction) {
+      const target = menu.querySelector<HTMLButtonElement>(`[data-gp-section-action="${preserveFocusAction}"]:not(:disabled)`);
+      target?.focus({ preventScroll: true });
+    }
+  }
+
+  function positionMenu(anchorRect: DOMRect) {
+    const width = menu.offsetWidth;
+    const height = menu.offsetHeight;
+    const preferredLeft = anchorRect.right - width;
+    const left = Math.max(8, Math.min(preferredLeft, window.innerWidth - width - 8));
+    const preferredTop = anchorRect.bottom + 6;
+    const top = Math.max(8, Math.min(
+      preferredTop + height <= window.innerHeight - 8 ? preferredTop : anchorRect.top - height - 6,
+      window.innerHeight - height - 8
+    ));
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    setSurfaceOrigin(menu, anchorRect, left, top);
+  }
+
+  function open(anchor: HTMLButtonElement, nextStatus: CloudSyncStatus, nextCallbacks: SectionMenuCallbacks) {
+    callbacks = nextCallbacks;
+    opener = anchor;
+    status = nextStatus;
+    anchor.setAttribute('aria-expanded', 'true');
+    const anchorRect = anchor.getBoundingClientRect();
+    renderItems();
+    showSurface(menu, 'menu', 'block', () => positionMenu(anchorRect));
+    menu.querySelector<HTMLButtonElement>('button:not(:disabled)')?.focus({ preventScroll: true });
+  }
+
+  function update(nextStatus: CloudSyncStatus) {
+    status = nextStatus;
+    if (!isOpen()) return;
+    const active = (layer.getRootNode() as ShadowRoot).activeElement as HTMLElement | null;
+    const focusAction = active?.dataset?.gpSectionAction ?? null;
+    renderItems(focusAction);
+    if (opener?.isConnected) {
+      positionMenu(opener.getBoundingClientRect());
+    }
+  }
+
+  function close(restoreFocus = false) {
+    const currentOpener = opener;
+    const currentCallbacks = callbacks;
+    currentOpener?.setAttribute('aria-expanded', 'false');
+    hideSurface(menu);
+    callbacks = null;
+    opener = null;
+    if (restoreFocus) currentCallbacks?.onReturnFocus();
+  }
+
+  menu.addEventListener('click', async (event) => {
+    const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-gp-section-action]');
+    if (!target || !callbacks || target.disabled) return;
+    const action = target.dataset.gpSectionAction;
+
+    if (action === 'toggle-sync') {
+      if (busy || !status.available) return;
+      const activeCallbacks = callbacks;
+      const nextEnabled = !status.enabled;
+      busy = true;
+      renderItems('toggle-sync');
+      try {
+        await activeCallbacks.onToggleSync(nextEnabled);
+      } catch (error) {
+        activeCallbacks.onSyncError(error);
+      } finally {
+        busy = false;
+        if (isOpen()) renderItems('toggle-sync');
+      }
+      return;
+    }
+
+    if (action === 'sync-now') {
+      if (busy || !status.available || !status.enabled) return;
+      const activeCallbacks = callbacks;
+      busy = true;
+      renderItems('sync-now');
+      try {
+        await activeCallbacks.onSyncNow();
+        close(true);
+      } catch (error) {
+        activeCallbacks.onSyncError(error);
+      } finally {
+        busy = false;
+        if (isOpen()) renderItems('sync-now');
+      }
+      return;
+    }
+
+    if (action === 'backup') {
+      const cb = callbacks.onBackup;
+      close(true);
+      cb();
+      return;
+    }
+
+    if (action === 'restore') {
+      const cb = callbacks.onRestore;
+      close(true);
+      cb();
+    }
+  });
+
+  menu.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      event.stopPropagation();
+      close(true);
+    } else if (event.key === 'Tab') {
+      close(true);
+    } else if (!busy) {
+      moveMenuFocus(menu, event);
+    }
+  });
+
+  document.addEventListener('click', (event) => {
+    if (!isOpen()) return;
+    const path = event.composedPath();
+    if (!path.includes(menu) && !path.includes(opener!)) close();
+  }, { signal, capture: true });
+  window.addEventListener('resize', () => { if (isOpen()) close(); }, { signal });
+
+  return { open, update, close, isOpen };
 }
 
 // 聊天项右键菜单 (Chat row context menu)

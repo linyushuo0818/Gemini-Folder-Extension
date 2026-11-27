@@ -1,36 +1,40 @@
 import type { Prompt, PromptsData } from './prompts';
+import type { CloudSyncStatus } from './sync';
 
-export type ProjectIcon =
-  | 'investing'
-  | 'homework'
-  | 'writing'
-  | 'travel'
-  | 'health'
-  | 'coding'
-  | 'research'
-  | 'default'
-  | 'phone'
-  | 'pen'
-  | 'terminal'
-  | 'music'
-  | 'popcorn'
-  | 'palette'
-  | 'flower'
-  | 'lotus'
-  | 'briefcase'
-  | 'chart'
-  | 'apple'
-  | 'dumbbell'
-  | 'notebook'
-  | 'scale'
-  | 'globe'
-  | 'airplane'
-  | 'world'
-  | 'paw'
-  | 'people'
-  | 'beaker'
-  | 'clover'
-  | 'heart';
+export const PROJECT_ICONS = [
+  'investing',
+  'homework',
+  'writing',
+  'travel',
+  'health',
+  'coding',
+  'research',
+  'default',
+  'phone',
+  'pen',
+  'terminal',
+  'music',
+  'popcorn',
+  'palette',
+  'flower',
+  'lotus',
+  'briefcase',
+  'chart',
+  'apple',
+  'dumbbell',
+  'notebook',
+  'scale',
+  'globe',
+  'airplane',
+  'world',
+  'paw',
+  'people',
+  'beaker',
+  'clover',
+  'heart'
+] as const;
+
+export type ProjectIcon = typeof PROJECT_ICONS[number];
 
 export interface Project {
   id: string;
@@ -99,8 +103,11 @@ export type BackgroundRequest =
   | { type: 'getPrompts' }
   | { type: 'savePrompt'; prompt: Pick<Prompt, 'title' | 'content'> & { id?: string } }
   | { type: 'deletePrompt' | 'trackPromptUsage'; id: string }
-  | { type: 'restoreBackup'; data: unknown };
+  | { type: 'restoreBackup'; data: unknown }
+  | { type: 'getSyncStatus' }
+  | { type: 'setSyncEnabled'; enabled: boolean }
+  | { type: 'syncNow' };
 
 export type BackgroundResponse =
-  | { ok: true; state?: StoredState; prompts?: PromptsData }
-  | { ok: false; error: string };
+  | { ok: true; state?: StoredState; prompts?: PromptsData; syncStatus?: CloudSyncStatus }
+  | { ok: false; error: string; syncStatus?: CloudSyncStatus };

@@ -54,6 +54,30 @@ export function createSeedData(): PromptsData {
   return { prompts, version: 1 };
 }
 
+export function sanitizePrompt(
+  raw: unknown,
+  fallbackId?: string,
+  strict = false
+): Prompt | null {
+  if (!isRecord(raw)) return null;
+  const entry = raw as Record<string, unknown>;
+  const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : (fallbackId ?? '');
+  const title = typeof entry.title === 'string' ? entry.title : '';
+  const content = typeof entry.content === 'string' ? entry.content : '';
+  if (!isSafeId(id) || (strict && (!title.trim() || !content.trim()))) return null;
+
+  const now = Date.now();
+  return {
+    id,
+    title: title || 'Untitled',
+    content,
+    createdAt: typeof entry.createdAt === 'number' && Number.isFinite(entry.createdAt) ? entry.createdAt : now,
+    updatedAt: typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt) ? entry.updatedAt : now,
+    usageCount: typeof entry.usageCount === 'number' && Number.isFinite(entry.usageCount) ? entry.usageCount : 0,
+    lastUsedAt: typeof entry.lastUsedAt === 'number' && Number.isFinite(entry.lastUsedAt) ? entry.lastUsedAt : 0
+  };
+}
+
 // 兼容旧版数据结构，平滑忽略已下线的 tags / tagMeta / isFavorite 字段。
 export function normalizePromptsData(raw: unknown, strict = false): PromptsData | null {
   if (!isRecord(raw)) return null;
@@ -61,29 +85,13 @@ export function normalizePromptsData(raw: unknown, strict = false): PromptsData 
   if (!isRecord(candidate.prompts) || (candidate.version !== undefined && candidate.version !== 1)) return null;
 
   const prompts: Record<string, Prompt> = {};
-  const now = Date.now();
   for (const [key, item] of Object.entries(candidate.prompts as Record<string, unknown>)) {
-    if (!isRecord(item)) {
+    const prompt = sanitizePrompt(item, key, strict);
+    if (!prompt || Object.hasOwn(prompts, prompt.id)) {
       if (strict) return null;
       continue;
     }
-    const entry = item as Record<string, unknown>;
-    const id = typeof entry.id === 'string' && entry.id.trim() ? entry.id.trim() : key;
-    const title = typeof entry.title === 'string' ? entry.title : '';
-    const content = typeof entry.content === 'string' ? entry.content : '';
-    if (!isSafeId(id) || Object.hasOwn(prompts, id) || (strict && (!title.trim() || !content.trim()))) {
-      if (strict) return null;
-      continue;
-    }
-    prompts[id] = {
-      id,
-      title: title || 'Untitled',
-      content,
-      createdAt: typeof entry.createdAt === 'number' && Number.isFinite(entry.createdAt) ? entry.createdAt : now,
-      updatedAt: typeof entry.updatedAt === 'number' && Number.isFinite(entry.updatedAt) ? entry.updatedAt : now,
-      usageCount: typeof entry.usageCount === 'number' && Number.isFinite(entry.usageCount) ? entry.usageCount : 0,
-      lastUsedAt: typeof entry.lastUsedAt === 'number' && Number.isFinite(entry.lastUsedAt) ? entry.lastUsedAt : 0
-    };
+    prompts[prompt.id] = prompt;
   }
 
   return {

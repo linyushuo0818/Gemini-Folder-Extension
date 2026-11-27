@@ -12,22 +12,27 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 
 ## 主要功能
 
-- 在 Gemini 侧边栏创建本地 Projects
-- 把已有聊天移动到 Project 中
+- 在 Gemini 侧边栏创建项目文件夹（Projects）
+- 把已有聊天移动到 Project 中（支持菜单与拖拽整理）
 - 从 Project 中移除聊天，但不删除原始 Gemini 聊天
 - 当某个 Project 聊天已在手机或其他设备上从 Gemini 历史记录中删除时，会显示缺失状态
 - 为 Project 选择图标，使用多彩配色或预设色
 - 为每个项目单独选择线条（Outline）、实心（Solid）或双色（Duotone）图标
 - 在紧凑的 Project 菜单中置顶、编辑或删除项目；置顶项目刷新后仍排在前面，取消置顶后恢复原来的排序位置
-- 备份和恢复本地 Projects 与提示词数据
+- 支持通过 Chrome 内置同步（Chrome Sync）在已登录同一账号的 Chrome 浏览器间同步 Projects、已归属聊天与 Prompt Library（默认开启，可随时在 Projects 标题栏菜单中开关）
+- 备份和恢复本地 Projects 与提示词 JSON 文件
 - 保存、搜索、编辑和复用常用提示词
-- 数据保存在浏览器本地存储中
+- 本地优先存储：所有数据始终优先保存在浏览器本地
 
-## 下载
+## 安装
+
+### Chrome 应用商店（推荐）
+
+直接前往 [Chrome Web Store](https://chromewebstore.google.com/detail/projects-for-gemini-proje/okjjhdoncledadkchbbbcddpopbbgbic) 一键安装。
+
+### 手动安装（GitHub Releases）
 
 已发布的最新版 ZIP 可在 [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases/latest) 下载。如需安装当前源码版本，请按下文步骤构建 ZIP。
-
-## 手动安装
 
 1. 从 Releases 下载 zip 文件。
 2. 解压到本地文件夹。
@@ -40,10 +45,11 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 
 ## 隐私
 
-- Projects 和提示词使用 Chrome 扩展本地存储保存。
-- 扩展不需要额外账号或后端服务。
-- 扩展不会主动上传你的 Projects、提示词或聊天整理数据。
-- Gemini 本身仍运行在 Google 网站中，Gemini 账号和服务行为以 Google 的政策为准。
+- Projects 和提示词始终优先保存在浏览器本地扩展存储（`chrome.storage.local`）中。
+- 内置的 Chrome Sync 仅复用现有 `storage` 权限，通过 Chrome 自带的 `chrome.storage.sync` 在同一 Chrome 账号下同步项目、已归属聊天和提示词库；你可随时在 Projects 标题栏菜单中关闭同步，关闭不会删除本地数据。
+- 未归属的普通聊天记录、侧边栏折叠状态与提示词使用统计仅保留在当前设备本地，不会同步。
+- 扩展不需要额外账号，也不连接任何第三方后端服务，完全在浏览器内运行。
+- Chrome 同步服务与 Gemini 网站上的账号行为均以 Google 的相关政策为准。
 
 ## 构建与打包
 

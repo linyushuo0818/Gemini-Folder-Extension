@@ -6,6 +6,7 @@
   "scripts": {
     "build": "node ./scripts/build.mjs",
     "lint": "tsc -p tsconfig.json --noEmit",
+    "test": "node ./scripts/test.mjs",
     "package:store": "node ./scripts/package-store.mjs"
   },
   "devDependencies": {

@@ -7,8 +7,12 @@ const globalApi = globalThis as typeof globalThis & {
 
 export const webext = globalApi.chrome ?? globalApi.browser;
 
-if (!webext) {
-  throw new Error('WebExtension API is not available in this environment.');
+function requireWebext() {
+  const api = globalApi.chrome ?? globalApi.browser ?? webext;
+  if (!api) {
+    throw new Error('WebExtension API is not available in this environment.');
+  }
+  return api;
 }
 
 function invokeCompat<T>(fn: AnyFn, args: unknown[]): Promise<T> {
@@ -34,20 +38,53 @@ function invokeCompat<T>(fn: AnyFn, args: unknown[]): Promise<T> {
 }
 
 export function storageLocalGet<T = Record<string, unknown>>(
-  keys?: string | string[] | Record<string, unknown>
+  keys?: string | string[] | Record<string, unknown> | null
 ): Promise<T> {
-  return invokeCompat<T>(webext.storage.local.get.bind(webext.storage.local), [keys]);
+  const local = requireWebext().storage.local;
+  return invokeCompat<T>(local.get.bind(local), keys === undefined ? [] : [keys]);
 }
 
 export function storageLocalSet(items: Record<string, unknown>): Promise<void> {
-  return invokeCompat<void>(webext.storage.local.set.bind(webext.storage.local), [items]);
+  const local = requireWebext().storage.local;
+  return invokeCompat<void>(local.set.bind(local), [items]);
+}
+
+export function storageLocalRemove(keys: string | string[]): Promise<void> {
+  const local = requireWebext().storage.local;
+  return invokeCompat<void>(local.remove.bind(local), [keys]);
+}
+
+export function hasStorageSync(): boolean {
+  const api = globalApi.chrome ?? globalApi.browser ?? webext;
+  return Boolean(api?.storage?.sync);
+}
+
+export function storageSyncGet<T = Record<string, unknown>>(
+  keys?: string | string[] | Record<string, unknown> | null
+): Promise<T> {
+  const sync = requireWebext().storage?.sync;
+  if (!sync) throw new Error('Chrome Sync storage is not available.');
+  return invokeCompat<T>(sync.get.bind(sync), keys === undefined ? [] : [keys]);
+}
+
+export function storageSyncSet(items: Record<string, unknown>): Promise<void> {
+  const sync = requireWebext().storage?.sync;
+  if (!sync) throw new Error('Chrome Sync storage is not available.');
+  return invokeCompat<void>(sync.set.bind(sync), [items]);
+}
+
+export function storageSyncRemove(keys: string | string[]): Promise<void> {
+  const sync = requireWebext().storage?.sync;
+  if (!sync) throw new Error('Chrome Sync storage is not available.');
+  return invokeCompat<void>(sync.remove.bind(sync), [keys]);
 }
 
 export function runtimeSendMessage<TResponse = unknown>(message: unknown): Promise<TResponse> {
-  return invokeCompat<TResponse>(webext.runtime.sendMessage.bind(webext.runtime), [message]);
+  const runtime = requireWebext().runtime;
+  return invokeCompat<TResponse>(runtime.sendMessage.bind(runtime), [message]);
 }
 
 export function runtimeLastErrorMessage(): string | null {
-  const error = globalApi.chrome?.runtime?.lastError ?? webext.runtime?.lastError;
+  const error = globalApi.chrome?.runtime?.lastError ?? webext?.runtime?.lastError;
   return error?.message || null;
 }

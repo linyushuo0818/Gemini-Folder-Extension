@@ -12,22 +12,27 @@ The built-in Prompt Library lets you save prompts you use often, then search for
 
 ## Key Features
 
-- Create local projects in the Gemini sidebar
-- Move existing chats into projects
+- Create project folders in the Gemini sidebar
+- Move existing chats into projects (via menu or drag-and-drop)
 - Remove chats from a project while keeping them in Gemini
 - See when a project chat is missing because it was deleted from Gemini history on another device
 - Pick a project icon and choose a multicolor palette or a preset color
 - Set each project's icon style to Outline, Solid, or Duotone
 - Pin, edit, or delete projects from the project menu. Pinned projects stay at the top after a refresh. Unpin a project to return it to its original position.
-- Back up and restore projects and prompts
+- Sync projects, project chat assignments, and prompts across your signed-in Chrome browsers via Chrome Sync (enabled by default, toggleable anytime from the Projects header menu)
+- Back up and restore projects and prompts as a local JSON file
 - Save, search, edit, and reuse prompts in the Prompt Library
-- Keep project and prompt data in your browser's local storage
+- Local-first storage: all data is always saved in your browser's local storage first
 
-## Download
+## Install
 
-Download the latest available ZIP from [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases/latest). To install the current source version, build a ZIP using the steps below.
+### Chrome Web Store (Recommended)
 
-## Manual Installation
+Install directly from the [Chrome Web Store](https://chromewebstore.google.com/detail/projects-for-gemini-proje/okjjhdoncledadkchbbbcddpopbbgbic).
+
+### Manual Installation (GitHub Releases)
+
+Download the latest available ZIP from [GitHub Releases](https://github.com/linyushuo0818/Gemini-Folder-Extension/releases/latest), or build a ZIP from source using the steps below.
 
 1. Download the ZIP from GitHub Releases.
 2. Extract it to a local folder.
@@ -40,10 +45,11 @@ Gemini Projects is built for Chrome and other Chromium-based browsers.
 
 ## Privacy
 
-- Projects and prompts use Chrome's local extension storage.
-- The extension uses your existing Gemini session and runs entirely in your browser.
-- Your projects, prompts, and chat organization data stay on your device.
-- Google's policies govern your Gemini account and activity on the Gemini website.
+- Projects and prompts are always stored locally first in Chrome's extension storage (`chrome.storage.local`).
+- Optional Chrome Sync uses Chrome's built-in `chrome.storage.sync` (within the existing `storage` permission) to sync your projects, project-assigned chats, and prompt library across browsers signed into the same Chrome profile. You can turn Chrome Sync off anytime from the Projects header menu without losing local data.
+- Unassigned chat history, sidebar collapse preferences, and prompt usage statistics stay strictly on your device.
+- No extra account or third-party backend is used; the extension runs entirely in your browser alongside your existing Gemini session.
+- Google's policies govern your Chrome Sync profile and your Gemini account activity.
 
 ## Build and Package
 
