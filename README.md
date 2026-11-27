@@ -19,11 +19,10 @@ The built-in Prompt Library lets you save prompts you use often, then search for
 - Pick a project icon and choose a multicolor palette or a preset color
 - Set each project's icon style to Outline, Solid, or Duotone
 - Pin, edit, or delete projects from the project menu. Pinned projects stay at the top after a refresh. Unpin a project to return it to its original position.
-- Sync projects, project chat assignments, and prompts automatically via **Browser Sync** across browsers signed into the same browser profile (enabled by default, toggleable anytime from the Projects header menu)
-- Optionally connect **Google Drive** from the Projects header menu for cross-browser sync (Chrome, Edge, Brave, Aside, Arc, etc.) stored in your private Google Drive app data folder (`appDataFolder`) with no 100 KB sync cap
+- Optionally connect **Google Drive** from the Projects header menu to sync projects, project chat assignments, and prompts across devices and browsers (Chrome, Edge, Brave, Aside, Arc, etc.) via your private Google Drive app data folder (`appDataFolder`). Off by default — leave disconnected to keep everything strictly local on your device.
 - Back up and restore projects and prompts as a local JSON file
 - Save, search, edit, and reuse prompts in the Prompt Library
-- Local-first storage: all data is always saved in your browser's local storage first
+- Local-first storage: all data is stored in your browser's local storage by default
 
 ## Install
 
@@ -46,13 +45,11 @@ Gemini Projects is built for Chrome and other Chromium-based browsers.
 
 ## Privacy
 
-- Projects and prompts are always stored locally first in your browser's extension storage (`chrome.storage.local`).
-- **Browser Sync** uses your browser's built-in `chrome.storage.sync` (within the `storage` permission) to sync your projects, project-assigned chats, and prompt library across browsers signed into the same browser profile. You can turn Browser Sync off anytime from the Projects header menu without losing local data.
-- **Google Drive Sync** (optional, opt-in) uses Google OAuth (`chrome.identity.launchWebAuthFlow`) with the narrow `drive.appdata` scope to store a single sync file (`gemini-projects-sync-v1.json`) inside your private, hidden Google Drive `appDataFolder`. The extension cannot see or access your regular Google Drive files, and disconnecting Google Drive clears the local auth token without deleting your local or Drive data.
-- Browser Sync and Google Drive Sync are mutually exclusive so only one cloud provider manages sync at a time.
+- Projects and prompts are stored locally in your browser's extension storage (`chrome.storage.local`) by default, with zero network requests unless you opt in to Google Drive Sync.
+- **Google Drive Sync** (optional, off by default) uses Google OAuth (`chrome.identity.launchWebAuthFlow`) with the narrow `drive.appdata` scope to store a single sync file (`gemini-projects-sync-v1.json`) inside your private, hidden Google Drive `appDataFolder`. The extension cannot see or access your regular Google Drive files, and disconnecting Google Drive clears the local auth token without deleting your local or Drive data.
 - Unassigned chat history, sidebar collapse preferences, prompt usage statistics, and Google Drive auth tokens stay strictly on your device (tokens are never included in backups or sync payloads).
-- No third-party backend is used; the extension communicates directly between your browser and Google's APIs when Google Drive Sync is enabled.
-- Google's policies govern your Google Drive storage, browser sync profile, and Gemini account activity.
+- No third-party backend is used; when Google Drive Sync is connected, the extension communicates directly between your browser and Google's APIs.
+- Google's policies govern your Google Drive storage and Gemini account activity.
 
 ## Build and Package
 

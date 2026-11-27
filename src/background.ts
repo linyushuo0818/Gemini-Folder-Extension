@@ -1,16 +1,11 @@
 import { BackgroundRequest, BackgroundResponse } from './shared/types';
-import { SYNC_PREFIX } from './shared/sync';
 import {
   hasIdentityWebAuthFlow,
-  hasStorageSync,
   identityGetRedirectURL,
   identityLaunchWebAuthFlow,
   storageLocalGet,
   storageLocalRemove,
   storageLocalSet,
-  storageSyncGet,
-  storageSyncRemove,
-  storageSyncSet,
   webext
 } from './shared/webext';
 import { GoogleDriveSyncClient } from './background/googleDriveSync';
@@ -34,13 +29,6 @@ const driveClient = hasIdentityWebAuthFlow()
 
 const service = createBackgroundService({
   local: localArea,
-  sync: hasStorageSync()
-    ? {
-        get: storageSyncGet,
-        set: storageSyncSet,
-        remove: storageSyncRemove
-      }
-    : null,
   drive: driveClient
 });
 
@@ -54,15 +42,6 @@ webext.runtime.onMessage.addListener((
     .then((response) => sendResponse(response))
     .catch((error: Error) => sendResponse({ ok: false, error: error.message }));
   return true;
-});
-
-webext.storage?.onChanged?.addListener((
-  changes: Record<string, chrome.storage.StorageChange>,
-  areaName: string
-) => {
-  if (areaName !== 'sync') return;
-  if (!Object.keys(changes).some((key) => key.startsWith(SYNC_PREFIX))) return;
-  void service.handleSyncChanged(changes);
 });
 
 webext.runtime?.onStartup?.addListener(() => {

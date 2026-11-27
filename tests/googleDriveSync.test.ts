@@ -15,13 +15,15 @@ import {
   DRIVE_AUTH_STORAGE_KEY,
   DRIVE_SYNC_FILENAME,
   DriveSyncEnvelopeV1,
+  mergeSyncData,
+  projectToSync,
+  sanitizeLocalMeta,
   SYNC_LOCAL_META_KEY,
-  SYNC_META_KEY,
   SYNC_STALE_INTERVAL_MS,
   SyncLocalMeta
 } from '../src/shared/sync';
 import { CURRENT_SCHEMA_VERSION, STORAGE_KEY } from '../src/shared/storage';
-import { PROMPTS_KEY, PromptsData } from '../src/shared/prompts';
+import { PROMPTS_KEY } from '../src/shared/prompts';
 import { Project, StoredState } from '../src/shared/types';
 
 function clone<T>(value: T): T {
@@ -51,41 +53,6 @@ class MockLocalStorage implements StorageAreaLike {
   }
 
   async set(items: Record<string, unknown>): Promise<void> {
-    for (const [k, v] of Object.entries(items)) {
-      this.data[k] = clone(v);
-    }
-  }
-
-  async remove(keys: string | string[]): Promise<void> {
-    for (const k of Array.isArray(keys) ? keys : [keys]) {
-      delete this.data[k];
-    }
-  }
-}
-
-class MockSimpleBrowserSync implements StorageAreaLike {
-  public data: Record<string, unknown> = {};
-  public setCalls = 0;
-  public getCalls = 0;
-
-  async get(keys?: string | string[] | Record<string, unknown> | null): Promise<Record<string, unknown>> {
-    this.getCalls += 1;
-    if (keys === undefined || keys === null) return clone(this.data);
-    if (typeof keys === 'string') {
-      return Object.hasOwn(this.data, keys) ? { [keys]: clone(this.data[keys]) } : {};
-    }
-    if (Array.isArray(keys)) {
-      const out: Record<string, unknown> = {};
-      for (const k of keys) {
-        if (Object.hasOwn(this.data, k)) out[k] = clone(this.data[k]);
-      }
-      return out;
-    }
-    return clone(this.data);
-  }
-
-  async set(items: Record<string, unknown>): Promise<void> {
-    this.setCalls += 1;
     for (const [k, v] of Object.entries(items)) {
       this.data[k] = clone(v);
     }
@@ -334,7 +301,6 @@ function makeProject(id: string, name: string, ts: number, overrides: Partial<Pr
 
 interface DriveTestDevice {
   local: MockLocalStorage;
-  browserSync: MockSimpleBrowserSync | null;
   identity: MockIdentityProvider;
   service: BackgroundService;
   restartSw: () => void;
@@ -346,27 +312,27 @@ function createDriveDevice(
   clock: { now: () => number },
   opts: {
     local?: MockLocalStorage;
-    browserSync?: MockSimpleBrowserSync | null;
     extensionId?: string;
+    driveUnavailable?: boolean;
     debounceMs?: number;
     staleIntervalMs?: number;
   } = {}
 ): DriveTestDevice {
   const local = opts.local ?? new MockLocalStorage();
-  const browserSync = opts.browserSync === undefined ? new MockSimpleBrowserSync() : opts.browserSync;
   const identity = new MockIdentityProvider(server, opts.extensionId);
   let service: BackgroundService;
 
   const boot = () => {
-    const drive = new GoogleDriveSyncClient({
-      local,
-      identity,
-      fetchImpl: server.fetchImpl,
-      now: clock.now
-    });
+    const drive = opts.driveUnavailable
+      ? null
+      : new GoogleDriveSyncClient({
+          local,
+          identity,
+          fetchImpl: server.fetchImpl,
+          now: clock.now
+        });
     service = createBackgroundService({
       local,
-      sync: browserSync,
       drive,
       now: clock.now,
       debounceMs: opts.debounceMs ?? 30,
@@ -378,7 +344,6 @@ function createDriveDevice(
 
   return {
     local,
-    browserSync,
     identity,
     get service() {
       return service;
@@ -391,70 +356,122 @@ function createDriveDevice(
   };
 }
 
-// 1. Connect Google Drive (OAuth params, CSRF validation, cancel safety, union merge without duplicate seeds)
-test('1. Connect Google Drive: OAuth CSRF validation, cancel preserves provider, and union merge avoids duplicate seed prompts', async () => {
+// 1. Default local-only mode (enabled: false): startup & local mutations make 0 Drive/OAuth calls
+test('1. Default local-only mode: startup and local mutations make zero Drive or OAuth calls', async () => {
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+  const device = createDriveDevice(server, clock, { debounceMs: 15 });
+
+  await device.service.initialize();
+  const initialStatus = (await device.service.handleMessage({ type: 'getSyncStatus' })).syncStatus!;
+  assert.equal(initialStatus.enabled, false);
+  assert.equal(initialStatus.available, true);
+  assert.equal(initialStatus.state, 'disabled');
+  assert.equal(initialStatus.lastSyncedAt, null);
+
+  // Perform every local mutation while disconnected
+  assert.equal((await device.service.handleMessage({ type: 'getPrompts' })).ok, true);
+  assert.equal(
+    (
+      await device.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-local', 'Local Only', clock.tick(10)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+  assert.equal(
+    (
+      await device.service.handleMessage({
+        type: 'moveChat',
+        conversationId: 'chat-local',
+        projectId: 'p-local',
+        metadata: { conversationId: 'chat-local', title: 'Local Chat', lastUrl: 'https://gemini.google.com/app/chat-local' }
+      })
+    ).ok,
+    true
+  );
+  assert.equal(
+    (
+      await device.service.handleMessage({
+        type: 'upsertChatRefs',
+        chats: [{ conversationId: 'chat-local', title: 'Renamed Locally', lastUrl: 'https://gemini.google.com/app/chat-local' }]
+      })
+    ).ok,
+    true
+  );
+  assert.equal((await device.service.handleMessage({ type: 'savePrompt', prompt: { title: 'My Local Prompt', content: 'Body' } })).ok, true);
+  assert.equal((await device.service.handleMessage({ type: 'syncIfStale' })).ok, true);
+
+  await new Promise((r) => setTimeout(r, 40));
+
+  // syncNow when disconnected returns a clean error without any network/OAuth calls
+  const syncNowRes = await device.service.handleMessage({ type: 'syncNow' });
+  assert.equal(syncNowRes.ok, false);
+
+  assert.equal(server.totalRequests, 0, 'Local-only mode must make 0 Drive API calls');
+  assert.equal(device.identity.interactiveCalls, 0, 'Local-only mode must make 0 interactive OAuth calls');
+  assert.equal(device.identity.silentCalls, 0, 'Local-only mode must make 0 silent OAuth calls');
+  assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
+
+  // When Identity API is unavailable, status reports unavailable cleanly
+  const unavailableDevice = createDriveDevice(server, clock, { driveUnavailable: true });
+  const unavailStatus = (await unavailableDevice.service.handleMessage({ type: 'getSyncStatus' })).syncStatus!;
+  assert.equal(unavailStatus.enabled, false);
+  assert.equal(unavailStatus.available, false);
+  assert.equal(unavailStatus.state, 'unavailable');
+  assert.equal((await unavailableDevice.service.handleMessage({ type: 'connectGoogleDrive' })).ok, false);
+
+  device.dispose();
+  unavailableDevice.dispose();
+});
+
+// 2. Connect Google Drive: OAuth CSRF validation, cancel stays disabled, cold-start local-only push,
+//    remote-only pull without duplicate seed prompts, and both-have-data union merge
+test('2. Connect Google Drive: CSRF validation, cancel stays disabled, local-only push, remote-only pull, and union merge', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
 
-  // Seed Drive with existing data from another browser
-  const remoteSnapshot = {
-    projects: [makeProject('p-drive', 'Drive Project', clock.now())],
-    chats: [
-      {
-        id: 'chat-drive-1',
-        projectId: 'p-drive',
-        title: 'From Chrome',
-        lastUrl: 'https://gemini.google.com/u/1/app/chat-drive-1',
-        updatedAt: clock.now()
-      }
-    ],
-    prompts: [
-      {
-        id: 'pr-drive-1',
-        title: 'Drive Prompt',
-        content: 'Reusable prompt body',
-        createdAt: clock.now(),
-        updatedAt: clock.now()
-      }
-    ],
-    tombstones: createEmptyTombstones()
-  };
-  const seedEnvelope: DriveSyncEnvelopeV1 = {
-    v: 1,
-    clientId: 'seed-client',
-    rev: 1,
-    updatedAt: clock.now(),
-    hash: computeSnapshotHash(remoteSnapshot),
-    snapshot: remoteSnapshot
-  };
-  server.seedFile(JSON.stringify(seedEnvelope), clock.now());
+  // 2a. Cold-start local-only push when Drive is empty
+  const deviceA = createDriveDevice(server, clock);
+  await deviceA.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-local-a', 'From Device A', clock.tick(10)),
+    editing: false
+  });
+  await deviceA.service.handleMessage({
+    type: 'savePrompt',
+    prompt: { title: 'Prompt A', content: 'Body A' }
+  });
 
-  const device = createDriveDevice(server, clock);
-
-  // 1a. Cancelled OAuth leaves provider on 'browser' and stores no token
-  device.identity.nextInteractiveBehavior = 'cancel';
-  const cancelRes = await device.service.handleMessage({ type: 'connectGoogleDrive' });
+  // Cancelled OAuth keeps enabled=false and stores no token
+  deviceA.identity.nextInteractiveBehavior = 'cancel';
+  const cancelRes = await deviceA.service.handleMessage({ type: 'connectGoogleDrive' });
   assert.equal(cancelRes.ok, false);
-  assert.equal(cancelRes.syncStatus?.provider, 'browser');
-  assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
+  assert.equal(cancelRes.syncStatus?.enabled, false);
+  assert.equal(cancelRes.syncStatus?.state, 'disabled');
+  assert.equal(deviceA.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
 
-  // 1b. CSRF state mismatch is rejected and leaves provider on 'browser'
-  device.identity.nextInteractiveBehavior = 'bad_state';
-  const badStateRes = await device.service.handleMessage({ type: 'connectGoogleDrive' });
+  // CSRF state mismatch is rejected and keeps enabled=false
+  deviceA.identity.nextInteractiveBehavior = 'bad_state';
+  const badStateRes = await deviceA.service.handleMessage({ type: 'connectGoogleDrive' });
   assert.equal(badStateRes.ok, false);
-  assert.equal(badStateRes.syncStatus?.provider, 'browser');
-  assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
+  assert.equal(badStateRes.syncStatus?.enabled, false);
+  assert.equal(badStateRes.syncStatus?.state, 'disabled');
+  assert.equal(deviceA.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
 
-  // 1c. Successful interactive connect verifies OAuth URL parameters & pulls remote data without seed prompt duplication
-  const connectRes = await device.service.handleMessage({ type: 'connectGoogleDrive' });
-  assert.equal(connectRes.ok, true);
-  assert.equal(connectRes.syncStatus?.provider, 'google_drive');
-  assert.equal(connectRes.syncStatus?.state, 'synced');
-  assert.equal(connectRes.syncStatus?.driveAvailable, true);
-  assert.ok(device.local.data[DRIVE_AUTH_STORAGE_KEY], 'Token must be persisted under gp_drive_auth_v1');
+  // Successful connect pushes local-only data to Drive and verifies OAuth URL parameters
+  const connectARes = await deviceA.service.handleMessage({ type: 'connectGoogleDrive' });
+  assert.equal(connectARes.ok, true);
+  assert.equal(connectARes.syncStatus?.enabled, true);
+  assert.equal(connectARes.syncStatus?.available, true);
+  assert.equal(connectARes.syncStatus?.state, 'synced');
+  assert.ok(deviceA.local.data[DRIVE_AUTH_STORAGE_KEY], 'Token must be persisted under gp_drive_auth_v1');
+  assert.equal(server.files.length, 1);
+  assert.equal(server.files[0].content.includes('tok_'), false, 'OAuth token must never appear in sync payload');
 
-  // Verify OAuth URL parameters
-  const authUrl = device.identity.lastAuthUrl!;
+  const authUrl = deviceA.identity.lastAuthUrl!;
   assert.equal(authUrl.searchParams.get('client_id'), GOOGLE_DRIVE_CLIENT_ID);
   assert.equal(authUrl.searchParams.get('scope'), GOOGLE_DRIVE_SCOPE);
   assert.equal(authUrl.searchParams.get('response_type'), 'token');
@@ -462,26 +479,75 @@ test('1. Connect Google Drive: OAuth CSRF validation, cancel preserves provider,
   assert.equal(authUrl.searchParams.get('prompt'), null, 'Interactive OAuth must not set prompt=none');
   assert.ok(authUrl.searchParams.get('state'));
 
-  const state = (await device.service.handleMessage({ type: 'getState' })).state!;
-  const prompts = (await device.service.handleMessage({ type: 'getPrompts' })).prompts!;
-  assert.deepEqual(state.projects.map((p) => p.id), ['p-drive']);
-  assert.equal(state.chatIndex['chat-drive-1']?.lastUrl, 'https://gemini.google.com/u/1/app/chat-drive-1');
-  assert.deepEqual(Object.keys(prompts.prompts), ['pr-drive-1'], 'Fresh device must not generate duplicate seed prompts');
+  // 2b. Fresh device (remote-only pull) pulls remote data without generating duplicate seed prompts
+  const promptsA = (await deviceA.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  const expectedPromptIds = Object.keys(promptsA.prompts).sort();
+  const deviceFresh = createDriveDevice(server, clock);
+  const connectFreshRes = await deviceFresh.service.handleMessage({ type: 'connectGoogleDrive' });
+  assert.equal(connectFreshRes.ok, true);
+  const freshState = (await deviceFresh.service.handleMessage({ type: 'getState' })).state!;
+  const freshPrompts = (await deviceFresh.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  assert.deepEqual(freshState.projects.map((p) => p.id), ['p-local-a']);
+  assert.deepEqual(Object.keys(freshPrompts.prompts).sort(), expectedPromptIds, 'Fresh device must not duplicate seed prompts');
 
-  // Verify auth token is never serialized into the Drive sync file
-  assert.equal(server.files[0].content.includes('tok_'), false, 'OAuth token must never appear in sync payload');
+  // 2c. Both-have-data union merge when a third device already has local projects & prompts
+  const deviceC = createDriveDevice(server, clock);
+  await deviceC.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-local-c', 'From Device C', clock.tick(10)),
+    editing: false
+  });
+  await deviceC.service.handleMessage({
+    type: 'savePrompt',
+    prompt: { title: 'Prompt C', content: 'Body C' }
+  });
+  const connectCRes = await deviceC.service.handleMessage({ type: 'connectGoogleDrive' });
+  assert.equal(connectCRes.ok, true);
+  const stateC = (await deviceC.service.handleMessage({ type: 'getState' })).state!;
+  const promptsC = (await deviceC.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  assert.deepEqual(stateC.projects.map((p) => p.id).sort(), ['p-local-a', 'p-local-c']);
+  assert.ok(Object.values(promptsC.prompts).some((p) => p.title === 'Prompt A'));
+  assert.ok(Object.values(promptsC.prompts).some((p) => p.title === 'Prompt C'));
 
-  device.dispose();
+  deviceA.dispose();
+  deviceFresh.dispose();
+  deviceC.dispose();
 });
 
-// 2. Cross-browser multi-device sync (Aside <-> Chrome), >100KB prompts, concurrent LWW merge, debounced upsertChatRefs
-test('2. Cross-browser sync: Aside <-> Chrome, large >100KB prompts, concurrent LWW merge, and debounced chat metadata sync', async () => {
+// 3. Multi-device cross-browser concurrent edits, commutative LWW tie-break, large >100 KB prompts,
+//    local-only preservation (uiPrefs, unassigned chats, usageCount/lastUsedAt), debounced assigned chat metadata sync
+test('3. Cross-browser sync: concurrent edits, commutative LWW tie-break, >100KB prompts, local-only data, debounced chat sync', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
 
-  // Aside browser (dev ID, no Browser Sync available) <-> Chrome browser (CWS ID)
+  // Commutative LWW tie-break unit verification (same updatedAt -> identical winner in both merge directions)
+  const tieTs = clock.now();
+  const projA = makeProject('p-tie', 'Name Alpha', tieTs);
+  const projB = makeProject('p-tie', 'Name Beta', tieTs);
+  const baseState = (project: Project): StoredState => ({
+    schemaVersion: CURRENT_SCHEMA_VERSION,
+    projects: [project],
+    chatIndex: {},
+    uiPrefs: { projectsCollapsed: false }
+  });
+  const emptyPrompts = { version: 1 as const, prompts: {} };
+  const ab = mergeSyncData(
+    baseState(projA),
+    emptyPrompts,
+    createEmptyTombstones(),
+    { projects: [projectToSync(projB)], chats: [], prompts: [], tombstones: createEmptyTombstones() },
+    tieTs
+  );
+  const ba = mergeSyncData(
+    baseState(projB),
+    emptyPrompts,
+    createEmptyTombstones(),
+    { projects: [projectToSync(projA)], chats: [], prompts: [], tombstones: createEmptyTombstones() },
+    tieTs
+  );
+  assert.equal(ab.state.projects[0].name, ba.state.projects[0].name, 'LWW tie-breaker must be strictly commutative');
+
   const aside = createDriveDevice(server, clock, {
-    browserSync: null,
     extensionId: 'kiifegldibkapobmpjmcnpgeiclofijl',
     debounceMs: 25
   });
@@ -493,7 +559,6 @@ test('2. Cross-browser sync: Aside <-> Chrome, large >100KB prompts, concurrent 
   assert.equal((await aside.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
   assert.equal((await chrome.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
 
-  // Aside creates a project, assigns a /u/2/app/... chat, and saves large prompts totaling >120 KB
   await aside.service.handleMessage({
     type: 'upsertProject',
     project: makeProject('p-research', 'Research', clock.tick(10)),
@@ -509,14 +574,14 @@ test('2. Cross-browser sync: Aside <-> Chrome, large >100KB prompts, concurrent 
       lastUrl: 'https://gemini.google.com/u/2/app/conv-42'
     }
   });
-  // Unassigned local chat & UI pref stay local
+  // Local-only data: uiPrefs, unassigned chat, prompt usageCount/lastUsedAt
   await aside.service.handleMessage({ type: 'updateUiPrefs', prefs: { projectsCollapsed: true } });
   await aside.service.handleMessage({
     type: 'upsertChatRefs',
     chats: [{ conversationId: 'local-only', title: 'Noise', lastUrl: 'https://gemini.google.com/app/local-only' }]
   });
 
-  // Save 6 huge prompts (22 KB each => >132 KB total, far beyond Chrome storage.sync's 100 KB / 8 KB limits)
+  // Save 6 huge prompts (22 KB each => >132 KB total)
   for (let i = 0; i < 6; i += 1) {
     clock.tick(10);
     const res = await aside.service.handleMessage({
@@ -525,13 +590,18 @@ test('2. Cross-browser sync: Aside <-> Chrome, large >100KB prompts, concurrent 
     });
     assert.equal(res.ok, true);
   }
+  const asidePromptsBeforeUsage = (await aside.service.handleMessage({ type: 'getPrompts' })).prompts!;
+  const bigPrompt0Id = Object.keys(asidePromptsBeforeUsage.prompts).find(
+    (id) => asidePromptsBeforeUsage.prompts[id].title === 'Big Prompt 0'
+  )!;
+  await aside.service.handleMessage({ type: 'trackPromptUsage', id: bigPrompt0Id });
+  await aside.service.handleMessage({ type: 'trackPromptUsage', id: bigPrompt0Id });
 
   const asideStatus = (await aside.service.handleMessage({ type: 'getSyncStatus' })).syncStatus!;
   assert.equal(asideStatus.state, 'synced');
-  assert.equal(asideStatus.omittedPrompts, undefined);
   assert.ok((asideStatus.bytesUsed ?? 0) > 130_000, 'Drive payload should exceed 130 KB without truncation');
 
-  // Chrome concurrently creates its own project BEFORE pulling Aside's data -> pre-push merge prevents clobbering!
+  // Chrome concurrently creates its own project BEFORE pulling Aside's data -> pre-push merge prevents clobbering
   clock.tick(100);
   await chrome.service.handleMessage({
     type: 'upsertProject',
@@ -545,14 +615,19 @@ test('2. Cross-browser sync: Aside <-> Chrome, large >100KB prompts, concurrent 
   assert.equal(chromeState.chatIndex['conv-42']?.lastUrl, 'https://gemini.google.com/u/2/app/conv-42');
   assert.equal(chromeState.chatIndex['local-only'], undefined, 'Unassigned chats must stay local');
   assert.equal(chromeState.uiPrefs.projectsCollapsed, false, 'uiPrefs must stay local');
+  assert.equal(chromePrompts.prompts[bigPrompt0Id]?.usageCount, 0, 'Prompt usageCount must stay local');
+  assert.equal(chromePrompts.prompts[bigPrompt0Id]?.lastUsedAt, 0, 'Prompt lastUsedAt must stay local');
   const bigPromptCount = Object.values(chromePrompts.prompts).filter((p) => p.title.startsWith('Big Prompt')).length;
   assert.equal(bigPromptCount, 6, 'All 6 >22KB prompts must sync completely via Google Drive');
 
-  // Aside pulls Chrome's concurrent project and updates assigned chat title via debounced upsertChatRefs
+  // Aside pulls Chrome's concurrent project and preserves its own local usageCount
   await aside.service.handleMessage({ type: 'syncNow' });
   const asideState = (await aside.service.handleMessage({ type: 'getState' })).state!;
+  const asidePromptsAfterSync = (await aside.service.handleMessage({ type: 'getPrompts' })).prompts!;
   assert.deepEqual(asideState.projects.map((p) => p.id).sort(), ['p-chrome', 'p-research']);
+  assert.equal(asidePromptsAfterSync.prompts[bigPrompt0Id]?.usageCount, 2, 'Local usageCount must be preserved across sync');
 
+  // Debounced assigned chat metadata sync
   clock.tick(100);
   const updatesBeforeRename = server.updateCalls;
   await aside.service.handleMessage({
@@ -561,7 +636,7 @@ test('2. Cross-browser sync: Aside <-> Chrome, large >100KB prompts, concurrent 
   });
   assert.equal(server.updateCalls, updatesBeforeRename, 'upsertChatRefs must debounce Drive write');
   await new Promise((r) => setTimeout(r, 60));
-  assert.equal(server.updateCalls, updatesBeforeRename + 1, 'Debounced Drive push must fire even without Browser Sync');
+  assert.equal(server.updateCalls, updatesBeforeRename + 1, 'Debounced Drive push must fire');
 
   await chrome.service.handleMessage({ type: 'syncNow' });
   const chromeAfterRename = (await chrome.service.handleMessage({ type: 'getState' })).state!;
@@ -571,8 +646,8 @@ test('2. Cross-browser sync: Aside <-> Chrome, large >100KB prompts, concurrent 
   chrome.dispose();
 });
 
-// 3. Delete & unassign propagation via tombstones + restoreBackup propagation via Drive
-test('3. Delete, unassign, re-assign recovery, and restoreBackup propagate cleanly via Google Drive', async () => {
+// 4. Delete, unassign, re-assign recovery via tombstones & restoreBackup propagation
+test('4. Delete, unassign, re-assign recovery, and restoreBackup propagate cleanly via Google Drive', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
   const deviceA = createDriveDevice(server, clock);
@@ -654,8 +729,8 @@ test('3. Delete, unassign, re-assign recovery, and restoreBackup propagate clean
   deviceB.dispose();
 });
 
-// 4. Duplicate file self-healing + cached driveFileId 404 fallback
-test('4. Duplicate gemini-projects-sync-v1.json files self-heal into oldest file and cached file 404 falls back cleanly', async () => {
+// 5. Duplicate gemini-projects-sync-v1.json self-healing & cached file 404 fallback
+test('5. Duplicate gemini-projects-sync-v1.json files self-heal into oldest file and cached file 404 falls back cleanly', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
 
@@ -693,7 +768,7 @@ test('4. Duplicate gemini-projects-sync-v1.json files self-heal into oldest file
   assert.deepEqual(state.projects.map((p) => p.id).sort(), ['p-dup', 'p-oldest']);
   assert.deepEqual(Object.keys(prompts.prompts).sort(), ['pr-1', 'pr-2']);
 
-  // Verify driveFileId was cached; now simulate external deletion (404) and verify push recovers by recreating file
+  // Verify driveFileId was cached; simulate external deletion (404) and verify push recovers by recreating file
   const localMeta = device.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta;
   assert.equal(localMeta.driveFileId, file1.id);
   server.files = [];
@@ -712,8 +787,8 @@ test('4. Duplicate gemini-projects-sync-v1.json files self-heal into oldest file
   device.dispose();
 });
 
-// 5. Token expiry & HTTP 401 handling (silent renewal succeeds; failure sets auth_expired without popup; reconnect recovers)
-test('5. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicited popup, and interactive reconnect recovery', async () => {
+// 6. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicited popup, interactive reconnect recovery
+test('6. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicited popup, and interactive reconnect recovery', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
   const device = createDriveDevice(server, clock);
@@ -723,7 +798,7 @@ test('5. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicite
   assert.equal(device.identity.interactiveCalls, 1);
   assert.equal(device.identity.silentCalls, 0);
 
-  // 5a. Token expiring within 120s triggers silent renewal transparently (no interactive popup)
+  // 6a. Token expiring within 120s triggers silent renewal transparently (no interactive popup)
   clock.tick(200_000); // 100s remaining (< 120s buffer)
   await device.service.handleMessage({
     type: 'upsertProject',
@@ -734,7 +809,7 @@ test('5. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicite
   assert.equal(device.identity.silentCalls, 1, 'Should silently renew expiring token');
   assert.equal((await device.service.handleMessage({ type: 'getSyncStatus' })).syncStatus?.state, 'synced');
 
-  // 5b. HTTP 401 on valid-looking cached token -> clears token, silently renews once, retries request once
+  // 6b. HTTP 401 on valid-looking cached token -> clears token, silently renews once, retries request once
   server.revokeAllTokens();
   clock.tick(1000);
   await device.service.handleMessage({
@@ -746,7 +821,7 @@ test('5. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicite
   assert.equal(device.identity.silentCalls, 2, 'Should retry once with silent renewal after HTTP 401');
   assert.equal((await device.service.handleMessage({ type: 'getSyncStatus' })).syncStatus?.state, 'synced');
 
-  // 5c. HTTP 401 when silent renewal fails -> sets auth_expired without popup; local write still succeeds!
+  // 6c. HTTP 401 when silent renewal fails -> sets auth_expired without popup; local write still succeeds
   server.revokeAllTokens();
   device.identity.nextSilentBehavior = 'interaction_required';
   clock.tick(1000);
@@ -761,7 +836,7 @@ test('5. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicite
   assert.equal(expiredStatus.state, 'auth_expired');
   assert.equal(expiredStatus.lastError, DRIVE_SESSION_EXPIRED_MESSAGE);
 
-  // 5d. Explicit reconnect (connectGoogleDrive) runs interactive OAuth and pushes pending local edit
+  // 6d. Explicit reconnect (connectGoogleDrive) runs interactive OAuth and pushes pending local edit
   device.identity.nextSilentBehavior = 'ok';
   const reconnectRes = await device.service.handleMessage({ type: 'connectGoogleDrive' });
   assert.equal(reconnectRes.ok, true);
@@ -772,68 +847,137 @@ test('5. Token expiry & HTTP 401 silent renewal, auth_expired without unsolicite
   device.dispose();
 });
 
-// 6. Mutual exclusion with Browser Sync & disconnect restores prior Browser Sync preference
-test('6. Mutual exclusion ignores storage.sync while Drive is active; disconnect clears token and restores Browser Sync preference', async () => {
+// 7. Disconnect (clears token, pauses sync without deleting local/Drive data), reconnect union merge,
+//    and legacy provider local meta migration
+test('7. Disconnect pauses sync safely, reconnect union-merges edits, and legacy provider metadata migrates cleanly', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
-  const browserSync = new MockSimpleBrowserSync();
-  const device = createDriveDevice(server, clock, { browserSync });
+  const deviceA = createDriveDevice(server, clock);
+  const deviceB = createDriveDevice(server, clock);
 
-  // Turn Browser Sync OFF first, then connect Google Drive
-  await device.service.handleMessage({ type: 'setSyncEnabled', enabled: false });
-  assert.equal((await device.service.handleMessage({ type: 'getSyncStatus' })).syncStatus?.state, 'disabled');
+  assert.equal((await deviceA.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  assert.equal((await deviceB.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
 
-  assert.equal((await device.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
-  const browserSetsAfterConnect = browserSync.setCalls;
-
-  // Local edit writes to Drive ONLY, never to chrome.storage.sync
-  await device.service.handleMessage({
+  await deviceA.service.handleMessage({
     type: 'upsertProject',
-    project: makeProject('p-drive-only', 'Drive Only', clock.tick(10)),
+    project: makeProject('p-shared', 'Shared', clock.tick(10)),
     editing: false
   });
-  assert.equal(browserSync.setCalls, browserSetsAfterConnect, 'Local edits must not write to storage.sync while on Drive');
 
-  // Incoming storage.sync change event is ignored while on Google Drive
-  browserSync.data[SYNC_META_KEY] = {
-    v: 1,
-    clientId: 'other-browser',
-    rev: 99,
-    updatedAt: clock.tick(100),
-    hash: 'abcdef1234567890',
-    shards: { projects: 1, chats: 0, prompts: 0, tombstones: 0 }
-  };
-  const browserGetsBeforeChange = browserSync.getCalls;
-  await device.service.handleSyncChanged({
-    [SYNC_META_KEY]: { oldValue: undefined, newValue: browserSync.data[SYNC_META_KEY] }
-  });
-  assert.equal(browserSync.getCalls, browserGetsBeforeChange, 'storage.sync events must be ignored while on Google Drive');
-
-  // Disconnect Drive -> clears token, keeps local & Drive data, restores previous Browser Sync preference (disabled!)
-  const discRes = await device.service.handleMessage({ type: 'disconnectGoogleDrive' });
+  // Disconnect Device A -> clears token, sets enabled=false, keeps local & Drive data intact
+  const discRes = await deviceA.service.handleMessage({ type: 'disconnectGoogleDrive' });
   assert.equal(discRes.ok, true);
-  assert.equal(discRes.syncStatus?.provider, 'browser');
-  assert.equal(discRes.syncStatus?.enabled, false, 'Prior Browser Sync off preference must be preserved');
+  assert.equal(discRes.syncStatus?.enabled, false);
   assert.equal(discRes.syncStatus?.state, 'disabled');
-  assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined, 'Drive auth token must be cleared on disconnect');
+  assert.equal(deviceA.local.data[DRIVE_AUTH_STORAGE_KEY], undefined, 'Drive auth token must be cleared on disconnect');
   assert.equal(server.files.length, 1, 'Disconnect must NOT delete Google Drive file');
-  const stateAfterDisc = (await device.service.handleMessage({ type: 'getState' })).state!;
-  assert.deepEqual(stateAfterDisc.projects.map((p) => p.id), ['p-drive-only'], 'Disconnect must NOT delete local data');
+  const stateAfterDisc = (await deviceA.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(stateAfterDisc.projects.map((p) => p.id), ['p-shared'], 'Disconnect must NOT delete local data');
 
-  // Re-enable Browser Sync, connect Drive again, then disconnect -> automatically reconciles back with Browser Sync!
-  await device.service.handleMessage({ type: 'setSyncEnabled', enabled: true });
-  await device.service.handleMessage({ type: 'connectGoogleDrive' });
-  const discEnabledRes = await device.service.handleMessage({ type: 'disconnectGoogleDrive' });
-  assert.equal(discEnabledRes.ok, true);
-  assert.equal(discEnabledRes.syncStatus?.provider, 'browser');
-  assert.equal(discEnabledRes.syncStatus?.enabled, true);
-  assert.equal(discEnabledRes.syncStatus?.state, 'synced');
+  // Local edits on Device A while disconnected make 0 Drive calls
+  const reqsBeforeOfflineEdit = server.totalRequests;
+  await deviceA.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-while-disconnected', 'Offline Local Edit', clock.tick(50)),
+    editing: false
+  });
+  assert.equal(server.totalRequests, reqsBeforeOfflineEdit, 'Disconnected edits must make 0 Drive calls');
 
-  device.dispose();
+  // Device B makes an edit to Drive while Device A is disconnected
+  await deviceB.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-from-b', 'Remote B Edit', clock.tick(50)),
+    editing: false
+  });
+
+  // Reconnect Device A -> union-merges both local offline edit and Device B's remote edit
+  const reconRes = await deviceA.service.handleMessage({ type: 'connectGoogleDrive' });
+  assert.equal(reconRes.ok, true);
+  assert.equal(reconRes.syncStatus?.enabled, true);
+  assert.equal(reconRes.syncStatus?.state, 'synced');
+  const mergedStateA = (await deviceA.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(
+    mergedStateA.projects.map((p) => p.id).sort(),
+    ['p-from-b', 'p-shared', 'p-while-disconnected']
+  );
+
+  // Legacy local metadata migration: provider='google_drive' -> enabled=true preserving Drive metadata
+  const migratedDrive = sanitizeLocalMeta(
+    {
+      provider: 'google_drive',
+      enabled: false,
+      clientId: 'legacy-drive-client',
+      driveFileId: 'drive_file_legacy_1',
+      driveLastModifiedTime: '2026-11-27T01:02:03.000Z',
+      lastSyncedRev: 99,
+      lastSyncedHash: 'browser-hash',
+      lastSyncedAt: 1111,
+      driveLastSyncedRev: 7,
+      driveLastSyncedHash: 'deadbeef12345678',
+      driveLastSyncedAt: 2222,
+      tombstones: createEmptyTombstones(),
+      status: { provider: 'google_drive', state: 'synced', bytesUsed: 4096 }
+    },
+    'fallback-client',
+    true
+  );
+  assert.equal(migratedDrive.enabled, true);
+  assert.equal(migratedDrive.driveFileId, 'drive_file_legacy_1');
+  assert.equal(migratedDrive.driveLastModifiedTime, '2026-11-27T01:02:03.000Z');
+  assert.equal(migratedDrive.lastSyncedRev, 7);
+  assert.equal(migratedDrive.lastSyncedHash, 'deadbeef12345678');
+  assert.equal(migratedDrive.lastSyncedAt, 2222);
+  assert.equal(migratedDrive.status.state, 'synced');
+  assert.equal(migratedDrive.status.bytesUsed, 4096);
+
+  // Legacy local metadata migration: provider='browser' -> enabled=false, state='disabled'
+  const migratedBrowser = sanitizeLocalMeta(
+    {
+      provider: 'browser',
+      enabled: true,
+      clientId: 'legacy-browser-client',
+      lastSyncedRev: 12,
+      lastSyncedHash: 'browser-hash-abc',
+      lastSyncedAt: 3333,
+      tombstones: createEmptyTombstones(),
+      status: { provider: 'browser', state: 'synced', bytesUsed: 2048 }
+    },
+    'fallback-client',
+    true
+  );
+  assert.equal(migratedBrowser.enabled, false);
+  assert.equal(migratedBrowser.lastSyncedRev, 0);
+  assert.equal(migratedBrowser.lastSyncedHash, '');
+  assert.equal(migratedBrowser.lastSyncedAt, null);
+  assert.equal(migratedBrowser.status.state, 'disabled');
+  assert.equal(migratedBrowser.status.bytesUsed, undefined);
+
+  // Also verify SW boot with legacy browser metadata stays local-only with 0 Drive calls
+  const legacyLocal = new MockLocalStorage();
+  legacyLocal.data[SYNC_LOCAL_META_KEY] = {
+    provider: 'browser',
+    enabled: true,
+    clientId: 'legacy-sw',
+    lastSyncedRev: 4,
+    lastSyncedHash: 'abc12345',
+    lastSyncedAt: 5000,
+    tombstones: createEmptyTombstones(),
+    status: { provider: 'browser', state: 'synced' }
+  };
+  const legacyDevice = createDriveDevice(server, clock, { local: legacyLocal });
+  const reqsBeforeLegacyBoot = server.totalRequests;
+  const legacyStatus = (await legacyDevice.service.handleMessage({ type: 'getSyncStatus' })).syncStatus!;
+  assert.equal(legacyStatus.enabled, false);
+  assert.equal(legacyStatus.state, 'disabled');
+  assert.equal(server.totalRequests, reqsBeforeLegacyBoot);
+
+  deviceA.dispose();
+  deviceB.dispose();
+  legacyDevice.dispose();
 });
 
-// 7. syncIfStale 15s throttling behavior on foreground poll / tab focus
-test('7. syncIfStale throttles to 15s intervals, skips unchanged downloads, and does not spam auth_expired', async () => {
+// 8. syncIfStale 15s throttling, unchanged modifiedTime skip, no auth_expired spam
+test('8. syncIfStale throttles to 15s intervals, skips unchanged downloads, and does not spam auth_expired', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
   const deviceA = createDriveDevice(server, clock);
@@ -856,7 +1000,7 @@ test('7. syncIfStale throttles to 15s intervals, skips unchanged downloads, and 
   await deviceB.service.handleMessage({ type: 'syncIfStale' });
   assert.equal(server.readCalls, readsBeforeUnchanged, 'Unchanged modifiedTime should skip downloading Drive body');
 
-  // Device A edits a project -> after >= 15s, Device B's syncIfStale pulls the new project!
+  // Device A edits a project -> after >= 15s, Device B's syncIfStale pulls the new project
   await deviceA.service.handleMessage({
     type: 'upsertProject',
     project: makeProject('p-from-focus', 'Pulled on Focus', clock.tick(100)),
@@ -881,8 +1025,8 @@ test('7. syncIfStale throttles to 15s intervals, skips unchanged downloads, and 
   deviceB.dispose();
 });
 
-// 8. Malformed/hostile Drive JSON payload rejection & sanitization
-test('8. Malformed and hostile Google Drive payloads are sanitized or rejected without wiping local data', async () => {
+// 9. Malformed / hostile Drive payloads rejected/sanitized without wiping local data
+test('9. Malformed and hostile Google Drive payloads are sanitized or rejected without wiping local data', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
   const now = clock.now();
@@ -947,6 +1091,10 @@ test('8. Malformed and hostile Google Drive payloads are sanitized or rejected w
   assert.equal(invalidSchemaRes.syncStatus?.state, 'error');
   const afterInvalid = (await device.service.handleMessage({ type: 'getState' })).state!;
   assert.deepEqual(afterInvalid.projects.map((p) => p.id), ['good-proj'], 'Invalid schema must never wipe local data');
+
+  // Also ensure STORAGE_KEY and PROMPTS_KEY remain persisted intact
+  assert.ok(device.local.data[STORAGE_KEY]);
+  assert.ok(device.local.data[PROMPTS_KEY]);
 
   device.dispose();
 });

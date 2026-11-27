@@ -20,7 +20,6 @@ interface ProjectsPanelOptions {
   shadow: ShadowRoot;
   overlayShadow: ShadowRoot;
   getSyncStatus: () => CloudSyncStatus;
-  onToggleSync: (enabled: boolean) => Promise<CloudSyncStatus>;
   onSyncNow: () => Promise<CloudSyncStatus>;
   onConnectGoogleDrive: () => Promise<CloudSyncStatus>;
   onDisconnectGoogleDrive: () => Promise<CloudSyncStatus>;
@@ -595,37 +594,16 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
       onReturnFocus: () => {
         panelRoot.querySelector<HTMLElement>('[data-gp-action="section-menu"]')?.focus({ preventScroll: true });
       },
-      onToggleSync: async (enabled) => {
-        const next = await options.onToggleSync(enabled);
-        setSyncStatus(next);
-        if (!enabled) {
-          showToast('Browser Sync paused');
-        } else if (next.state === 'partial') {
-          showToast('Browser Sync enabled (storage limit reached)');
-        } else if (next.state === 'quota_exceeded') {
-          showToast('Browser Sync storage is full');
-        } else {
-          showToast('Browser Sync enabled');
-        }
-      },
       onSyncNow: async () => {
         const next = await options.onSyncNow();
         setSyncStatus(next);
-        if (next.provider === 'google_drive') {
-          showToast('Synced with Google Drive');
-        } else if (next.state === 'partial') {
-          showToast('Synced partially (storage limit reached)');
-        } else if (next.state === 'quota_exceeded') {
-          showToast('Browser Sync storage is full');
-        } else {
-          showToast('Synced with browser');
-        }
+        showToast('Synced with Google Drive');
       },
       onConnectGoogleDrive: async () => {
-        const wasDrive = currentSyncStatus.provider === 'google_drive';
+        const wasConnected = currentSyncStatus.enabled;
         const next = await options.onConnectGoogleDrive();
         setSyncStatus(next);
-        showToast(wasDrive ? 'Reconnected to Google Drive' : 'Connected to Google Drive');
+        showToast(wasConnected ? 'Reconnected to Google Drive' : 'Connected to Google Drive');
       },
       onDisconnectGoogleDrive: async () => {
         const next = await options.onDisconnectGoogleDrive();
@@ -1263,41 +1241,18 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
 }
 
 function getSyncWarningTitle(status: CloudSyncStatus): string | null {
+  if (!status.enabled) return null;
   if (status.state === 'auth_expired') {
     return 'Google Drive session expired. Click to reconnect.';
   }
-  if (status.provider === 'google_drive') {
-    if (status.state === 'error') {
-      return status.lastError || 'Google Drive sync error';
-    }
-    return null;
-  }
-  if (status.state === 'partial') {
-    const omitted = (status.omittedChats ?? 0) + (status.omittedPrompts ?? 0);
-    return omitted > 0
-      ? `Browser Sync storage limit reached (${omitted} items kept locally)`
-      : 'Browser Sync storage limit reached';
-  }
-  if (status.state === 'quota_exceeded') {
-    return status.lastError || 'Browser Sync storage is full';
-  }
   if (status.state === 'error') {
-    return status.lastError || 'Browser Sync error';
+    return status.lastError || 'Google Drive sync error';
   }
   return null;
 }
 
-function formatSyncStatusLabel(status: CloudSyncStatus): string {
-  if (!status.available || status.state === 'unavailable') return 'Unavailable';
-  if (!status.enabled || status.state === 'disabled') return 'Off';
-  if (status.state === 'syncing') return 'Syncing…';
-  if (status.state === 'partial' || status.state === 'quota_exceeded') return 'Quota limit';
-  if (status.state === 'error') return 'Error';
-  return 'On';
-}
-
 function formatDriveStatusLabel(status: CloudSyncStatus): string {
-  if (!status.driveAvailable || status.state === 'unavailable') return 'Unavailable';
+  if (!status.available || status.state === 'unavailable') return 'Unavailable';
   if (status.state === 'syncing') return 'Syncing…';
   if (status.state === 'auth_expired') return 'Reconnect needed';
   if (status.state === 'error') return 'Error';
@@ -1849,46 +1804,6 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         line-height: 15px;
         color: var(--gp-muted);
       }
-      .gp-switch {
-        box-sizing: border-box;
-        display: inline-flex;
-        align-items: center;
-        width: 34px;
-        height: 20px;
-        padding: 2px;
-        margin-left: 12px;
-        flex: 0 0 34px;
-        border-radius: var(--gp-radius-pill);
-        background: var(--gp-surface-selected);
-        border: 1px solid var(--gp-control-border);
-        transition: background-color var(--gp-transition), border-color var(--gp-transition);
-      }
-      .gp-switch.on {
-        background: #2f2e2b;
-        border-color: transparent;
-      }
-      :host(.dark) .gp-switch.on,
-      :host([data-gp-theme="dark"]) .gp-switch.on {
-        background: var(--gp-accent);
-        border-color: transparent;
-      }
-      .gp-switch-thumb {
-        width: 14px;
-        height: 14px;
-        border-radius: var(--gp-radius-circle);
-        background: var(--gp-surface);
-        box-shadow: 0 1px 2px rgb(20 20 19 / .22);
-        transform: translateX(0);
-        transition: transform var(--gp-transition), background-color var(--gp-transition);
-      }
-      :host(.dark) .gp-switch-thumb,
-      :host([data-gp-theme="dark"]) .gp-switch-thumb {
-        background: var(--gp-fg-secondary);
-      }
-      .gp-switch.on .gp-switch-thumb {
-        transform: translateX(14px);
-        background: var(--gp-on-accent);
-      }
       .gp-drive-status-dot {
         width: 7px;
         height: 7px;
@@ -2333,7 +2248,6 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
 
   type SectionMenuCallbacks = {
     onReturnFocus: () => void;
-    onToggleSync: (enabled: boolean) => Promise<void>;
     onSyncNow: () => Promise<void>;
     onConnectGoogleDrive: () => Promise<void>;
     onDisconnectGoogleDrive: () => Promise<void>;
@@ -2351,16 +2265,10 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   let activeTooltipTarget: HTMLElement | null = null;
 
   function getHintForAction(action: string | undefined): { title: string; body: string } | null {
-    if (action === 'toggle-sync') {
-      return {
-        title: 'Browser Sync',
-        body: 'Syncs across devices signed into the same browser (e.g. Chrome ↔ Chrome, Edge ↔ Edge) via built-in browser storage. No extra sign-in or server; turn off anytime to keep data strictly local.'
-      };
-    }
     if (action === 'connect-drive') {
       return {
         title: 'Google Drive Sync',
-        body: 'Syncs across different browsers (e.g. Chrome ↔ Aside / Edge / Brave) with no 100 KB limit. Connect Google Drive on each device you want to sync. Uses a hidden app-only folder — never accesses your Drive files, and pauses Browser Sync while connected.'
+        body: 'Optional cloud sync across all browsers (Chrome, Aside, Edge, Brave). Connect Google Drive on each device you want to sync. Uses a hidden app-only folder — never accesses your Drive files. Leave off to keep data strictly on this device.'
       };
     }
     if (action === 'drive-header') {
@@ -2429,16 +2337,15 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
 
   function renderItems(preserveFocusAction?: string | null) {
     const warningTitle = getSyncWarningTitle(status);
-    const isGoogleDrive = status.provider === 'google_drive';
 
     let syncSectionMarkup = '';
-    if (isGoogleDrive) {
+    if (status.enabled) {
       const isExpired = status.state === 'auth_expired';
-      const hasDriveWarning = isExpired || status.state === 'error' || status.state === 'quota_exceeded';
+      const hasDriveWarning = isExpired || status.state === 'error';
       const driveMeta = connectingDrive
         ? 'Reconnecting…'
         : formatDriveStatusLabel(status);
-      const primaryActionDisabled = busy || status.state === 'syncing' || !status.driveAvailable;
+      const primaryActionDisabled = busy || status.state === 'syncing' || !status.available;
       syncSectionMarkup = `
         <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="drive-header"${primaryActionDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
           ${renderUiIcon('googleDrive', 18)}
@@ -2449,7 +2356,7 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
           <span class="gp-drive-status-dot${hasDriveWarning ? ' warn' : ''}" aria-hidden="true"></span>
         </button>
         ${isExpired ? `
-          <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="connect-drive"${primaryActionDisabled ? ' disabled' : ''}>
+          <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="reconnect-drive"${primaryActionDisabled ? ' disabled' : ''}>
             ${renderUiIcon('refreshCw', 18)}
             <span>${connectingDrive ? 'Reconnecting…' : 'Reconnect'}</span>
           </button>
@@ -2465,37 +2372,20 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
         </button>
       `;
     } else {
-      const checked = status.available && status.enabled;
-      const statusLabel = formatSyncStatusLabel(status);
-      const showSyncNow = status.available && status.enabled;
-      const toggleDisabled = !status.available || busy;
-      const syncNowDisabled = busy || status.state === 'syncing';
+      const connectMeta = !status.available
+        ? 'Unavailable'
+        : connectingDrive
+          ? 'Connecting…'
+          : 'Connect';
+      const connectDisabled = busy || !status.available;
       syncSectionMarkup = `
-        <button type="button" role="menuitemcheckbox" aria-checked="${String(checked)}" class="gp-menu-item gp-sync-row" data-gp-section-action="toggle-sync"${toggleDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
-          ${renderUiIcon('globe', 18)}
+        <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="connect-drive"${connectDisabled ? ' disabled' : ''}>
+          ${renderUiIcon('googleDrive', 18)}
           <span class="gp-sync-copy">
-            <span class="gp-sync-title">Browser Sync</span>
-            <span class="gp-sync-meta">${escapeHtml(statusLabel)}</span>
-          </span>
-          <span class="gp-switch${checked ? ' on' : ''}" aria-hidden="true">
-            <span class="gp-switch-thumb"></span>
+            <span class="gp-sync-title">Google Drive</span>
+            <span class="gp-sync-meta">${escapeHtml(connectMeta)}</span>
           </span>
         </button>
-        ${showSyncNow ? `
-          <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="sync-now"${syncNowDisabled ? ' disabled' : ''}>
-            ${renderUiIcon('refreshCw', 18)}
-            <span>${status.state === 'syncing' ? 'Syncing…' : 'Sync now'}</span>
-          </button>
-        ` : ''}
-        ${status.driveAvailable ? `
-          <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="connect-drive"${busy ? ' disabled' : ''}>
-            ${renderUiIcon('googleDrive', 18)}
-            <span class="gp-sync-copy">
-              <span class="gp-sync-title">Google Drive</span>
-              <span class="gp-sync-meta">${connectingDrive ? 'Connecting…' : 'Connect · Cross-browser'}</span>
-            </span>
-          </button>
-        ` : ''}
       `;
     }
 
@@ -2592,26 +2482,8 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
     if (!target || !callbacks || target.disabled) return;
     const action = target.dataset.gpSectionAction;
 
-    if (action === 'toggle-sync') {
-      if (busy || !status.available) return;
-      const activeCallbacks = callbacks;
-      const nextEnabled = !status.enabled;
-      busy = true;
-      renderItems('toggle-sync');
-      try {
-        await activeCallbacks.onToggleSync(nextEnabled);
-      } catch (error) {
-        activeCallbacks.onSyncError(error);
-      } finally {
-        busy = false;
-        if (isOpen()) renderItems('toggle-sync');
-      }
-      return;
-    }
-
     if (action === 'sync-now' || (action === 'drive-header' && status.state !== 'auth_expired')) {
-      const isDrive = status.provider === 'google_drive';
-      if (busy || (isDrive ? !status.driveAvailable : (!status.available || !status.enabled))) return;
+      if (busy || !status.available || !status.enabled) return;
       const activeCallbacks = callbacks;
       busy = true;
       renderItems(action);
@@ -2627,8 +2499,12 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
       return;
     }
 
-    if (action === 'connect-drive' || (action === 'drive-header' && status.state === 'auth_expired')) {
-      if (busy || !status.driveAvailable) return;
+    if (
+      action === 'connect-drive' ||
+      action === 'reconnect-drive' ||
+      (action === 'drive-header' && status.state === 'auth_expired')
+    ) {
+      if (busy || !status.available) return;
       const activeCallbacks = callbacks;
       busy = true;
       connectingDrive = true;

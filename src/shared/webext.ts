@@ -54,31 +54,6 @@ export function storageLocalRemove(keys: string | string[]): Promise<void> {
   return invokeCompat<void>(local.remove.bind(local), [keys]);
 }
 
-export function hasStorageSync(): boolean {
-  const api = globalApi.chrome ?? globalApi.browser ?? webext;
-  return Boolean(api?.storage?.sync);
-}
-
-export function storageSyncGet<T = Record<string, unknown>>(
-  keys?: string | string[] | Record<string, unknown> | null
-): Promise<T> {
-  const sync = requireWebext().storage?.sync;
-  if (!sync) throw new Error('Browser Sync storage is not available.');
-  return invokeCompat<T>(sync.get.bind(sync), keys === undefined ? [] : [keys]);
-}
-
-export function storageSyncSet(items: Record<string, unknown>): Promise<void> {
-  const sync = requireWebext().storage?.sync;
-  if (!sync) throw new Error('Browser Sync storage is not available.');
-  return invokeCompat<void>(sync.set.bind(sync), [items]);
-}
-
-export function storageSyncRemove(keys: string | string[]): Promise<void> {
-  const sync = requireWebext().storage?.sync;
-  if (!sync) throw new Error('Browser Sync storage is not available.');
-  return invokeCompat<void>(sync.remove.bind(sync), [keys]);
-}
-
 export function hasIdentityWebAuthFlow(): boolean {
   const api = globalApi.chrome ?? globalApi.browser ?? webext;
   return Boolean(

@@ -1,7 +1,7 @@
 import { BackgroundRequest, BackgroundResponse, NativeChatMetadata, Project, RuntimeState, StoredState } from '../shared/types';
 import { createEmptyState, isSafeId, normalizeChatUrl, STORAGE_KEY } from '../shared/storage';
 import { CloudSyncStatus, createDefaultSyncStatus, SYNC_LOCAL_META_KEY, SyncLocalMeta } from '../shared/sync';
-import { hasStorageSync, runtimeSendMessage, webext } from '../shared/webext';
+import { runtimeSendMessage, webext } from '../shared/webext';
 import {
   findChatRowElement,
   findChatsListContainer,
@@ -60,7 +60,7 @@ let unassignZone: HTMLElement | null = null;
 let nativeDragSource: HTMLElement | null = null;
 const DRIVE_POLL_INTERVAL_MS = 15_000;
 let drivePollTimer: number | null = null;
-let syncStatus: CloudSyncStatus = createDefaultSyncStatus(hasStorageSync(), true);
+let syncStatus: CloudSyncStatus = createDefaultSyncStatus(true, false);
 
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
   return runtimeSendMessage<BackgroundResponse>(message);
@@ -81,8 +81,8 @@ async function bootstrap() {
 
 function updateDrivePolling() {
   const shouldPoll =
-    syncStatus.provider === 'google_drive' &&
-    syncStatus.driveAvailable &&
+    syncStatus.enabled &&
+    syncStatus.available &&
     syncStatus.state !== 'auth_expired' &&
     document.visibilityState === 'visible';
   if (shouldPoll) {
@@ -271,7 +271,6 @@ function ensurePanel() {
       shadow,
       overlayShadow,
       getSyncStatus: () => syncStatus,
-      onToggleSync: handleToggleSync,
       onSyncNow: handleSyncNow,
       onConnectGoogleDrive: handleConnectGoogleDrive,
       onDisconnectGoogleDrive: handleDisconnectGoogleDrive,
@@ -438,13 +437,6 @@ function getSafeNativeChatRow(
   return parentConversationCount > 1 ? row : null;
 }
 
-async function handleToggleSync(enabled: boolean): Promise<CloudSyncStatus> {
-  const response = await sendMessage({ type: 'setSyncEnabled', enabled });
-  if (response.syncStatus) updateSyncStatus(response.syncStatus);
-  if (!response.ok) throw new Error(response.error);
-  return response.syncStatus ?? syncStatus;
-}
-
 async function handleSyncNow(): Promise<CloudSyncStatus> {
   const response = await sendMessage({ type: 'syncNow' });
   if (response.syncStatus) updateSyncStatus(response.syncStatus);
@@ -467,6 +459,7 @@ async function handleDisconnectGoogleDrive(): Promise<CloudSyncStatus> {
 }
 
 function requestSyncIfStale() {
+  if (!syncStatus.enabled || !syncStatus.available || syncStatus.state === 'auth_expired') return;
   void sendMessage({ type: 'syncIfStale' })
     .then((response) => {
       if (response.syncStatus) updateSyncStatus(response.syncStatus);

@@ -105,7 +105,6 @@ export type BackgroundRequest =
   | { type: 'deletePrompt' | 'trackPromptUsage'; id: string }
   | { type: 'restoreBackup'; data: unknown }
   | { type: 'getSyncStatus' }
-  | { type: 'setSyncEnabled'; enabled: boolean }
   | { type: 'syncNow' }
   | { type: 'connectGoogleDrive' }
   | { type: 'disconnectGoogleDrive' }

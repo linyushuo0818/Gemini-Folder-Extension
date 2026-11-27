@@ -22,7 +22,6 @@ import type { GoogleDriveSyncClient } from './googleDriveSync';
 
 export interface BackgroundServiceDeps {
   local: StorageAreaLike;
-  sync: StorageAreaLike | null;
   drive?: GoogleDriveSyncClient | null;
   now?: () => number;
   randomUUID?: () => string;
@@ -32,7 +31,6 @@ export interface BackgroundServiceDeps {
 
 export interface BackgroundService {
   handleMessage: (message: BackgroundRequest) => Promise<BackgroundResponse>;
-  handleSyncChanged: (changes: Record<string, chrome.storage.StorageChange>) => Promise<void>;
   initialize: () => Promise<void>;
   dispose: () => void;
 }
@@ -96,7 +94,6 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
 
   const cloudSync = new CloudSyncManager({
     local: deps.local,
-    sync: deps.sync,
     drive: deps.drive ?? null,
     hooks: {
       readRawLocalSnapshot,
@@ -233,12 +230,6 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
         case 'getSyncStatus': {
           await cloudSync.ensureInitialized();
           return { ok: true, syncStatus: await cloudSync.getStatus() };
-        }
-        case 'setSyncEnabled': {
-          const result = await cloudSync.setEnabled(message.enabled);
-          return result.ok
-            ? { ok: true, syncStatus: result.status }
-            : { ok: false, error: result.error ?? 'Could not update Browser Sync.', syncStatus: result.status };
         }
         case 'syncNow': {
           const result = await cloudSync.syncNow();
@@ -425,7 +416,6 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
 
   return {
     handleMessage,
-    handleSyncChanged: (changes) => runSerialized(() => cloudSync.handleSyncChanged(changes)),
     initialize: () => runSerialized(() => cloudSync.ensureInitialized()),
     dispose: () => cloudSync.dispose()
   };

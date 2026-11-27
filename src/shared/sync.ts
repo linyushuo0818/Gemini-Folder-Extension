@@ -17,42 +17,15 @@ import {
 } from './storage';
 import { Prompt, PromptsData, sanitizePrompt } from './prompts';
 
-export const SYNC_PREFIX = 'gp_sync_v1_';
-export const SYNC_META_KEY = 'gp_sync_v1_meta';
-export const SYNC_PROJECTS_PREFIX = 'gp_sync_v1_projects_';
-export const SYNC_CHATS_PREFIX = 'gp_sync_v1_chats_';
-export const SYNC_PROMPTS_PREFIX = 'gp_sync_v1_prompts_';
-export const SYNC_TOMBSTONES_KEY = 'gp_sync_v1_tombstones';
 export const SYNC_LOCAL_META_KEY = 'gp_sync_local_meta_v1';
 export const DRIVE_AUTH_STORAGE_KEY = 'gp_drive_auth_v1';
 export const DRIVE_SYNC_FILENAME = 'gemini-projects-sync-v1.json';
 export const SYNC_STALE_INTERVAL_MS = 15_000;
 export const SYNC_SCHEMA_VERSION = 1;
 
-// 保守安全上限（低于 Chrome 的 8,192 B/项、102,400 B 总量、512 项限制）。
-export const SYNC_ITEM_BYTE_LIMIT = 7000;
-export const SYNC_TOTAL_BYTE_LIMIT = 92000;
-export const SYNC_MAX_ITEMS = 450;
-export const SYNC_TOMBSTONES_BYTE_LIMIT = 6500;
 export const DRIVE_TOMBSTONES_BYTE_LIMIT = 256 * 1024;
 export const SYNC_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const SYNC_CHAT_TITLE_MAX_LEN = 200;
-
-const SYNC_META_RESERVED_BYTES = 350;
-
-export interface SyncMeta {
-  v: 1;
-  clientId: string;
-  rev: number;
-  updatedAt: number;
-  hash: string;
-  shards: {
-    projects: number;
-    chats: number;
-    prompts: number;
-    tombstones: number;
-  };
-}
 
 export interface SyncProject {
   id: string;
@@ -90,45 +63,31 @@ export interface SyncTombstones {
   prompts: Record<string, number>;
 }
 
-export type SyncProvider = 'browser' | 'google_drive';
-
 export type CloudSyncState =
-  | 'idle'
+  | 'disabled'
   | 'syncing'
   | 'synced'
-  | 'disabled'
-  | 'partial'
-  | 'quota_exceeded'
-  | 'unavailable'
   | 'auth_expired'
+  | 'unavailable'
   | 'error';
 
 export interface CloudSyncStatus {
-  provider: SyncProvider;
   enabled: boolean;
   available: boolean;
-  driveAvailable: boolean;
   state: CloudSyncState;
   lastSyncedAt: number | null;
   lastError?: string;
-  omittedChats?: number;
-  omittedPrompts?: number;
   bytesUsed?: number;
-  bytesLimit: number;
 }
 
 export interface SyncLocalMeta {
-  provider: SyncProvider;
   enabled: boolean;
   clientId: string;
+  driveFileId?: string;
+  driveLastModifiedTime?: string;
   lastSyncedRev: number;
   lastSyncedHash: string;
   lastSyncedAt: number | null;
-  driveFileId?: string;
-  driveLastModifiedTime?: string;
-  driveLastSyncedRev?: number;
-  driveLastSyncedHash?: string;
-  driveLastSyncedAt?: number | null;
   tombstones: SyncTombstones;
   status: CloudSyncStatus;
 }
@@ -153,21 +112,6 @@ export type ParsedDriveEnvelope =
   | { kind: 'invalid'; reason: string }
   | { kind: 'valid'; envelope: DriveSyncEnvelopeV1 };
 
-export interface PackedSyncPayload {
-  items: Record<string, unknown>;
-  meta: SyncMeta;
-  hash: string;
-  bytesUsed: number;
-  omittedProjects: number;
-  omittedChats: number;
-  omittedPrompts: number;
-}
-
-export type ParsedRemoteSync =
-  | { kind: 'empty' }
-  | { kind: 'invalid'; reason: string }
-  | { kind: 'valid'; meta: SyncMeta; snapshot: SyncSnapshot };
-
 export interface MergeResult {
   state: StoredState;
   prompts: PromptsData;
@@ -182,50 +126,36 @@ export function utf8ByteLength(value: string): number {
   return utf8Encoder.encode(value).byteLength;
 }
 
-// 与 Chrome storage.sync 一致：key 字节数 + JSON.stringify(value) 字节数。
-export function syncEntryByteSize(key: string, value: unknown): number {
-  return utf8ByteLength(key) + utf8ByteLength(JSON.stringify(value));
-}
-
 export function createEmptyTombstones(): SyncTombstones {
   return { projects: {}, chats: {}, prompts: {} };
 }
 
 export function createDefaultSyncStatus(
   available = true,
-  enabled = true,
-  driveAvailable = false,
-  provider: SyncProvider = 'browser'
+  enabled = false
 ): CloudSyncStatus {
-  const state: CloudSyncState = provider === 'google_drive'
-    ? (driveAvailable ? 'idle' : 'unavailable')
-    : (!available ? 'unavailable' : enabled ? 'idle' : 'disabled');
+  const state: CloudSyncState = !available ? 'unavailable' : enabled ? 'synced' : 'disabled';
   return {
-    provider,
     enabled,
     available,
-    driveAvailable,
     state,
-    lastSyncedAt: null,
-    bytesLimit: provider === 'google_drive' ? 0 : SYNC_TOTAL_BYTE_LIMIT
+    lastSyncedAt: null
   };
 }
 
 export function createDefaultLocalMeta(
   clientId: string,
   available = true,
-  enabled = true,
-  driveAvailable = false
+  enabled = false
 ): SyncLocalMeta {
   return {
-    provider: 'browser',
     enabled,
     clientId,
     lastSyncedRev: 0,
     lastSyncedHash: '',
     lastSyncedAt: null,
     tombstones: createEmptyTombstones(),
-    status: createDefaultSyncStatus(available, enabled, driveAvailable, 'browser')
+    status: createDefaultSyncStatus(available, enabled)
   };
 }
 
@@ -306,7 +236,7 @@ function sortTombstoneBucket(bucket: Record<string, number>): Record<string, num
 export function pruneAndBoundTombstones(
   tombstones: SyncTombstones,
   now: number,
-  byteLimit = SYNC_TOMBSTONES_BYTE_LIMIT
+  byteLimit = DRIVE_TOMBSTONES_BYTE_LIMIT
 ): SyncTombstones {
   const cutoff = now - SYNC_TOMBSTONE_TTL_MS;
   const entries: Array<{ bucket: keyof SyncTombstones; id: string; deletedAt: number }> = [];
@@ -329,7 +259,7 @@ export function pruneAndBoundTombstones(
     chats: sortTombstoneBucket(full.chats),
     prompts: sortTombstoneBucket(full.prompts)
   };
-  if (syncEntryByteSize(SYNC_TOMBSTONES_KEY, normalizedFull) <= byteLimit) {
+  if (utf8ByteLength(JSON.stringify(normalizedFull)) <= byteLimit) {
     return normalizedFull;
   }
 
@@ -341,7 +271,7 @@ export function pruneAndBoundTombstones(
   const bounded = createEmptyTombstones();
   for (const entry of entries) {
     bounded[entry.bucket][entry.id] = entry.deletedAt;
-    if (syncEntryByteSize(SYNC_TOMBSTONES_KEY, bounded) > byteLimit) {
+    if (utf8ByteLength(JSON.stringify(bounded)) > byteLimit) {
       delete bounded[entry.bucket][entry.id];
       break;
     }
@@ -367,7 +297,7 @@ export function extractSyncSnapshot(
   promptsData: PromptsData | null,
   tombstones: SyncTombstones,
   now: number,
-  tombstonesByteLimit = SYNC_TOMBSTONES_BYTE_LIMIT
+  tombstonesByteLimit = DRIVE_TOMBSTONES_BYTE_LIMIT
 ): SyncSnapshot {
   const projects = sortSyncProjects(state.projects.map(projectToSync));
   const chats: SyncChat[] = [];
@@ -409,216 +339,6 @@ export function computeSnapshotHash(snapshot: SyncSnapshot): string {
   ]);
   const bytes = utf8Encoder.encode(canonical);
   return fnv1a32(bytes, 0x811c9dc5) + fnv1a32(bytes, 0x9e3779b1);
-}
-
-interface ShardPackResult<T> {
-  shards: T[][];
-  packedItems: T[];
-  omittedCount: number;
-  remainingBytes: number;
-  remainingKeys: number;
-}
-
-function packCategoryIntoShards<T>(
-  items: T[],
-  keyPrefix: string,
-  initialRemainingBytes: number,
-  initialRemainingKeys: number,
-  skipOversizedSingle: boolean
-): ShardPackResult<T> {
-  const shards: T[][] = [];
-  const packedItems: T[] = [];
-  let currentShard: T[] = [];
-  let currentShardSize = 0;
-  let remainingBytes = initialRemainingBytes;
-  let remainingKeys = initialRemainingKeys;
-  let omittedCount = 0;
-
-  for (let i = 0; i < items.length; i += 1) {
-    const item = items[i];
-    const currentKey = `${keyPrefix}${shards.length}`;
-    const singleSize = syncEntryByteSize(currentKey, [item]);
-
-    if (singleSize > SYNC_ITEM_BYTE_LIMIT) {
-      omittedCount += 1;
-      if (skipOversizedSingle) continue;
-      continue;
-    }
-
-    if (currentShard.length > 0) {
-      const candidate = [...currentShard, item];
-      const candidateSize = syncEntryByteSize(currentKey, candidate);
-      if (candidateSize <= SYNC_ITEM_BYTE_LIMIT) {
-        const delta = candidateSize - currentShardSize;
-        if (delta <= remainingBytes) {
-          currentShard.push(item);
-          packedItems.push(item);
-          remainingBytes -= delta;
-          currentShardSize = candidateSize;
-          continue;
-        }
-        // 总字节配额已满，跳过当前及后续项（单条超大已在上方跳过）。
-        omittedCount += items.length - i;
-        break;
-      }
-      // 当前分片容量不足，落盘并尝试开启新分片。
-      shards.push(currentShard);
-      currentShard = [];
-      currentShardSize = 0;
-    }
-
-    const nextKey = `${keyPrefix}${shards.length}`;
-    const nextSingleSize = syncEntryByteSize(nextKey, [item]);
-    if (nextSingleSize > SYNC_ITEM_BYTE_LIMIT) {
-      omittedCount += 1;
-      continue;
-    }
-    if (remainingKeys < 1 || nextSingleSize > remainingBytes) {
-      omittedCount += items.length - i;
-      break;
-    }
-    currentShard = [item];
-    currentShardSize = nextSingleSize;
-    remainingBytes -= nextSingleSize;
-    remainingKeys -= 1;
-    packedItems.push(item);
-  }
-
-  if (currentShard.length > 0) {
-    shards.push(currentShard);
-  }
-
-  return { shards, packedItems, omittedCount, remainingBytes, remainingKeys };
-}
-
-export function packSyncPayload(
-  snapshot: SyncSnapshot,
-  params: { clientId: string; rev: number; updatedAt: number }
-): PackedSyncPayload {
-  const tombstones = pruneAndBoundTombstones(snapshot.tombstones, params.updatedAt);
-  const items: Record<string, unknown> = {};
-
-  let remainingBytes = SYNC_TOTAL_BYTE_LIMIT - SYNC_META_RESERVED_BYTES;
-  let remainingKeys = SYNC_MAX_ITEMS - 1;
-
-  // (1) Meta + Tombstones
-  let tombstoneShards = 0;
-  if (hasAnyTombstones(tombstones)) {
-    const tombstoneBytes = syncEntryByteSize(SYNC_TOMBSTONES_KEY, tombstones);
-    if (tombstoneBytes <= remainingBytes && remainingKeys >= 1) {
-      items[SYNC_TOMBSTONES_KEY] = tombstones;
-      remainingBytes -= tombstoneBytes;
-      remainingKeys -= 1;
-      tombstoneShards = 1;
-    }
-  }
-
-  // (2) Projects（确定性顺序）
-  const packedProjects = packCategoryIntoShards(
-    sortSyncProjects(snapshot.projects),
-    SYNC_PROJECTS_PREFIX,
-    remainingBytes,
-    remainingKeys,
-    false
-  );
-  remainingBytes = packedProjects.remainingBytes;
-  remainingKeys = packedProjects.remainingKeys;
-  packedProjects.shards.forEach((shard, index) => {
-    items[`${SYNC_PROJECTS_PREFIX}${index}`] = shard;
-  });
-
-  // (3) Assigned chats（updatedAt DESC, id ASC）
-  const packedChats = packCategoryIntoShards(
-    sortSyncChats(snapshot.chats),
-    SYNC_CHATS_PREFIX,
-    remainingBytes,
-    remainingKeys,
-    false
-  );
-  remainingBytes = packedChats.remainingBytes;
-  remainingKeys = packedChats.remainingKeys;
-  packedChats.shards.forEach((shard, index) => {
-    items[`${SYNC_CHATS_PREFIX}${index}`] = shard;
-  });
-
-  // (4) Prompts（updatedAt DESC, id ASC；单条超过 7,000 B 跳过不阻断）
-  const packedPrompts = packCategoryIntoShards(
-    sortSyncPrompts(snapshot.prompts),
-    SYNC_PROMPTS_PREFIX,
-    remainingBytes,
-    remainingKeys,
-    true
-  );
-  packedPrompts.shards.forEach((shard, index) => {
-    items[`${SYNC_PROMPTS_PREFIX}${index}`] = shard;
-  });
-
-  const packedSnapshot: SyncSnapshot = {
-    projects: packedProjects.packedItems,
-    chats: packedChats.packedItems,
-    prompts: packedPrompts.packedItems,
-    tombstones: tombstoneShards > 0 ? tombstones : createEmptyTombstones()
-  };
-  const hash = computeSnapshotHash(packedSnapshot);
-
-  const meta: SyncMeta = {
-    v: SYNC_SCHEMA_VERSION,
-    clientId: params.clientId,
-    rev: params.rev,
-    updatedAt: params.updatedAt,
-    hash,
-    shards: {
-      projects: packedProjects.shards.length,
-      chats: packedChats.shards.length,
-      prompts: packedPrompts.shards.length,
-      tombstones: tombstoneShards
-    }
-  };
-  items[SYNC_META_KEY] = meta;
-
-  let bytesUsed = 0;
-  for (const [key, value] of Object.entries(items)) {
-    bytesUsed += syncEntryByteSize(key, value);
-  }
-
-  return {
-    items,
-    meta,
-    hash,
-    bytesUsed,
-    omittedProjects: packedProjects.omittedCount,
-    omittedChats: packedChats.omittedCount,
-    omittedPrompts: packedPrompts.omittedCount
-  };
-}
-
-export function sanitizeSyncMeta(raw: unknown): SyncMeta | null {
-  if (!isRecord(raw)) return null;
-  if (raw.v !== SYNC_SCHEMA_VERSION) return null;
-  if (!isSafeId(raw.clientId)) return null;
-  if (typeof raw.rev !== 'number' || !Number.isInteger(raw.rev) || raw.rev < 0) return null;
-  if (typeof raw.updatedAt !== 'number' || !Number.isFinite(raw.updatedAt) || raw.updatedAt < 0) return null;
-  if (typeof raw.hash !== 'string' || !/^[a-f0-9]{8,64}$/i.test(raw.hash)) return null;
-  if (!isRecord(raw.shards)) return null;
-
-  const projects = raw.shards.projects;
-  const chats = raw.shards.chats;
-  const prompts = raw.shards.prompts;
-  const tombstones = raw.shards.tombstones;
-  const isShardCount = (v: unknown): v is number =>
-    typeof v === 'number' && Number.isInteger(v) && v >= 0 && v <= 512;
-  if (!isShardCount(projects) || !isShardCount(chats) || !isShardCount(prompts) || !isShardCount(tombstones)) {
-    return null;
-  }
-
-  return {
-    v: 1,
-    clientId: raw.clientId,
-    rev: raw.rev,
-    updatedAt: raw.updatedAt,
-    hash: raw.hash,
-    shards: { projects, chats, prompts, tombstones }
-  };
 }
 
 function sanitizeSyncProject(raw: unknown, fallbackIndex: number): SyncProject | null {
@@ -674,63 +394,6 @@ export function sanitizeTombstones(raw: unknown): SyncTombstones {
     }
   }
   return result;
-}
-
-export function parseRemoteSyncData(rawAll: Record<string, unknown>): ParsedRemoteSync {
-  const rawMeta = rawAll[SYNC_META_KEY];
-  if (rawMeta === undefined) return { kind: 'empty' };
-
-  const meta = sanitizeSyncMeta(rawMeta);
-  if (!meta) return { kind: 'invalid', reason: 'Invalid sync metadata.' };
-
-  const projects: SyncProject[] = [];
-  const seenProjects = new Set<string>();
-  for (let i = 0; i < meta.shards.projects; i += 1) {
-    const shard = rawAll[`${SYNC_PROJECTS_PREFIX}${i}`];
-    if (!Array.isArray(shard)) continue;
-    for (const entry of shard) {
-      const sanitized = sanitizeSyncProject(entry, projects.length);
-      if (!sanitized || seenProjects.has(sanitized.id)) continue;
-      seenProjects.add(sanitized.id);
-      projects.push(sanitized);
-    }
-  }
-
-  const chats: SyncChat[] = [];
-  const seenChats = new Set<string>();
-  for (let i = 0; i < meta.shards.chats; i += 1) {
-    const shard = rawAll[`${SYNC_CHATS_PREFIX}${i}`];
-    if (!Array.isArray(shard)) continue;
-    for (const entry of shard) {
-      const sanitized = sanitizeSyncChat(entry);
-      if (!sanitized || seenChats.has(sanitized.id)) continue;
-      seenChats.add(sanitized.id);
-      chats.push(sanitized);
-    }
-  }
-
-  const prompts: SyncPrompt[] = [];
-  const seenPrompts = new Set<string>();
-  for (let i = 0; i < meta.shards.prompts; i += 1) {
-    const shard = rawAll[`${SYNC_PROMPTS_PREFIX}${i}`];
-    if (!Array.isArray(shard)) continue;
-    for (const entry of shard) {
-      const sanitized = sanitizeSyncPrompt(entry);
-      if (!sanitized || seenPrompts.has(sanitized.id)) continue;
-      seenPrompts.add(sanitized.id);
-      prompts.push(sanitized);
-    }
-  }
-
-  const tombstones = meta.shards.tombstones > 0
-    ? sanitizeTombstones(rawAll[SYNC_TOMBSTONES_KEY])
-    : createEmptyTombstones();
-
-  return {
-    kind: 'valid',
-    meta,
-    snapshot: { projects, chats, prompts, tombstones }
-  };
 }
 
 export function parseDriveSyncEnvelope(raw: unknown): ParsedDriveEnvelope {
@@ -802,86 +465,93 @@ function isValidDriveFileId(value: unknown): value is string {
 export function sanitizeLocalMeta(
   raw: unknown,
   fallbackClientId: string,
-  available: boolean,
-  driveAvailable = false
+  available: boolean
 ): SyncLocalMeta {
-  if (!isRecord(raw)) return createDefaultLocalMeta(fallbackClientId, available, true, driveAvailable);
-  const provider: SyncProvider = raw.provider === 'google_drive' ? 'google_drive' : 'browser';
-  const enabled = typeof raw.enabled === 'boolean' ? raw.enabled : true;
+  if (!isRecord(raw)) return createDefaultLocalMeta(fallbackClientId, available, false);
+
+  // 兼容迁移旧开发版保存的 provider 字段（google_drive -> enabled: true；browser -> enabled: false）。
+  const legacyProvider = typeof raw.provider === 'string' ? raw.provider : null;
+  const isLegacyDrive = legacyProvider === 'google_drive';
+  const isLegacyBrowser = legacyProvider === 'browser';
+
+  const enabled = isLegacyDrive
+    ? true
+    : isLegacyBrowser
+      ? false
+      : typeof raw.enabled === 'boolean'
+        ? raw.enabled
+        : false;
+
   const clientId = isSafeId(raw.clientId) ? raw.clientId : fallbackClientId;
-  const lastSyncedRev = typeof raw.lastSyncedRev === 'number' && Number.isInteger(raw.lastSyncedRev) && raw.lastSyncedRev >= 0
-    ? raw.lastSyncedRev
-    : 0;
-  const lastSyncedHash = typeof raw.lastSyncedHash === 'string' ? raw.lastSyncedHash : '';
-  const lastSyncedAt = typeof raw.lastSyncedAt === 'number' && Number.isFinite(raw.lastSyncedAt)
-    ? raw.lastSyncedAt
-    : null;
   const driveFileId = isValidDriveFileId(raw.driveFileId) ? raw.driveFileId : undefined;
-  const driveLastModifiedTime = typeof raw.driveLastModifiedTime === 'string' && raw.driveLastModifiedTime.length > 0
-    ? raw.driveLastModifiedTime
-    : undefined;
-  const driveLastSyncedRev = typeof raw.driveLastSyncedRev === 'number' && Number.isInteger(raw.driveLastSyncedRev) && raw.driveLastSyncedRev >= 0
-    ? raw.driveLastSyncedRev
-    : 0;
-  const driveLastSyncedHash = typeof raw.driveLastSyncedHash === 'string' ? raw.driveLastSyncedHash : '';
-  const driveLastSyncedAt = typeof raw.driveLastSyncedAt === 'number' && Number.isFinite(raw.driveLastSyncedAt)
-    ? raw.driveLastSyncedAt
-    : null;
+  const driveLastModifiedTime =
+    typeof raw.driveLastModifiedTime === 'string' && raw.driveLastModifiedTime.length > 0
+      ? raw.driveLastModifiedTime
+      : undefined;
+
+  const rawRev = legacyProvider !== null ? raw.driveLastSyncedRev : raw.lastSyncedRev;
+  const lastSyncedRev =
+    typeof rawRev === 'number' && Number.isInteger(rawRev) && rawRev >= 0 ? rawRev : 0;
+
+  const rawHash = legacyProvider !== null ? raw.driveLastSyncedHash : raw.lastSyncedHash;
+  const lastSyncedHash = typeof rawHash === 'string' ? rawHash : '';
+
+  const rawAt = legacyProvider !== null ? raw.driveLastSyncedAt : raw.lastSyncedAt;
+  const lastSyncedAt =
+    typeof rawAt === 'number' && Number.isFinite(rawAt) ? rawAt : null;
+
   const tombstones = sanitizeTombstones(raw.tombstones);
 
   const rawStatus = isRecord(raw.status) ? raw.status : null;
   const validStates: CloudSyncState[] = [
-    'idle', 'syncing', 'synced', 'disabled', 'partial', 'quota_exceeded', 'unavailable', 'auth_expired', 'error'
+    'disabled', 'syncing', 'synced', 'auth_expired', 'unavailable', 'error'
   ];
-  let state: CloudSyncState = rawStatus && typeof rawStatus.state === 'string' && validStates.includes(rawStatus.state as CloudSyncState)
-    ? (rawStatus.state as CloudSyncState)
-    : (provider === 'google_drive' ? 'idle' : (enabled ? 'idle' : 'disabled'));
+  let state: CloudSyncState =
+    rawStatus && typeof rawStatus.state === 'string' && validStates.includes(rawStatus.state as CloudSyncState)
+      ? (rawStatus.state as CloudSyncState)
+      : (enabled ? 'synced' : 'disabled');
 
-  if (provider === 'google_drive') {
-    if (!driveAvailable) state = 'unavailable';
-    else if (state === 'syncing' || state === 'disabled' || state === 'partial' || state === 'quota_exceeded') state = 'idle';
-  } else {
-    if (!available) state = 'unavailable';
-    else if (!enabled) state = 'disabled';
-    else if (state === 'syncing' || state === 'auth_expired') state = 'idle';
+  if (!available) {
+    state = 'unavailable';
+  } else if (!enabled) {
+    state = 'disabled';
+  } else if (state === 'syncing' || state === 'disabled' || state === 'unavailable') {
+    state = 'synced';
   }
 
   const status: CloudSyncStatus = {
-    provider,
     enabled,
     available,
-    driveAvailable,
     state,
-    lastSyncedAt: provider === 'google_drive' ? driveLastSyncedAt : lastSyncedAt,
-    bytesLimit: provider === 'google_drive' ? 0 : SYNC_TOTAL_BYTE_LIMIT
+    lastSyncedAt
   };
-  if (rawStatus && typeof rawStatus.lastError === 'string' && rawStatus.lastError) {
+  if (
+    (state === 'error' || state === 'auth_expired') &&
+    rawStatus &&
+    typeof rawStatus.lastError === 'string' &&
+    rawStatus.lastError
+  ) {
     status.lastError = rawStatus.lastError;
   }
-  if (provider === 'browser') {
-    if (rawStatus && typeof rawStatus.omittedChats === 'number' && Number.isFinite(rawStatus.omittedChats) && rawStatus.omittedChats > 0) {
-      status.omittedChats = rawStatus.omittedChats;
-    }
-    if (rawStatus && typeof rawStatus.omittedPrompts === 'number' && Number.isFinite(rawStatus.omittedPrompts) && rawStatus.omittedPrompts > 0) {
-      status.omittedPrompts = rawStatus.omittedPrompts;
-    }
-  }
-  if (rawStatus && typeof rawStatus.bytesUsed === 'number' && Number.isFinite(rawStatus.bytesUsed) && rawStatus.bytesUsed >= 0) {
+  if (
+    enabled &&
+    !isLegacyBrowser &&
+    rawStatus &&
+    typeof rawStatus.bytesUsed === 'number' &&
+    Number.isFinite(rawStatus.bytesUsed) &&
+    rawStatus.bytesUsed >= 0
+  ) {
     status.bytesUsed = rawStatus.bytesUsed;
   }
 
   return {
-    provider,
     enabled,
     clientId,
+    ...(driveFileId ? { driveFileId } : {}),
+    ...(driveLastModifiedTime ? { driveLastModifiedTime } : {}),
     lastSyncedRev,
     lastSyncedHash,
     lastSyncedAt,
-    ...(driveFileId ? { driveFileId } : {}),
-    ...(driveLastModifiedTime ? { driveLastModifiedTime } : {}),
-    driveLastSyncedRev,
-    driveLastSyncedHash,
-    driveLastSyncedAt,
     tombstones,
     status
   };
@@ -935,7 +605,7 @@ export function mergeSyncData(
   localTombstones: SyncTombstones,
   remote: SyncSnapshot,
   now: number,
-  tombstonesByteLimit = SYNC_TOMBSTONES_BYTE_LIMIT
+  tombstonesByteLimit = DRIVE_TOMBSTONES_BYTE_LIMIT
 ): MergeResult {
   const mergedTombstones = createEmptyTombstones();
 
