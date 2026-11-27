@@ -74,6 +74,54 @@ function isRowInChatsList(row: HTMLElement | null): boolean {
   return chatsList.contains(row);
 }
 
+function isElementStillVisible(el: HTMLElement | null): boolean {
+  return Boolean(
+    el &&
+      el.isConnected &&
+      el.getClientRects().length > 0 &&
+      getComputedStyle(el).visibility !== 'hidden'
+  );
+}
+
+// Shadow DOM 子菜单位于 CDK 遮罩层之上，且 kebab 按钮在遮罩激活时未必带有 aria-expanded="true" 或支持二次点击关闭，
+// 因此依次通过 CDK backdrop 点击、Escape 键盘事件与触发按钮兜底关闭原生菜单。
+function dismissNativeMenu(menu: HTMLElement | null, nativeButton: HTMLElement | null): void {
+  if (!menu || !isElementStillVisible(menu)) {
+    if (!menu && nativeButton?.isConnected && nativeButton.getAttribute('aria-expanded') === 'true') {
+      nativeButton.click();
+    }
+    return;
+  }
+
+  const backdrop = menu
+    .closest('.cdk-overlay-container')
+    ?.querySelector<HTMLElement>('.cdk-overlay-backdrop-showing, .cdk-overlay-backdrop');
+  backdrop?.click();
+
+  if (isElementStillVisible(menu)) {
+    const target: EventTarget = menu.isConnected ? menu : document;
+    target.dispatchEvent(
+      new KeyboardEvent('keydown', {
+        key: 'Escape',
+        code: 'Escape',
+        keyCode: 27,
+        which: 27,
+        bubbles: true,
+        cancelable: true
+      })
+    );
+  }
+
+  if (
+    !backdrop &&
+    isElementStillVisible(menu) &&
+    nativeButton?.isConnected &&
+    nativeButton.getAttribute('aria-expanded') === 'true'
+  ) {
+    nativeButton.click();
+  }
+}
+
 export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions): () => void {
   const lifecycle = new AbortController();
   let session: AbortController | null = null;
@@ -142,9 +190,10 @@ export function attachChatMenuEnhancer(options: ChatMenuEnhancerOptions): () => 
       text.textContent = label;
       button.appendChild(text);
       button.onclick = () => {
+        const currentNativeMenu = nativeMenu;
         const nativeButton = kebab;
-        if (nativeButton?.getAttribute('aria-expanded') === 'true') nativeButton.click();
-        close(true);
+        dismissNativeMenu(currentNativeMenu, nativeButton);
+        close(false);
         action();
       };
       menu.appendChild(button);
