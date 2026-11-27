@@ -106,7 +106,10 @@ export type BackgroundRequest =
   | { type: 'restoreBackup'; data: unknown }
   | { type: 'getSyncStatus' }
   | { type: 'setSyncEnabled'; enabled: boolean }
-  | { type: 'syncNow' };
+  | { type: 'syncNow' }
+  | { type: 'connectGoogleDrive' }
+  | { type: 'disconnectGoogleDrive' }
+  | { type: 'syncIfStale' };
 
 export type BackgroundResponse =
   | { ok: true; state?: StoredState; prompts?: PromptsData; syncStatus?: CloudSyncStatus }

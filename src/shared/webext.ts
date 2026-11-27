@@ -63,20 +63,47 @@ export function storageSyncGet<T = Record<string, unknown>>(
   keys?: string | string[] | Record<string, unknown> | null
 ): Promise<T> {
   const sync = requireWebext().storage?.sync;
-  if (!sync) throw new Error('Chrome Sync storage is not available.');
+  if (!sync) throw new Error('Browser Sync storage is not available.');
   return invokeCompat<T>(sync.get.bind(sync), keys === undefined ? [] : [keys]);
 }
 
 export function storageSyncSet(items: Record<string, unknown>): Promise<void> {
   const sync = requireWebext().storage?.sync;
-  if (!sync) throw new Error('Chrome Sync storage is not available.');
+  if (!sync) throw new Error('Browser Sync storage is not available.');
   return invokeCompat<void>(sync.set.bind(sync), [items]);
 }
 
 export function storageSyncRemove(keys: string | string[]): Promise<void> {
   const sync = requireWebext().storage?.sync;
-  if (!sync) throw new Error('Chrome Sync storage is not available.');
+  if (!sync) throw new Error('Browser Sync storage is not available.');
   return invokeCompat<void>(sync.remove.bind(sync), [keys]);
+}
+
+export function hasIdentityWebAuthFlow(): boolean {
+  const api = globalApi.chrome ?? globalApi.browser ?? webext;
+  return Boolean(
+    typeof api?.identity?.launchWebAuthFlow === 'function' &&
+    typeof api?.identity?.getRedirectURL === 'function'
+  );
+}
+
+export function identityGetRedirectURL(path?: string): string {
+  const identity = requireWebext().identity;
+  if (typeof identity?.getRedirectURL !== 'function') {
+    throw new Error('Identity API is not available in this browser.');
+  }
+  return path === undefined ? identity.getRedirectURL() : identity.getRedirectURL(path);
+}
+
+export function identityLaunchWebAuthFlow(details: {
+  url: string;
+  interactive: boolean;
+}): Promise<string | undefined> {
+  const identity = requireWebext().identity;
+  if (typeof identity?.launchWebAuthFlow !== 'function') {
+    throw new Error('Identity API is not available in this browser.');
+  }
+  return invokeCompat<string | undefined>(identity.launchWebAuthFlow.bind(identity), [details]);
 }
 
 export function runtimeSendMessage<TResponse = unknown>(message: unknown): Promise<TResponse> {

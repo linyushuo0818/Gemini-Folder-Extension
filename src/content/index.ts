@@ -88,8 +88,8 @@ async function loadInitialState() {
   stateLoading = true;
   try {
     const [stateResponse, syncResponse] = await Promise.all([
-      withTimeout(sendMessage({ type: 'getState' }), 1800),
-      withTimeout(sendMessage({ type: 'getSyncStatus' }), 1800).catch(() => null)
+      withTimeout(sendMessage({ type: 'getState' }), 4000),
+      withTimeout(sendMessage({ type: 'getSyncStatus' }), 4000).catch(() => null)
     ]);
     if (syncResponse?.syncStatus) {
       updateSyncStatus(syncResponse.syncStatus);
@@ -100,6 +100,7 @@ async function loadInitialState() {
     state.projects = stateResponse.state.projects;
     state.chatIndex = new Map(Object.entries(stateResponse.state.chatIndex));
     state.uiPrefs = stateResponse.state.uiPrefs;
+    requestSyncIfStale();
   } catch (error) {
     console.warn('[gemini-projects] getState failed', error);
   } finally {
@@ -226,6 +227,7 @@ function installLifecycleRescans() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
       scheduleRescan(0);
+      requestSyncIfStale();
     }
   });
 }
@@ -244,6 +246,8 @@ function ensurePanel() {
       getSyncStatus: () => syncStatus,
       onToggleSync: handleToggleSync,
       onSyncNow: handleSyncNow,
+      onConnectGoogleDrive: handleConnectGoogleDrive,
+      onDisconnectGoogleDrive: handleDisconnectGoogleDrive,
       onSaveProject: handleSaveProject,
       onToggleProjectPin: handleToggleProjectPin,
       onToggleProjectExpand: handleToggleProjectExpand,
@@ -419,6 +423,28 @@ async function handleSyncNow(): Promise<CloudSyncStatus> {
   if (response.syncStatus) updateSyncStatus(response.syncStatus);
   if (!response.ok) throw new Error(response.error);
   return response.syncStatus ?? syncStatus;
+}
+
+async function handleConnectGoogleDrive(): Promise<CloudSyncStatus> {
+  const response = await sendMessage({ type: 'connectGoogleDrive' });
+  if (response.syncStatus) updateSyncStatus(response.syncStatus);
+  if (!response.ok) throw new Error(response.error);
+  return response.syncStatus ?? syncStatus;
+}
+
+async function handleDisconnectGoogleDrive(): Promise<CloudSyncStatus> {
+  const response = await sendMessage({ type: 'disconnectGoogleDrive' });
+  if (response.syncStatus) updateSyncStatus(response.syncStatus);
+  if (!response.ok) throw new Error(response.error);
+  return response.syncStatus ?? syncStatus;
+}
+
+function requestSyncIfStale() {
+  void sendMessage({ type: 'syncIfStale' })
+    .then((response) => {
+      if (response.syncStatus) updateSyncStatus(response.syncStatus);
+    })
+    .catch(() => undefined);
 }
 
 async function handleSaveProject(project: Project, editing: boolean) {

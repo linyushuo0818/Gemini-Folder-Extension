@@ -22,6 +22,8 @@ interface ProjectsPanelOptions {
   getSyncStatus: () => CloudSyncStatus;
   onToggleSync: (enabled: boolean) => Promise<CloudSyncStatus>;
   onSyncNow: () => Promise<CloudSyncStatus>;
+  onConnectGoogleDrive: () => Promise<CloudSyncStatus>;
+  onDisconnectGoogleDrive: () => Promise<CloudSyncStatus>;
   onSaveProject: (project: Project, editing: boolean) => Promise<void>;
   onToggleProjectPin: (projectId: string, isPinned: boolean) => Promise<void>;
   onToggleProjectExpand: (projectId: string) => void;
@@ -602,31 +604,44 @@ export function createProjectsPanel(options: ProjectsPanelOptions) {
         const next = await options.onToggleSync(enabled);
         setSyncStatus(next);
         if (!enabled) {
-          showToast('Chrome Sync paused');
+          showToast('Browser Sync paused');
         } else if (next.state === 'partial') {
-          showToast('Chrome Sync enabled (storage limit reached)');
+          showToast('Browser Sync enabled (storage limit reached)');
         } else if (next.state === 'quota_exceeded') {
-          showToast('Chrome Sync storage is full');
+          showToast('Browser Sync storage is full');
         } else {
-          showToast('Chrome Sync enabled');
+          showToast('Browser Sync enabled');
         }
       },
       onSyncNow: async () => {
         const next = await options.onSyncNow();
         setSyncStatus(next);
-        if (next.state === 'partial') {
+        if (next.provider === 'google_drive') {
+          showToast('Synced with Google Drive');
+        } else if (next.state === 'partial') {
           showToast('Synced partially (storage limit reached)');
         } else if (next.state === 'quota_exceeded') {
-          showToast('Chrome Sync storage is full');
+          showToast('Browser Sync storage is full');
         } else {
-          showToast('Synced with Chrome');
+          showToast('Synced with browser');
         }
       },
+      onConnectGoogleDrive: async () => {
+        const wasDrive = currentSyncStatus.provider === 'google_drive';
+        const next = await options.onConnectGoogleDrive();
+        setSyncStatus(next);
+        showToast(wasDrive ? 'Reconnected to Google Drive' : 'Connected to Google Drive');
+      },
+      onDisconnectGoogleDrive: async () => {
+        const next = await options.onDisconnectGoogleDrive();
+        setSyncStatus(next);
+        showToast('Disconnected from Google Drive');
+      },
       onSyncError: (error) => {
-        console.warn('[Gemini Projects] Chrome Sync failed', error);
+        console.warn('[Gemini Projects] Sync failed', error);
         const message = error instanceof Error && error.message
           ? error.message
-          : 'Chrome Sync failed. Please try again.';
+          : 'Sync failed. Please try again.';
         showToast(message);
       },
       onBackup: () => {
@@ -1253,17 +1268,26 @@ function ensurePanelRoot(shadow: ShadowRoot): HTMLElement {
 }
 
 function getSyncWarningTitle(status: CloudSyncStatus): string | null {
+  if (status.state === 'auth_expired') {
+    return 'Google Drive session expired. Click to reconnect.';
+  }
+  if (status.provider === 'google_drive') {
+    if (status.state === 'error') {
+      return status.lastError || 'Google Drive sync error';
+    }
+    return null;
+  }
   if (status.state === 'partial') {
     const omitted = (status.omittedChats ?? 0) + (status.omittedPrompts ?? 0);
     return omitted > 0
-      ? `Chrome Sync storage limit reached (${omitted} items kept locally)`
-      : 'Chrome Sync storage limit reached';
+      ? `Browser Sync storage limit reached (${omitted} items kept locally)`
+      : 'Browser Sync storage limit reached';
   }
   if (status.state === 'quota_exceeded') {
-    return status.lastError || 'Chrome Sync storage is full';
+    return status.lastError || 'Browser Sync storage is full';
   }
   if (status.state === 'error') {
-    return status.lastError || 'Chrome Sync error';
+    return status.lastError || 'Browser Sync error';
   }
   return null;
 }
@@ -1275,6 +1299,14 @@ function formatSyncStatusLabel(status: CloudSyncStatus): string {
   if (status.state === 'partial' || status.state === 'quota_exceeded') return 'Quota limit';
   if (status.state === 'error') return 'Error';
   return 'On';
+}
+
+function formatDriveStatusLabel(status: CloudSyncStatus): string {
+  if (!status.driveAvailable || status.state === 'unavailable') return 'Unavailable';
+  if (status.state === 'syncing') return 'Syncing…';
+  if (status.state === 'auth_expired') return 'Reconnect needed';
+  if (status.state === 'error') return 'Error';
+  return 'Synced';
 }
 
 function buildPanelMarkup(state: RuntimeState, syncStatus: CloudSyncStatus): string {
@@ -1797,6 +1829,12 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         padding: 7px 12px;
         min-height: 44px;
       }
+      .gp-menu .gp-drive-item {
+        align-items: center;
+        gap: 10px;
+        padding: 7px 12px;
+        min-height: 44px;
+      }
       .gp-sync-copy {
         display: flex;
         flex-direction: column;
@@ -2254,6 +2292,8 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
     onReturnFocus: () => void;
     onToggleSync: (enabled: boolean) => Promise<void>;
     onSyncNow: () => Promise<void>;
+    onConnectGoogleDrive: () => Promise<void>;
+    onDisconnectGoogleDrive: () => Promise<void>;
     onSyncError: (error: unknown) => void;
     onBackup: () => void;
     onRestore: () => void;
@@ -2263,35 +2303,83 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   let opener: HTMLElement | null = null;
   let status: CloudSyncStatus = createDefaultSyncStatus();
   let busy = false;
+  let connectingDrive = false;
 
   function isOpen(): boolean {
     return menu.dataset.gpMotionState === 'open';
   }
 
   function renderItems(preserveFocusAction?: string | null) {
-    const checked = status.available && status.enabled;
-    const statusLabel = formatSyncStatusLabel(status);
     const warningTitle = getSyncWarningTitle(status);
-    const showSyncNow = status.available && status.enabled;
-    const toggleDisabled = !status.available || busy;
-    const syncNowDisabled = busy || status.state === 'syncing';
+    const isGoogleDrive = status.provider === 'google_drive';
+
+    let syncSectionMarkup = '';
+    if (isGoogleDrive) {
+      const isExpired = status.state === 'auth_expired';
+      const driveMeta = connectingDrive
+        ? 'Reconnecting…'
+        : formatDriveStatusLabel(status);
+      const primaryActionDisabled = busy || status.state === 'syncing' || !status.driveAvailable;
+      syncSectionMarkup = `
+        <button type="button" role="menuitem" class="gp-menu-item gp-drive-item" data-gp-section-action="drive-header"${primaryActionDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+          ${renderUiIcon('globe', 18)}
+          <span class="gp-sync-copy">
+            <span class="gp-sync-title">Google Drive</span>
+            <span class="gp-sync-meta">${escapeHtml(driveMeta)}</span>
+          </span>
+        </button>
+        ${isExpired ? `
+          <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="connect-drive"${primaryActionDisabled ? ' disabled' : ''}>
+            ${renderUiIcon('rotateCcw', 18)}
+            <span>${connectingDrive ? 'Reconnecting…' : 'Reconnect'}</span>
+          </button>
+        ` : `
+          <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="sync-now"${primaryActionDisabled ? ' disabled' : ''}>
+            ${renderUiIcon('rotateCcw', 18)}
+            <span>${status.state === 'syncing' ? 'Syncing…' : 'Sync now'}</span>
+          </button>
+        `}
+        <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="disconnect-drive"${busy ? ' disabled' : ''}>
+          ${renderUiIcon('logOut', 18)}
+          <span>Disconnect Google Drive</span>
+        </button>
+      `;
+    } else {
+      const checked = status.available && status.enabled;
+      const statusLabel = formatSyncStatusLabel(status);
+      const showSyncNow = status.available && status.enabled;
+      const toggleDisabled = !status.available || busy;
+      const syncNowDisabled = busy || status.state === 'syncing';
+      syncSectionMarkup = `
+        <button type="button" role="menuitemcheckbox" aria-checked="${String(checked)}" class="gp-menu-item gp-sync-toggle-item" data-gp-section-action="toggle-sync"${toggleDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+          <span class="gp-sync-copy">
+            <span class="gp-sync-title">Browser Sync</span>
+            <span class="gp-sync-meta">${escapeHtml(statusLabel)}</span>
+          </span>
+          <span class="gp-switch${checked ? ' on' : ''}" aria-hidden="true">
+            <span class="gp-switch-thumb"></span>
+          </span>
+        </button>
+        ${showSyncNow ? `
+          <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="sync-now"${syncNowDisabled ? ' disabled' : ''}>
+            ${renderUiIcon('rotateCcw', 18)}
+            <span>${status.state === 'syncing' ? 'Syncing…' : 'Sync now'}</span>
+          </button>
+        ` : ''}
+        ${status.driveAvailable ? `
+          <button type="button" role="menuitem" class="gp-menu-item gp-drive-item" data-gp-section-action="connect-drive"${busy ? ' disabled' : ''}>
+            ${renderUiIcon('globe', 18)}
+            <span class="gp-sync-copy">
+              <span class="gp-sync-title">Google Drive</span>
+              <span class="gp-sync-meta">${connectingDrive ? 'Connecting…' : 'Connect · Cross-browser'}</span>
+            </span>
+          </button>
+        ` : ''}
+      `;
+    }
 
     menu.innerHTML = `
-      <button type="button" role="menuitemcheckbox" aria-checked="${String(checked)}" class="gp-menu-item gp-sync-toggle-item" data-gp-section-action="toggle-sync"${toggleDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
-        <span class="gp-sync-copy">
-          <span class="gp-sync-title">Chrome Sync</span>
-          <span class="gp-sync-meta">${escapeHtml(statusLabel)}</span>
-        </span>
-        <span class="gp-switch${checked ? ' on' : ''}" aria-hidden="true">
-          <span class="gp-switch-thumb"></span>
-        </span>
-      </button>
-      ${showSyncNow ? `
-        <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="sync-now"${syncNowDisabled ? ' disabled' : ''}>
-          ${renderUiIcon('rotateCcw', 18)}
-          <span>${status.state === 'syncing' ? 'Syncing…' : 'Sync now'}</span>
-        </button>
-      ` : ''}
+      ${syncSectionMarkup}
       <div class="gp-menu-divider" role="separator"></div>
       <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="backup">
         ${renderUiIcon('download', 18)}
@@ -2378,11 +2466,12 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
       return;
     }
 
-    if (action === 'sync-now') {
-      if (busy || !status.available || !status.enabled) return;
+    if (action === 'sync-now' || (action === 'drive-header' && status.state !== 'auth_expired')) {
+      const isDrive = status.provider === 'google_drive';
+      if (busy || (isDrive ? !status.driveAvailable : (!status.available || !status.enabled))) return;
       const activeCallbacks = callbacks;
       busy = true;
-      renderItems('sync-now');
+      renderItems(action);
       try {
         await activeCallbacks.onSyncNow();
         close(true);
@@ -2390,7 +2479,43 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
         activeCallbacks.onSyncError(error);
       } finally {
         busy = false;
-        if (isOpen()) renderItems('sync-now');
+        if (isOpen()) renderItems(action);
+      }
+      return;
+    }
+
+    if (action === 'connect-drive' || (action === 'drive-header' && status.state === 'auth_expired')) {
+      if (busy || !status.driveAvailable) return;
+      const activeCallbacks = callbacks;
+      busy = true;
+      connectingDrive = true;
+      renderItems(action);
+      try {
+        await activeCallbacks.onConnectGoogleDrive();
+        if (isOpen()) close(true);
+      } catch (error) {
+        activeCallbacks.onSyncError(error);
+      } finally {
+        busy = false;
+        connectingDrive = false;
+        if (isOpen()) renderItems(action);
+      }
+      return;
+    }
+
+    if (action === 'disconnect-drive') {
+      if (busy) return;
+      const activeCallbacks = callbacks;
+      busy = true;
+      renderItems('disconnect-drive');
+      try {
+        await activeCallbacks.onDisconnectGoogleDrive();
+        if (isOpen()) close(true);
+      } catch (error) {
+        activeCallbacks.onSyncError(error);
+      } finally {
+        busy = false;
+        if (isOpen()) renderItems();
       }
       return;
     }

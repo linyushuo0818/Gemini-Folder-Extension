@@ -1,7 +1,10 @@
 import { BackgroundRequest, BackgroundResponse } from './shared/types';
 import { SYNC_PREFIX } from './shared/sync';
 import {
+  hasIdentityWebAuthFlow,
   hasStorageSync,
+  identityGetRedirectURL,
+  identityLaunchWebAuthFlow,
   storageLocalGet,
   storageLocalRemove,
   storageLocalSet,
@@ -10,21 +13,35 @@ import {
   storageSyncSet,
   webext
 } from './shared/webext';
+import { GoogleDriveSyncClient } from './background/googleDriveSync';
 import { createBackgroundService } from './background/service';
 
+const localArea = {
+  get: storageLocalGet,
+  set: storageLocalSet,
+  remove: storageLocalRemove
+};
+
+const driveClient = hasIdentityWebAuthFlow()
+  ? new GoogleDriveSyncClient({
+      local: localArea,
+      identity: {
+        getRedirectURL: identityGetRedirectURL,
+        launchWebAuthFlow: identityLaunchWebAuthFlow
+      }
+    })
+  : null;
+
 const service = createBackgroundService({
-  local: {
-    get: storageLocalGet,
-    set: storageLocalSet,
-    remove: storageLocalRemove
-  },
+  local: localArea,
   sync: hasStorageSync()
     ? {
         get: storageSyncGet,
         set: storageSyncSet,
         remove: storageSyncRemove
       }
-    : null
+    : null,
+  drive: driveClient
 });
 
 // MV3 Service Worker 必须在顶层同步注册事件监听器，防止休眠唤醒时丢失事件。

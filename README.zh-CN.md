@@ -19,7 +19,8 @@ Gemini Projects 可以在 Gemini 侧边栏里添加本地项目文件夹，帮�
 - 为 Project 选择图标，使用多彩配色或预设色
 - 为每个项目单独选择线条（Outline）、实心（Solid）或双色（Duotone）图标
 - 在紧凑的 Project 菜单中置顶、编辑或删除项目；置顶项目刷新后仍排在前面，取消置顶后恢复原来的排序位置
-- 支持通过 Chrome 内置同步（Chrome Sync）在已登录同一账号的 Chrome 浏览器间同步 Projects、已归属聊天与 Prompt Library（默认开启，可随时在 Projects 标题栏菜单中开关）
+- 支持通过浏览器内置同步（**Browser Sync**）在登录同一浏览器账号的设备间自动同步 Projects、已归属聊天与 Prompt Library（默认开启，可随时在 Projects 标题栏菜单中开关）
+- 支持在 Projects 标题栏菜单中按需连接 **Google Drive** 实现跨浏览器同步（适用于 Chrome、Edge、Brave、Aside、Arc 等浏览器），数据保存在 Google Drive 隐藏应用数据目录（`appDataFolder`），无 100 KB 同步容量上限
 - 备份和恢复本地 Projects 与提示词 JSON 文件
 - 保存、搜索、编辑和复用常用提示词
 - 本地优先存储：所有数据始终优先保存在浏览器本地
@@ -46,10 +47,12 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 ## 隐私
 
 - Projects 和提示词始终优先保存在浏览器本地扩展存储（`chrome.storage.local`）中。
-- 内置的 Chrome Sync 仅复用现有 `storage` 权限，通过 Chrome 自带的 `chrome.storage.sync` 在同一 Chrome 账号下同步项目、已归属聊天和提示词库；你可随时在 Projects 标题栏菜单中关闭同步，关闭不会删除本地数据。
-- 未归属的普通聊天记录、侧边栏折叠状态与提示词使用统计仅保留在当前设备本地，不会同步。
-- 扩展不需要额外账号，也不连接任何第三方后端服务，完全在浏览器内运行。
-- Chrome 同步服务与 Gemini 网站上的账号行为均以 Google 的相关政策为准。
+- 内置的 **Browser Sync** 通过浏览器自带的 `chrome.storage.sync` 在同一浏览器账号下同步项目、已归属聊天和提示词库；你可随时在 Projects 标题栏菜单中关闭同步，关闭不会删除本地数据。
+- 可选的 **Google Drive 同步**（默认关闭，需手动授权）仅请求最小权限范围 `drive.appdata`，通过 Google OAuth 将单个同步文件（`gemini-projects-sync-v1.json`）保存在你自己的 Google Drive 隐藏应用数据目录（`appDataFolder`）中；扩展无法访问你的普通网盘文件，断开连接仅清除本地授权令牌，不会删除本地或云端数据。
+- Browser Sync 与 Google Drive 同步互斥运行，同一时间仅启用一种同步方式。
+- 未归属的普通聊天记录、侧边栏折叠状态、提示词使用统计及 Google Drive 授权令牌仅保留在当前设备本地，不会写入同步内容或导出备份。
+- 扩展不连接任何第三方后端服务；启用 Google Drive 同步时数据直接在你的浏览器与 Google 官方接口间传输。
+- Google Drive 存储、浏览器同步服务与 Gemini 网站上的账号行为均以对应服务提供商与 Google 的相关政策为准。
 
 ## 构建与打包
 

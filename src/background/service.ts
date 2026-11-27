@@ -18,13 +18,16 @@ import {
 import { createSeedData, normalizePromptsData, PROMPTS_KEY, PromptsData } from '../shared/prompts';
 import { validateBackup } from '../shared/backup';
 import { CloudSyncManager, StorageAreaLike } from './cloudSync';
+import type { GoogleDriveSyncClient } from './googleDriveSync';
 
 export interface BackgroundServiceDeps {
   local: StorageAreaLike;
   sync: StorageAreaLike | null;
+  drive?: GoogleDriveSyncClient | null;
   now?: () => number;
   randomUUID?: () => string;
   debounceMs?: number;
+  staleIntervalMs?: number;
 }
 
 export interface BackgroundService {
@@ -94,6 +97,7 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
   const cloudSync = new CloudSyncManager({
     local: deps.local,
     sync: deps.sync,
+    drive: deps.drive ?? null,
     hooks: {
       readRawLocalSnapshot,
       applyPulledData,
@@ -101,7 +105,8 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
     },
     now: clockNow,
     randomUUID: generateId,
-    debounceMs: deps.debounceMs
+    debounceMs: deps.debounceMs,
+    staleIntervalMs: deps.staleIntervalMs
   });
 
   async function loadLocalState(): Promise<StoredState> {
@@ -233,10 +238,29 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
           const result = await cloudSync.setEnabled(message.enabled);
           return result.ok
             ? { ok: true, syncStatus: result.status }
-            : { ok: false, error: result.error ?? 'Could not update Chrome Sync.', syncStatus: result.status };
+            : { ok: false, error: result.error ?? 'Could not update Browser Sync.', syncStatus: result.status };
         }
         case 'syncNow': {
           const result = await cloudSync.syncNow();
+          return result.ok
+            ? { ok: true, syncStatus: result.status }
+            : { ok: false, error: result.error ?? 'Sync failed.', syncStatus: result.status };
+        }
+        case 'connectGoogleDrive': {
+          const result = await cloudSync.connectGoogleDrive();
+          return result.ok
+            ? { ok: true, syncStatus: result.status }
+            : { ok: false, error: result.error ?? 'Could not connect Google Drive.', syncStatus: result.status };
+        }
+        case 'disconnectGoogleDrive': {
+          const result = await cloudSync.disconnectGoogleDrive();
+          return result.ok
+            ? { ok: true, syncStatus: result.status }
+            : { ok: false, error: result.error ?? 'Could not disconnect Google Drive.', syncStatus: result.status };
+        }
+        case 'syncIfStale': {
+          await cloudSync.ensureInitialized();
+          const result = await cloudSync.syncIfStale();
           return result.ok
             ? { ok: true, syncStatus: result.status }
             : { ok: false, error: result.error ?? 'Sync failed.', syncStatus: result.status };

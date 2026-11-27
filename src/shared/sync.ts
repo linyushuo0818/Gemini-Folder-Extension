@@ -24,6 +24,9 @@ export const SYNC_CHATS_PREFIX = 'gp_sync_v1_chats_';
 export const SYNC_PROMPTS_PREFIX = 'gp_sync_v1_prompts_';
 export const SYNC_TOMBSTONES_KEY = 'gp_sync_v1_tombstones';
 export const SYNC_LOCAL_META_KEY = 'gp_sync_local_meta_v1';
+export const DRIVE_AUTH_STORAGE_KEY = 'gp_drive_auth_v1';
+export const DRIVE_SYNC_FILENAME = 'gemini-projects-sync-v1.json';
+export const SYNC_STALE_INTERVAL_MS = 30_000;
 export const SYNC_SCHEMA_VERSION = 1;
 
 // 保守安全上限（低于 Chrome 的 8,192 B/项、102,400 B 总量、512 项限制）。
@@ -31,6 +34,7 @@ export const SYNC_ITEM_BYTE_LIMIT = 7000;
 export const SYNC_TOTAL_BYTE_LIMIT = 92000;
 export const SYNC_MAX_ITEMS = 450;
 export const SYNC_TOMBSTONES_BYTE_LIMIT = 6500;
+export const DRIVE_TOMBSTONES_BYTE_LIMIT = 256 * 1024;
 export const SYNC_TOMBSTONE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 export const SYNC_CHAT_TITLE_MAX_LEN = 200;
 
@@ -86,6 +90,8 @@ export interface SyncTombstones {
   prompts: Record<string, number>;
 }
 
+export type SyncProvider = 'browser' | 'google_drive';
+
 export type CloudSyncState =
   | 'idle'
   | 'syncing'
@@ -94,11 +100,14 @@ export type CloudSyncState =
   | 'partial'
   | 'quota_exceeded'
   | 'unavailable'
+  | 'auth_expired'
   | 'error';
 
 export interface CloudSyncStatus {
+  provider: SyncProvider;
   enabled: boolean;
   available: boolean;
+  driveAvailable: boolean;
   state: CloudSyncState;
   lastSyncedAt: number | null;
   lastError?: string;
@@ -109,11 +118,17 @@ export interface CloudSyncStatus {
 }
 
 export interface SyncLocalMeta {
+  provider: SyncProvider;
   enabled: boolean;
   clientId: string;
   lastSyncedRev: number;
   lastSyncedHash: string;
   lastSyncedAt: number | null;
+  driveFileId?: string;
+  driveLastModifiedTime?: string;
+  driveLastSyncedRev?: number;
+  driveLastSyncedHash?: string;
+  driveLastSyncedAt?: number | null;
   tombstones: SyncTombstones;
   status: CloudSyncStatus;
 }
@@ -124,6 +139,19 @@ export interface SyncSnapshot {
   prompts: SyncPrompt[];
   tombstones: SyncTombstones;
 }
+
+export interface DriveSyncEnvelopeV1 {
+  v: 1;
+  clientId: string;
+  rev: number;
+  updatedAt: number;
+  hash: string;
+  snapshot: SyncSnapshot;
+}
+
+export type ParsedDriveEnvelope =
+  | { kind: 'invalid'; reason: string }
+  | { kind: 'valid'; envelope: DriveSyncEnvelopeV1 };
 
 export interface PackedSyncPayload {
   items: Record<string, unknown>;
@@ -163,29 +191,41 @@ export function createEmptyTombstones(): SyncTombstones {
   return { projects: {}, chats: {}, prompts: {} };
 }
 
-export function createDefaultSyncStatus(available = true, enabled = true): CloudSyncStatus {
+export function createDefaultSyncStatus(
+  available = true,
+  enabled = true,
+  driveAvailable = false,
+  provider: SyncProvider = 'browser'
+): CloudSyncStatus {
+  const state: CloudSyncState = provider === 'google_drive'
+    ? (driveAvailable ? 'idle' : 'unavailable')
+    : (!available ? 'unavailable' : enabled ? 'idle' : 'disabled');
   return {
+    provider,
     enabled,
     available,
-    state: !available ? 'unavailable' : enabled ? 'idle' : 'disabled',
+    driveAvailable,
+    state,
     lastSyncedAt: null,
-    bytesLimit: SYNC_TOTAL_BYTE_LIMIT
+    bytesLimit: provider === 'google_drive' ? 0 : SYNC_TOTAL_BYTE_LIMIT
   };
 }
 
 export function createDefaultLocalMeta(
   clientId: string,
   available = true,
-  enabled = true
+  enabled = true,
+  driveAvailable = false
 ): SyncLocalMeta {
   return {
+    provider: 'browser',
     enabled,
     clientId,
     lastSyncedRev: 0,
     lastSyncedHash: '',
     lastSyncedAt: null,
     tombstones: createEmptyTombstones(),
-    status: createDefaultSyncStatus(available, enabled)
+    status: createDefaultSyncStatus(available, enabled, driveAvailable, 'browser')
   };
 }
 
@@ -326,7 +366,8 @@ export function extractSyncSnapshot(
   state: StoredState,
   promptsData: PromptsData | null,
   tombstones: SyncTombstones,
-  now: number
+  now: number,
+  tombstonesByteLimit = SYNC_TOMBSTONES_BYTE_LIMIT
 ): SyncSnapshot {
   const projects = sortSyncProjects(state.projects.map(projectToSync));
   const chats: SyncChat[] = [];
@@ -342,7 +383,7 @@ export function extractSyncSnapshot(
     projects,
     chats: sortSyncChats(chats),
     prompts,
-    tombstones: pruneAndBoundTombstones(tombstones, now)
+    tombstones: pruneAndBoundTombstones(tombstones, now, tombstonesByteLimit)
   };
 }
 
@@ -692,12 +733,80 @@ export function parseRemoteSyncData(rawAll: Record<string, unknown>): ParsedRemo
   };
 }
 
+export function parseDriveSyncEnvelope(raw: unknown): ParsedDriveEnvelope {
+  if (!isRecord(raw)) return { kind: 'invalid', reason: 'Invalid Google Drive sync payload.' };
+  if (raw.v !== SYNC_SCHEMA_VERSION) return { kind: 'invalid', reason: 'Unsupported Google Drive sync version.' };
+  if (!isSafeId(raw.clientId)) return { kind: 'invalid', reason: 'Invalid Google Drive sync metadata.' };
+  if (typeof raw.rev !== 'number' || !Number.isInteger(raw.rev) || raw.rev < 0) {
+    return { kind: 'invalid', reason: 'Invalid Google Drive sync revision.' };
+  }
+  if (typeof raw.updatedAt !== 'number' || !Number.isFinite(raw.updatedAt) || raw.updatedAt < 0) {
+    return { kind: 'invalid', reason: 'Invalid Google Drive sync timestamp.' };
+  }
+  if (typeof raw.hash !== 'string' || !/^[a-f0-9]{8,64}$/i.test(raw.hash)) {
+    return { kind: 'invalid', reason: 'Invalid Google Drive sync checksum.' };
+  }
+  if (!isRecord(raw.snapshot)) {
+    return { kind: 'invalid', reason: 'Invalid Google Drive sync snapshot.' };
+  }
+  if (!Array.isArray(raw.snapshot.projects) || !Array.isArray(raw.snapshot.chats) || !Array.isArray(raw.snapshot.prompts)) {
+    return { kind: 'invalid', reason: 'Invalid Google Drive sync collections.' };
+  }
+
+  const projects: SyncProject[] = [];
+  const seenProjects = new Set<string>();
+  for (const entry of raw.snapshot.projects) {
+    const sanitized = sanitizeSyncProject(entry, projects.length);
+    if (!sanitized || seenProjects.has(sanitized.id)) continue;
+    seenProjects.add(sanitized.id);
+    projects.push(sanitized);
+  }
+
+  const chats: SyncChat[] = [];
+  const seenChats = new Set<string>();
+  for (const entry of raw.snapshot.chats) {
+    const sanitized = sanitizeSyncChat(entry);
+    if (!sanitized || seenChats.has(sanitized.id)) continue;
+    seenChats.add(sanitized.id);
+    chats.push(sanitized);
+  }
+
+  const prompts: SyncPrompt[] = [];
+  const seenPrompts = new Set<string>();
+  for (const entry of raw.snapshot.prompts) {
+    const sanitized = sanitizeSyncPrompt(entry);
+    if (!sanitized || seenPrompts.has(sanitized.id)) continue;
+    seenPrompts.add(sanitized.id);
+    prompts.push(sanitized);
+  }
+
+  const tombstones = sanitizeTombstones(raw.snapshot.tombstones);
+
+  return {
+    kind: 'valid',
+    envelope: {
+      v: 1,
+      clientId: raw.clientId,
+      rev: raw.rev,
+      updatedAt: raw.updatedAt,
+      hash: raw.hash,
+      snapshot: { projects, chats, prompts, tombstones }
+    }
+  };
+}
+
+function isValidDriveFileId(value: unknown): value is string {
+  return typeof value === 'string' && /^[a-zA-Z0-9_-]{4,256}$/.test(value);
+}
+
 export function sanitizeLocalMeta(
   raw: unknown,
   fallbackClientId: string,
-  available: boolean
+  available: boolean,
+  driveAvailable = false
 ): SyncLocalMeta {
-  if (!isRecord(raw)) return createDefaultLocalMeta(fallbackClientId, available, true);
+  if (!isRecord(raw)) return createDefaultLocalMeta(fallbackClientId, available, true, driveAvailable);
+  const provider: SyncProvider = raw.provider === 'google_drive' ? 'google_drive' : 'browser';
   const enabled = typeof raw.enabled === 'boolean' ? raw.enabled : true;
   const clientId = isSafeId(raw.clientId) ? raw.clientId : fallbackClientId;
   const lastSyncedRev = typeof raw.lastSyncedRev === 'number' && Number.isInteger(raw.lastSyncedRev) && raw.lastSyncedRev >= 0
@@ -707,45 +816,72 @@ export function sanitizeLocalMeta(
   const lastSyncedAt = typeof raw.lastSyncedAt === 'number' && Number.isFinite(raw.lastSyncedAt)
     ? raw.lastSyncedAt
     : null;
+  const driveFileId = isValidDriveFileId(raw.driveFileId) ? raw.driveFileId : undefined;
+  const driveLastModifiedTime = typeof raw.driveLastModifiedTime === 'string' && raw.driveLastModifiedTime.length > 0
+    ? raw.driveLastModifiedTime
+    : undefined;
+  const driveLastSyncedRev = typeof raw.driveLastSyncedRev === 'number' && Number.isInteger(raw.driveLastSyncedRev) && raw.driveLastSyncedRev >= 0
+    ? raw.driveLastSyncedRev
+    : 0;
+  const driveLastSyncedHash = typeof raw.driveLastSyncedHash === 'string' ? raw.driveLastSyncedHash : '';
+  const driveLastSyncedAt = typeof raw.driveLastSyncedAt === 'number' && Number.isFinite(raw.driveLastSyncedAt)
+    ? raw.driveLastSyncedAt
+    : null;
   const tombstones = sanitizeTombstones(raw.tombstones);
 
   const rawStatus = isRecord(raw.status) ? raw.status : null;
   const validStates: CloudSyncState[] = [
-    'idle', 'syncing', 'synced', 'disabled', 'partial', 'quota_exceeded', 'unavailable', 'error'
+    'idle', 'syncing', 'synced', 'disabled', 'partial', 'quota_exceeded', 'unavailable', 'auth_expired', 'error'
   ];
   let state: CloudSyncState = rawStatus && typeof rawStatus.state === 'string' && validStates.includes(rawStatus.state as CloudSyncState)
     ? (rawStatus.state as CloudSyncState)
-    : (enabled ? 'idle' : 'disabled');
-  if (!available) state = 'unavailable';
-  else if (!enabled) state = 'disabled';
-  else if (state === 'syncing') state = 'idle';
+    : (provider === 'google_drive' ? 'idle' : (enabled ? 'idle' : 'disabled'));
+
+  if (provider === 'google_drive') {
+    if (!driveAvailable) state = 'unavailable';
+    else if (state === 'syncing' || state === 'disabled' || state === 'partial' || state === 'quota_exceeded') state = 'idle';
+  } else {
+    if (!available) state = 'unavailable';
+    else if (!enabled) state = 'disabled';
+    else if (state === 'syncing' || state === 'auth_expired') state = 'idle';
+  }
 
   const status: CloudSyncStatus = {
+    provider,
     enabled,
     available,
+    driveAvailable,
     state,
-    lastSyncedAt,
-    bytesLimit: SYNC_TOTAL_BYTE_LIMIT
+    lastSyncedAt: provider === 'google_drive' ? driveLastSyncedAt : lastSyncedAt,
+    bytesLimit: provider === 'google_drive' ? 0 : SYNC_TOTAL_BYTE_LIMIT
   };
   if (rawStatus && typeof rawStatus.lastError === 'string' && rawStatus.lastError) {
     status.lastError = rawStatus.lastError;
   }
-  if (rawStatus && typeof rawStatus.omittedChats === 'number' && Number.isFinite(rawStatus.omittedChats) && rawStatus.omittedChats > 0) {
-    status.omittedChats = rawStatus.omittedChats;
-  }
-  if (rawStatus && typeof rawStatus.omittedPrompts === 'number' && Number.isFinite(rawStatus.omittedPrompts) && rawStatus.omittedPrompts > 0) {
-    status.omittedPrompts = rawStatus.omittedPrompts;
+  if (provider === 'browser') {
+    if (rawStatus && typeof rawStatus.omittedChats === 'number' && Number.isFinite(rawStatus.omittedChats) && rawStatus.omittedChats > 0) {
+      status.omittedChats = rawStatus.omittedChats;
+    }
+    if (rawStatus && typeof rawStatus.omittedPrompts === 'number' && Number.isFinite(rawStatus.omittedPrompts) && rawStatus.omittedPrompts > 0) {
+      status.omittedPrompts = rawStatus.omittedPrompts;
+    }
   }
   if (rawStatus && typeof rawStatus.bytesUsed === 'number' && Number.isFinite(rawStatus.bytesUsed) && rawStatus.bytesUsed >= 0) {
     status.bytesUsed = rawStatus.bytesUsed;
   }
 
   return {
+    provider,
     enabled,
     clientId,
     lastSyncedRev,
     lastSyncedHash,
     lastSyncedAt,
+    ...(driveFileId ? { driveFileId } : {}),
+    ...(driveLastModifiedTime ? { driveLastModifiedTime } : {}),
+    driveLastSyncedRev,
+    driveLastSyncedHash,
+    driveLastSyncedAt,
     tombstones,
     status
   };
@@ -798,7 +934,8 @@ export function mergeSyncData(
   localPrompts: PromptsData,
   localTombstones: SyncTombstones,
   remote: SyncSnapshot,
-  now: number
+  now: number,
+  tombstonesByteLimit = SYNC_TOMBSTONES_BYTE_LIMIT
 ): MergeResult {
   const mergedTombstones = createEmptyTombstones();
 
@@ -983,7 +1120,7 @@ export function mergeSyncData(
     version: 1
   };
 
-  const prunedTombstones = pruneAndBoundTombstones(mergedTombstones, now);
+  const prunedTombstones = pruneAndBoundTombstones(mergedTombstones, now, tombstonesByteLimit);
 
   return {
     state: nextState,
