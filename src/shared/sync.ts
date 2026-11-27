@@ -26,7 +26,7 @@ export const SYNC_TOMBSTONES_KEY = 'gp_sync_v1_tombstones';
 export const SYNC_LOCAL_META_KEY = 'gp_sync_local_meta_v1';
 export const DRIVE_AUTH_STORAGE_KEY = 'gp_drive_auth_v1';
 export const DRIVE_SYNC_FILENAME = 'gemini-projects-sync-v1.json';
-export const SYNC_STALE_INTERVAL_MS = 30_000;
+export const SYNC_STALE_INTERVAL_MS = 15_000;
 export const SYNC_SCHEMA_VERSION = 1;
 
 // 保守安全上限（低于 Chrome 的 8,192 B/项、102,400 B 总量、512 项限制）。

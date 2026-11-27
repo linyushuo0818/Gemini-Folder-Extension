@@ -832,8 +832,8 @@ test('6. Mutual exclusion ignores storage.sync while Drive is active; disconnect
   device.dispose();
 });
 
-// 7. syncIfStale 30s throttling behavior on tab focus
-test('7. syncIfStale throttles to 30s intervals, skips unchanged downloads, and does not spam auth_expired', async () => {
+// 7. syncIfStale 15s throttling behavior on foreground poll / tab focus
+test('7. syncIfStale throttles to 15s intervals, skips unchanged downloads, and does not spam auth_expired', async () => {
   const clock = createClock();
   const server = new MockGoogleDriveServer();
   const deviceA = createDriveDevice(server, clock);
@@ -845,27 +845,27 @@ test('7. syncIfStale throttles to 30s intervals, skips unchanged downloads, and 
   // Immediately after sync, syncIfStale makes 0 requests
   const reqsAt0 = server.totalRequests;
   await deviceB.service.handleMessage({ type: 'syncIfStale' });
-  clock.tick(29_000);
+  clock.tick(14_000);
   await deviceB.service.handleMessage({ type: 'syncIfStale' });
-  assert.equal(server.totalRequests, reqsAt0, 'syncIfStale must make 0 network requests within 30s');
+  assert.equal(server.totalRequests, reqsAt0, 'syncIfStale must make 0 network requests within 15s');
 
-  // After >= 30s with no remote changes, syncIfStale lists once and skips file download when modifiedTime matches
+  // After >= 15s with no remote changes, syncIfStale lists once and skips file download when modifiedTime matches
   await deviceB.service.handleMessage({ type: 'syncNow' }); // records server's modifiedTime
-  clock.tick(31_000);
+  clock.tick(16_000);
   const readsBeforeUnchanged = server.readCalls;
   await deviceB.service.handleMessage({ type: 'syncIfStale' });
   assert.equal(server.readCalls, readsBeforeUnchanged, 'Unchanged modifiedTime should skip downloading Drive body');
 
-  // Device A edits a project -> after >= 30s, Device B's syncIfStale pulls the new project!
+  // Device A edits a project -> after >= 15s, Device B's syncIfStale pulls the new project!
   await deviceA.service.handleMessage({
     type: 'upsertProject',
     project: makeProject('p-from-focus', 'Pulled on Focus', clock.tick(100)),
     editing: false
   });
-  clock.tick(31_000);
+  clock.tick(16_000);
   await deviceB.service.handleMessage({ type: 'syncIfStale' });
   const stateB = (await deviceB.service.handleMessage({ type: 'getState' })).state!;
-  assert.ok(stateB.projects.some((p) => p.id === 'p-from-focus'), 'syncIfStale should pull remote changes after 30s');
+  assert.ok(stateB.projects.some((p) => p.id === 'p-from-focus'), 'syncIfStale should pull remote changes after 15s');
 
   // When auth_expired, syncIfStale must not spam silent OAuth calls
   server.revokeAllTokens();

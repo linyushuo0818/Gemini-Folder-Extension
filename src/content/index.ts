@@ -58,6 +58,8 @@ let stateLoading = false;
 let scanPending = false;
 let unassignZone: HTMLElement | null = null;
 let nativeDragSource: HTMLElement | null = null;
+const DRIVE_POLL_INTERVAL_MS = 15_000;
+let drivePollTimer: number | null = null;
 let syncStatus: CloudSyncStatus = createDefaultSyncStatus(hasStorageSync(), true);
 
 function sendMessage(message: BackgroundRequest): Promise<BackgroundResponse> {
@@ -77,10 +79,31 @@ async function bootstrap() {
   runStage('prompts', () => prompts.bootstrap());
 }
 
+function updateDrivePolling() {
+  const shouldPoll =
+    syncStatus.provider === 'google_drive' &&
+    syncStatus.driveAvailable &&
+    syncStatus.state !== 'auth_expired' &&
+    document.visibilityState === 'visible';
+  if (shouldPoll) {
+    if (drivePollTimer === null) {
+      drivePollTimer = window.setInterval(() => {
+        if (document.visibilityState === 'visible') {
+          requestSyncIfStale();
+        }
+      }, DRIVE_POLL_INTERVAL_MS);
+    }
+  } else if (drivePollTimer !== null) {
+    window.clearInterval(drivePollTimer);
+    drivePollTimer = null;
+  }
+}
+
 function updateSyncStatus(next: CloudSyncStatus | undefined) {
   if (!next) return;
   syncStatus = next;
   panel?.setSyncStatus(syncStatus);
+  updateDrivePolling();
 }
 
 async function loadInitialState() {
@@ -222,9 +245,13 @@ function rescanSidebar() {
 
 function installLifecycleRescans() {
   window.addEventListener('pageshow', () => scheduleRescan(0));
-  window.addEventListener('focus', () => scheduleRescan(0));
+  window.addEventListener('focus', () => {
+    scheduleRescan(0);
+    requestSyncIfStale();
+  });
   window.addEventListener('popstate', () => scheduleRescan(0));
   document.addEventListener('visibilitychange', () => {
+    updateDrivePolling();
     if (document.visibilityState === 'visible') {
       scheduleRescan(0);
       requestSyncIfStale();

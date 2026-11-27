@@ -1909,6 +1909,39 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         background: var(--gp-border);
         margin: 4px 12px;
       }
+      .gp-sync-tooltip {
+        position: fixed;
+        max-width: 252px;
+        padding: 10px 12px;
+        border-radius: 14px;
+        background: var(--gp-surface);
+        border: .5px solid var(--gp-border);
+        box-shadow: var(--gp-shadow-menu);
+        color: var(--gp-fg-secondary);
+        font-family: var(--gp-font);
+        font-size: 12px;
+        line-height: 1.48;
+        pointer-events: none;
+        z-index: 2147483647;
+        opacity: 0;
+        transform: translateY(2px);
+        transition: opacity 0.14s ease, transform 0.14s ease;
+        display: none;
+      }
+      .gp-sync-tooltip.visible {
+        opacity: 1;
+        transform: translateY(0);
+      }
+      .gp-sync-tooltip-title {
+        font-size: 12.5px;
+        font-weight: 600;
+        color: var(--gp-fg);
+        margin-bottom: 4px;
+      }
+      .gp-sync-tooltip-body {
+        margin: 0;
+        color: var(--gp-muted);
+      }
 
       /* Chat menu item with icons */
       .gp-chat-menu {
@@ -2293,6 +2326,11 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   menu.setAttribute('aria-label', 'Projects options');
   layer.appendChild(menu);
 
+  const tooltip = document.createElement('div');
+  tooltip.className = 'gp-sync-tooltip';
+  tooltip.setAttribute('role', 'tooltip');
+  layer.appendChild(tooltip);
+
   type SectionMenuCallbacks = {
     onReturnFocus: () => void;
     onToggleSync: (enabled: boolean) => Promise<void>;
@@ -2309,6 +2347,81 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   let status: CloudSyncStatus = createDefaultSyncStatus();
   let busy = false;
   let connectingDrive = false;
+  let tooltipTimer: number | null = null;
+  let activeTooltipTarget: HTMLElement | null = null;
+
+  function getHintForAction(action: string | undefined): { title: string; body: string } | null {
+    if (action === 'toggle-sync') {
+      return {
+        title: 'Browser Sync',
+        body: 'Syncs across devices signed into the same browser (e.g. Chrome ↔ Chrome, Edge ↔ Edge) via built-in browser storage. No extra sign-in or server; turn off anytime to keep data strictly local.'
+      };
+    }
+    if (action === 'connect-drive') {
+      return {
+        title: 'Google Drive Sync',
+        body: 'Syncs across different browsers (e.g. Chrome ↔ Aside / Edge / Brave) with no 100 KB limit. Connect Google Drive on each device you want to sync. Uses a hidden app-only folder — never accesses your Drive files, and pauses Browser Sync while connected.'
+      };
+    }
+    if (action === 'drive-header') {
+      return {
+        title: 'Google Drive Sync',
+        body: 'Syncing via your hidden app-only Google Drive folder. Connect Google Drive on your other devices too — changes sync automatically every ~15s while open, or right away with Sync now.'
+      };
+    }
+    return null;
+  }
+
+  function hideTooltip() {
+    activeTooltipTarget = null;
+    if (tooltipTimer !== null) {
+      window.clearTimeout(tooltipTimer);
+      tooltipTimer = null;
+    }
+    tooltip.classList.remove('visible');
+    tooltip.style.display = 'none';
+  }
+
+  function showTooltipFor(target: HTMLElement) {
+    const hint = getHintForAction(target.dataset.gpSectionAction);
+    if (!hint || !isOpen()) {
+      hideTooltip();
+      return;
+    }
+    if (activeTooltipTarget === target) return;
+    activeTooltipTarget = target;
+    if (tooltipTimer !== null) {
+      window.clearTimeout(tooltipTimer);
+    }
+    tooltipTimer = window.setTimeout(() => {
+      tooltipTimer = null;
+      if (!isOpen() || !target.isConnected) return;
+      tooltip.innerHTML = `
+        <div class="gp-sync-tooltip-title">${escapeHtml(hint.title)}</div>
+        <p class="gp-sync-tooltip-body">${escapeHtml(hint.body)}</p>
+      `;
+      tooltip.style.display = 'block';
+      const menuRect = menu.getBoundingClientRect();
+      const targetRect = target.getBoundingClientRect();
+      const tipWidth = tooltip.offsetWidth;
+      const tipHeight = tooltip.offsetHeight;
+      const gap = 8;
+      const spaceRight = window.innerWidth - menuRect.right - gap - 8;
+      const spaceLeft = menuRect.left - gap - 8;
+      let left: number;
+      if (spaceRight >= tipWidth) {
+        left = menuRect.right + gap;
+      } else if (spaceLeft >= tipWidth) {
+        left = menuRect.left - tipWidth - gap;
+      } else {
+        left = Math.max(8, Math.min(menuRect.left, window.innerWidth - tipWidth - 8));
+      }
+      const top = Math.max(8, Math.min(targetRect.top - 4, window.innerHeight - tipHeight - 8));
+      tooltip.style.left = `${left}px`;
+      tooltip.style.top = `${top}px`;
+      requestAnimationFrame(() => tooltip.classList.add('visible'));
+    }, 180);
+  }
 
   function isOpen(): boolean {
     return menu.dataset.gpMotionState === 'open';
@@ -2445,6 +2558,7 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   }
 
   function close(restoreFocus = false) {
+    hideTooltip();
     const currentOpener = opener;
     const currentCallbacks = callbacks;
     currentOpener?.setAttribute('aria-expanded', 'false');
@@ -2453,6 +2567,25 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
     opener = null;
     if (restoreFocus) currentCallbacks?.onReturnFocus();
   }
+
+  menu.addEventListener('pointerover', (event) => {
+    const item = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-gp-section-action]');
+    if (item && getHintForAction(item.dataset.gpSectionAction)) {
+      showTooltipFor(item);
+    } else {
+      hideTooltip();
+    }
+  });
+  menu.addEventListener('pointerleave', () => hideTooltip());
+  menu.addEventListener('focusin', (event) => {
+    const item = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-gp-section-action]');
+    if (item && getHintForAction(item.dataset.gpSectionAction)) {
+      showTooltipFor(item);
+    } else {
+      hideTooltip();
+    }
+  });
+  menu.addEventListener('focusout', () => hideTooltip());
 
   menu.addEventListener('click', async (event) => {
     const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-gp-section-action]');
