@@ -1756,8 +1756,7 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         opacity: 0.6;
       }
       .gp-section-menu {
-        min-width: 256px;
-        width: max-content;
+        width: 264px;
         max-width: calc(100vw - 16px);
         box-sizing: border-box;
         padding: 6px;
@@ -1824,38 +1823,72 @@ function ensureOverlayLayer(shadow: ShadowRoot): HTMLElement {
         background: var(--gp-border);
         margin: 4px 12px;
       }
-      .gp-sync-tooltip {
-        position: fixed;
-        max-width: 252px;
-        padding: 10px 12px;
-        border-radius: 14px;
-        background: var(--gp-surface);
-        border: .5px solid var(--gp-border);
-        box-shadow: var(--gp-shadow-menu);
-        color: var(--gp-fg-secondary);
-        font-family: var(--gp-font);
-        font-size: 12px;
-        line-height: 1.48;
-        pointer-events: none;
-        z-index: 2147483647;
-        opacity: 0;
-        transform: translateY(2px);
-        transition: opacity 0.14s ease, transform 0.14s ease;
-        display: none;
+      .gp-sync-row-wrap {
+        display: flex;
+        align-items: center;
+        gap: 2px;
       }
-      .gp-sync-tooltip.visible {
-        opacity: 1;
-        transform: translateY(0);
+      .gp-sync-row-wrap .gp-sync-row {
+        flex: 1 1 auto;
+        min-width: 0;
+        width: auto;
       }
-      .gp-sync-tooltip-title {
-        font-size: 12.5px;
-        font-weight: 600;
-        color: var(--gp-fg);
-        margin-bottom: 4px;
-      }
-      .gp-sync-tooltip-body {
-        margin: 0;
+      .gp-sync-help-btn {
+        width: 28px;
+        height: 28px;
+        flex: 0 0 28px;
+        margin-right: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border: 0;
+        border-radius: var(--gp-radius-circle);
+        background: transparent;
         color: var(--gp-muted);
+        opacity: 0.72;
+        cursor: pointer;
+        padding: 0;
+        transition: background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
+      }
+      .gp-sync-help-btn svg {
+        width: 16px;
+        height: 16px;
+        flex: 0 0 16px;
+        display: block;
+      }
+      .gp-sync-help-btn:hover,
+      .gp-sync-help-btn.active {
+        background: var(--gp-hover);
+        color: var(--gp-fg);
+        opacity: 1;
+      }
+      .gp-sync-help-btn:focus-visible {
+        outline: 2px solid var(--gp-focus);
+        outline-offset: -2px;
+        opacity: 1;
+      }
+      .gp-sync-help-collapse {
+        display: grid;
+        grid-template-rows: 0fr;
+        opacity: 0;
+        transition: grid-template-rows 0.18s ease, opacity 0.15s ease;
+      }
+      .gp-sync-help-collapse.open {
+        grid-template-rows: 1fr;
+        opacity: 1;
+      }
+      .gp-sync-help-inner {
+        overflow: hidden;
+      }
+      .gp-sync-help-card {
+        margin: 2px 4px 4px;
+        padding: 8px 10px;
+        border-radius: 12px;
+        background: var(--gp-surface-footer);
+        color: var(--gp-muted);
+        font-size: 12px;
+        line-height: 1.45;
+        white-space: normal;
       }
 
       /* Chat menu item with icons */
@@ -2241,11 +2274,6 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   menu.setAttribute('aria-label', 'Projects options');
   layer.appendChild(menu);
 
-  const tooltip = document.createElement('div');
-  tooltip.className = 'gp-sync-tooltip';
-  tooltip.setAttribute('role', 'tooltip');
-  layer.appendChild(tooltip);
-
   type SectionMenuCallbacks = {
     onReturnFocus: () => void;
     onSyncNow: () => Promise<void>;
@@ -2261,74 +2289,20 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   let status: CloudSyncStatus = createDefaultSyncStatus();
   let busy = false;
   let connectingDrive = false;
-  let tooltipTimer: number | null = null;
-  let activeTooltipTarget: HTMLElement | null = null;
+  let helpExpanded = false;
+  let helpRepositionTimer: number | null = null;
 
-  function getHintForAction(action: string | undefined): { title: string; body: string } | null {
-    if (action === 'connect-drive') {
-      return {
-        title: 'Google Drive Sync',
-        body: 'Optional cloud sync across all browsers (Chrome, Aside, Edge, Brave). Connect Google Drive on each device you want to sync. Uses a hidden app-only folder — never accesses your Drive files. Leave off to keep data strictly on this device.'
-      };
+  function clearHelpRepositionTimer() {
+    if (helpRepositionTimer !== null) {
+      window.clearTimeout(helpRepositionTimer);
+      helpRepositionTimer = null;
     }
-    if (action === 'drive-header') {
-      return {
-        title: 'Google Drive Sync',
-        body: 'Syncing via your hidden app-only Google Drive folder. Connect Google Drive on your other devices too — changes sync automatically every ~15s while open, or right away with Sync now.'
-      };
-    }
-    return null;
   }
 
-  function hideTooltip() {
-    activeTooltipTarget = null;
-    if (tooltipTimer !== null) {
-      window.clearTimeout(tooltipTimer);
-      tooltipTimer = null;
-    }
-    tooltip.classList.remove('visible');
-    tooltip.style.display = 'none';
-  }
-
-  function showTooltipFor(target: HTMLElement) {
-    const hint = getHintForAction(target.dataset.gpSectionAction);
-    if (!hint || !isOpen()) {
-      hideTooltip();
-      return;
-    }
-    if (activeTooltipTarget === target) return;
-    activeTooltipTarget = target;
-    if (tooltipTimer !== null) {
-      window.clearTimeout(tooltipTimer);
-    }
-    tooltipTimer = window.setTimeout(() => {
-      tooltipTimer = null;
-      if (!isOpen() || !target.isConnected) return;
-      tooltip.innerHTML = `
-        <div class="gp-sync-tooltip-title">${escapeHtml(hint.title)}</div>
-        <p class="gp-sync-tooltip-body">${escapeHtml(hint.body)}</p>
-      `;
-      tooltip.style.display = 'block';
-      const menuRect = menu.getBoundingClientRect();
-      const targetRect = target.getBoundingClientRect();
-      const tipWidth = tooltip.offsetWidth;
-      const tipHeight = tooltip.offsetHeight;
-      const gap = 8;
-      const spaceRight = window.innerWidth - menuRect.right - gap - 8;
-      const spaceLeft = menuRect.left - gap - 8;
-      let left: number;
-      if (spaceRight >= tipWidth) {
-        left = menuRect.right + gap;
-      } else if (spaceLeft >= tipWidth) {
-        left = menuRect.left - tipWidth - gap;
-      } else {
-        left = Math.max(8, Math.min(menuRect.left, window.innerWidth - tipWidth - 8));
-      }
-      const top = Math.max(8, Math.min(targetRect.top - 4, window.innerHeight - tipHeight - 8));
-      tooltip.style.left = `${left}px`;
-      tooltip.style.top = `${top}px`;
-      requestAnimationFrame(() => tooltip.classList.add('visible'));
-    }, 180);
+  function getSyncHelpText(): string {
+    return status.enabled
+      ? 'Syncing via a hidden app-only Drive folder. Connect on other devices too — syncs automatically every ~15s, or anytime with Sync now.'
+      : 'Sync across browsers (Chrome, Aside, Edge, Brave) via a hidden app-only Drive folder. Never accesses your Drive files. Off by default.';
   }
 
   function isOpen(): boolean {
@@ -2337,6 +2311,18 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
 
   function renderItems(preserveFocusAction?: string | null) {
     const warningTitle = getSyncWarningTitle(status);
+    const helpToggleMarkup = `
+      <button type="button" class="gp-sync-help-btn${helpExpanded ? ' active' : ''}" data-gp-section-action="toggle-sync-help" aria-label="About Google Drive sync" aria-expanded="${helpExpanded ? 'true' : 'false'}">
+        ${renderUiIcon('helpCircle', 16)}
+      </button>
+    `;
+    const helpCollapseMarkup = `
+      <div class="gp-sync-help-collapse${helpExpanded ? ' open' : ''}" aria-hidden="${helpExpanded ? 'false' : 'true'}">
+        <div class="gp-sync-help-inner">
+          <div class="gp-sync-help-card">${escapeHtml(getSyncHelpText())}</div>
+        </div>
+      </div>
+    `;
 
     let syncSectionMarkup = '';
     if (status.enabled) {
@@ -2347,14 +2333,18 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
         : formatDriveStatusLabel(status);
       const primaryActionDisabled = busy || status.state === 'syncing' || !status.available;
       syncSectionMarkup = `
-        <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="drive-header"${primaryActionDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
-          ${renderUiIcon('googleDrive', 18)}
-          <span class="gp-sync-copy">
-            <span class="gp-sync-title">Google Drive</span>
-            <span class="gp-sync-meta">${escapeHtml(driveMeta)}</span>
-          </span>
-          <span class="gp-drive-status-dot${hasDriveWarning ? ' warn' : ''}" aria-hidden="true"></span>
-        </button>
+        <div class="gp-sync-row-wrap">
+          <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="drive-header"${primaryActionDisabled ? ' disabled' : ''}${warningTitle ? ` title="${escapeAttr(warningTitle)}"` : ''}>
+            ${renderUiIcon('googleDrive', 18)}
+            <span class="gp-sync-copy">
+              <span class="gp-sync-title">Google Drive</span>
+              <span class="gp-sync-meta">${escapeHtml(driveMeta)}</span>
+            </span>
+            <span class="gp-drive-status-dot${hasDriveWarning ? ' warn' : ''}" aria-hidden="true"></span>
+          </button>
+          ${helpToggleMarkup}
+        </div>
+        ${helpCollapseMarkup}
         ${isExpired ? `
           <button type="button" role="menuitem" class="gp-menu-item" data-gp-section-action="reconnect-drive"${primaryActionDisabled ? ' disabled' : ''}>
             ${renderUiIcon('refreshCw', 18)}
@@ -2379,13 +2369,17 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
           : 'Connect';
       const connectDisabled = busy || !status.available;
       syncSectionMarkup = `
-        <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="connect-drive"${connectDisabled ? ' disabled' : ''}>
-          ${renderUiIcon('googleDrive', 18)}
-          <span class="gp-sync-copy">
-            <span class="gp-sync-title">Google Drive</span>
-            <span class="gp-sync-meta">${escapeHtml(connectMeta)}</span>
-          </span>
-        </button>
+        <div class="gp-sync-row-wrap">
+          <button type="button" role="menuitem" class="gp-menu-item gp-sync-row" data-gp-section-action="connect-drive"${connectDisabled ? ' disabled' : ''}>
+            ${renderUiIcon('googleDrive', 18)}
+            <span class="gp-sync-copy">
+              <span class="gp-sync-title">Google Drive</span>
+              <span class="gp-sync-meta">${escapeHtml(connectMeta)}</span>
+            </span>
+          </button>
+          ${helpToggleMarkup}
+        </div>
+        ${helpCollapseMarkup}
       `;
     }
 
@@ -2426,6 +2420,8 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   }
 
   function open(anchor: HTMLButtonElement, nextStatus: CloudSyncStatus, nextCallbacks: SectionMenuCallbacks) {
+    clearHelpRepositionTimer();
+    helpExpanded = false;
     callbacks = nextCallbacks;
     opener = anchor;
     status = nextStatus;
@@ -2448,7 +2444,8 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
   }
 
   function close(restoreFocus = false) {
-    hideTooltip();
+    clearHelpRepositionTimer();
+    helpExpanded = false;
     const currentOpener = opener;
     const currentCallbacks = callbacks;
     currentOpener?.setAttribute('aria-expanded', 'false');
@@ -2458,29 +2455,33 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
     if (restoreFocus) currentCallbacks?.onReturnFocus();
   }
 
-  menu.addEventListener('pointerover', (event) => {
-    const item = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-gp-section-action]');
-    if (item && getHintForAction(item.dataset.gpSectionAction)) {
-      showTooltipFor(item);
-    } else {
-      hideTooltip();
-    }
-  });
-  menu.addEventListener('pointerleave', () => hideTooltip());
-  menu.addEventListener('focusin', (event) => {
-    const item = (event.target as HTMLElement | null)?.closest<HTMLElement>('[data-gp-section-action]');
-    if (item && getHintForAction(item.dataset.gpSectionAction)) {
-      showTooltipFor(item);
-    } else {
-      hideTooltip();
-    }
-  });
-  menu.addEventListener('focusout', () => hideTooltip());
-
   menu.addEventListener('click', async (event) => {
     const target = (event.target as HTMLElement).closest<HTMLButtonElement>('[data-gp-section-action]');
     if (!target || !callbacks || target.disabled) return;
     const action = target.dataset.gpSectionAction;
+
+    if (action === 'toggle-sync-help') {
+      helpExpanded = !helpExpanded;
+      target.classList.toggle('active', helpExpanded);
+      target.setAttribute('aria-expanded', helpExpanded ? 'true' : 'false');
+      const collapse = menu.querySelector<HTMLElement>('.gp-sync-help-collapse');
+      if (collapse) {
+        collapse.classList.toggle('open', helpExpanded);
+        collapse.setAttribute('aria-hidden', helpExpanded ? 'false' : 'true');
+      }
+      // 展开动画结束后若菜单底部超出视口则重新定位，避免短屏裁切
+      clearHelpRepositionTimer();
+      if (helpExpanded && opener?.isConnected) {
+        helpRepositionTimer = window.setTimeout(() => {
+          helpRepositionTimer = null;
+          if (!isOpen() || !opener?.isConnected) return;
+          if (menu.getBoundingClientRect().bottom > window.innerHeight - 8) {
+            positionMenu(opener.getBoundingClientRect());
+          }
+        }, 190);
+      }
+      return;
+    }
 
     if (action === 'sync-now' || (action === 'drive-header' && status.state !== 'auth_expired')) {
       if (busy || !status.available || !status.enabled) return;
