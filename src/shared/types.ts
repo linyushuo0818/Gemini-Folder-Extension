@@ -111,5 +111,5 @@ export type BackgroundRequest =
   | { type: 'syncIfStale'; bypassBackoff?: boolean };
 
 export type BackgroundResponse =
-  | { ok: true; state?: StoredState; prompts?: PromptsData; syncStatus?: CloudSyncStatus }
+  | { ok: true; state?: StoredState; prompts?: PromptsData; syncStatus?: CloudSyncStatus; warning?: string }
   | { ok: false; error: string; syncStatus?: CloudSyncStatus };

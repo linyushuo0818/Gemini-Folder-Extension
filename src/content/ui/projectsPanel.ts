@@ -2469,13 +2469,13 @@ function createSectionMenu(layer: HTMLElement, signal: AbortSignal) {
         collapse.classList.toggle('open', helpExpanded);
         collapse.setAttribute('aria-hidden', helpExpanded ? 'false' : 'true');
       }
-      // 展开动画结束后若菜单底部超出视口则重新定位，避免短屏裁切
+      // 展开或收起动画结束后按视口重新定位，避免短屏裁切或停留在锚点上方
       clearHelpRepositionTimer();
-      if (helpExpanded && opener?.isConnected) {
+      if (opener?.isConnected) {
         helpRepositionTimer = window.setTimeout(() => {
           helpRepositionTimer = null;
           if (!isOpen() || !opener?.isConnected) return;
-          if (menu.getBoundingClientRect().bottom > window.innerHeight - 8) {
+          if (!helpExpanded || menu.getBoundingClientRect().bottom > window.innerHeight - 8) {
             positionMenu(opener.getBoundingClientRect());
           }
         }, 190);

@@ -46,10 +46,10 @@ Gemini Projects 主要面向 Chrome 和 Chromium 内核浏览器。
 ## 隐私
 
 - Projects 和提示词默认仅保存在浏览器本地扩展存储（`chrome.storage.local`）中；未连接 Google Drive 时不会发起任何云同步网络请求。
-- 可选的 **Google Drive 同步**（默认关闭，需手动授权）仅请求最小权限范围 `drive.appdata`，通过 Google OAuth 将单个同步文件（`gemini-projects-sync-v1.json`）保存在你自己的 Google Drive 隐藏应用数据目录（`appDataFolder`）中；扩展无法访问你的普通网盘文件，断开连接仅清除本地授权令牌，不会删除本地或云端数据。
-- 未归属的普通聊天记录、侧边栏折叠状态、提示词使用统计及 Google Drive 授权令牌仅保留在当前设备本地，不会写入同步内容或导出备份。
+- 可选的 **Google Drive 同步**（默认关闭，需手动授权）仅请求最小权限范围 `drive.appdata`，通过 Google OAuth 将单个同步文件（`gemini-projects-sync-v1.json`）保存在你自己的 Google Drive 隐藏应用数据目录（`appDataFolder`）中。连接时，扩展会通过同一 `drive.appdata` 权限下的 Google Drive `about` 接口读取你的 Google 账号邮箱（不请求额外权限），并**仅保存在本地** `gp_drive_auth_v1` 中作为 OAuth `login_hint`，以保证多账号环境下的静默续签可靠性；该邮箱绝不会写入 Drive 同步数据或导出备份。扩展无法访问你的普通网盘文件，断开连接会清除本地授权令牌和 `login_hint`，不会删除本地或云端数据。
+- 未归属的普通聊天记录、侧边栏折叠状态、提示词使用统计以及 Google Drive 授权令牌与同步元数据均不会写入 **Google Drive 同步**内容；本地 JSON 备份会导出本地 Projects 与 Prompts 数据（包含本地偏好设置与使用统计），同时严格排除授权令牌和同步元数据。
 - 扩展不连接任何第三方后端服务；启用 Google Drive 同步时数据直接在你的浏览器与 Google 官方接口间传输。
-- Google Drive 存储与 Gemini 网站上的账号行为均以 Google 的相关政策为准。
+- 扩展对从 Google API 接收信息的使用与传输遵守《[Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy)》（包括 Limited Use 有限使用要求）；Google Drive 存储与 Gemini 网站上的账号行为均以 Google 的相关政策为准。
 
 ## 构建与打包
 

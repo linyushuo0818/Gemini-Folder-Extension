@@ -445,6 +445,7 @@ export function parseDriveSyncEnvelope(raw: unknown): ParsedDriveEnvelope {
   }
 
   const tombstones = sanitizeTombstones(raw.snapshot.tombstones);
+  const snapshot: SyncSnapshot = { projects, chats, prompts, tombstones };
 
   return {
     kind: 'valid',
@@ -453,8 +454,8 @@ export function parseDriveSyncEnvelope(raw: unknown): ParsedDriveEnvelope {
       clientId: raw.clientId,
       rev: raw.rev,
       updatedAt: raw.updatedAt,
-      hash: raw.hash,
-      snapshot: { projects, chats, prompts, tombstones }
+      hash: computeSnapshotHash(snapshot),
+      snapshot
     }
   };
 }

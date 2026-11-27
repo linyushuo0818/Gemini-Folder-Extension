@@ -5,6 +5,7 @@ import {
   CloudSyncStatus,
   computeSnapshotHash,
   createDefaultLocalMeta,
+  createEmptyTombstones,
   DRIVE_TOMBSTONES_BYTE_LIMIT,
   DriveSyncEnvelopeV1,
   extractSyncSnapshot,
@@ -14,7 +15,11 @@ import {
   sanitizeLocalMeta,
   SYNC_LOCAL_META_KEY,
   SYNC_STALE_INTERVAL_MS,
+  SyncChat,
   SyncLocalMeta,
+  SyncProject,
+  SyncPrompt,
+  SyncSnapshot,
   utf8ByteLength
 } from '../shared/sync';
 import {
@@ -241,18 +246,80 @@ export class CloudSyncManager {
     await this.persistMeta(meta);
   }
 
+  public async fetchRemoteSnapshotForRestore(): Promise<SyncSnapshot | null> {
+    const meta = await this.ensureMetaLoaded();
+    if (!meta.enabled || !this.available) return null;
+
+    try {
+      const files = await this.drive!.listSyncFiles();
+      if (files.length === 0) return null;
+
+      const readResults = await Promise.all(files.map((file) => this.drive!.readSyncFile(file.id)));
+      const projects = new Map<string, SyncProject>();
+      const chats = new Map<string, SyncChat>();
+      const prompts = new Map<string, SyncPrompt>();
+      const tombstones = createEmptyTombstones();
+      let validCount = 0;
+
+      for (const readRes of readResults) {
+        if (readRes.kind !== 'found') continue;
+        const parsed = parseDriveSyncEnvelope(readRes.content);
+        if (parsed.kind !== 'valid') continue;
+        validCount += 1;
+        const snap = parsed.envelope.snapshot;
+
+        for (const p of snap.projects) {
+          const prev = projects.get(p.id);
+          if (!prev || p.updatedAt > prev.updatedAt) projects.set(p.id, p);
+        }
+        for (const c of snap.chats) {
+          const prev = chats.get(c.id);
+          if (!prev || c.updatedAt > prev.updatedAt) chats.set(c.id, c);
+        }
+        for (const pr of snap.prompts) {
+          const prev = prompts.get(pr.id);
+          if (!prev || pr.updatedAt > prev.updatedAt) prompts.set(pr.id, pr);
+        }
+        for (const bucket of ['projects', 'chats', 'prompts'] as const) {
+          for (const [id, ts] of Object.entries(snap.tombstones[bucket])) {
+            tombstones[bucket][id] = Math.max(tombstones[bucket][id] ?? 0, ts);
+          }
+        }
+      }
+
+      if (validCount === 0) return null;
+      return {
+        projects: Array.from(projects.values()),
+        chats: Array.from(chats.values()),
+        prompts: Array.from(prompts.values()),
+        tombstones
+      };
+    } catch {
+      return null;
+    }
+  }
+
   public async prepareBackupRestore(
     prevState: StoredState,
     prevPrompts: PromptsData | null,
     restoredProjects: StoredState | undefined,
-    restoredPrompts: PromptsData | undefined
-  ): Promise<{ projects?: StoredState; prompts?: PromptsData; stamp: number }> {
+    restoredPrompts: PromptsData | undefined,
+    remoteSnapshot?: SyncSnapshot | null
+  ): Promise<{ projects?: StoredState; prompts?: PromptsData; nextMeta: SyncLocalMeta; stamp: number }> {
     const meta = await this.ensureMetaLoaded();
+    const nextMeta: SyncLocalMeta = {
+      ...meta,
+      tombstones: {
+        projects: { ...meta.tombstones.projects },
+        chats: { ...meta.tombstones.chats },
+        prompts: { ...meta.tombstones.prompts }
+      }
+    };
 
-    let maxTs = meta.lastSyncedAt ?? 0;
-    for (const ts of Object.values(meta.tombstones.projects)) maxTs = Math.max(maxTs, ts);
-    for (const ts of Object.values(meta.tombstones.chats)) maxTs = Math.max(maxTs, ts);
-    for (const ts of Object.values(meta.tombstones.prompts)) maxTs = Math.max(maxTs, ts);
+    let maxTs = nextMeta.lastSyncedAt ?? 0;
+    for (const ts of Object.values(nextMeta.tombstones.projects)) maxTs = Math.max(maxTs, ts);
+    for (const ts of Object.values(nextMeta.tombstones.chats)) maxTs = Math.max(maxTs, ts);
+    for (const ts of Object.values(nextMeta.tombstones.prompts)) maxTs = Math.max(maxTs, ts);
     for (const p of prevState.projects) maxTs = Math.max(maxTs, p.updatedAt, p.createdAt);
     for (const c of Object.values(prevState.chatIndex)) maxTs = Math.max(maxTs, c.updatedAt);
     if (prevPrompts) {
@@ -265,6 +332,14 @@ export class CloudSyncManager {
     if (restoredPrompts) {
       for (const p of Object.values(restoredPrompts.prompts)) maxTs = Math.max(maxTs, p.updatedAt, p.createdAt);
     }
+    if (remoteSnapshot) {
+      for (const p of remoteSnapshot.projects) maxTs = Math.max(maxTs, p.updatedAt, p.createdAt);
+      for (const c of remoteSnapshot.chats) maxTs = Math.max(maxTs, c.updatedAt);
+      for (const p of remoteSnapshot.prompts) maxTs = Math.max(maxTs, p.updatedAt, p.createdAt);
+      for (const ts of Object.values(remoteSnapshot.tombstones.projects)) maxTs = Math.max(maxTs, ts);
+      for (const ts of Object.values(remoteSnapshot.tombstones.chats)) maxTs = Math.max(maxTs, ts);
+      for (const ts of Object.values(remoteSnapshot.tombstones.prompts)) maxTs = Math.max(maxTs, ts);
+    }
 
     const stamp = Math.max(this.clockNow(), maxTs + 1);
     let stampedProjects: StoredState | undefined;
@@ -274,11 +349,18 @@ export class CloudSyncManager {
       const nextProjectIds = new Set(restoredProjects.projects.map((p) => p.id));
       for (const prev of prevState.projects) {
         if (!nextProjectIds.has(prev.id)) {
-          meta.tombstones.projects[prev.id] = stamp;
+          nextMeta.tombstones.projects[prev.id] = stamp;
+        }
+      }
+      if (remoteSnapshot) {
+        for (const remoteProj of remoteSnapshot.projects) {
+          if (!nextProjectIds.has(remoteProj.id)) {
+            nextMeta.tombstones.projects[remoteProj.id] = stamp;
+          }
         }
       }
       for (const id of nextProjectIds) {
-        delete meta.tombstones.projects[id];
+        delete nextMeta.tombstones.projects[id];
       }
 
       const nextAssignedChatIds = new Set<string>();
@@ -293,11 +375,18 @@ export class CloudSyncManager {
       }
       for (const [id, prevChat] of Object.entries(prevState.chatIndex)) {
         if (prevChat.projectId && !nextAssignedChatIds.has(id)) {
-          meta.tombstones.chats[id] = stamp;
+          nextMeta.tombstones.chats[id] = stamp;
+        }
+      }
+      if (remoteSnapshot) {
+        for (const remoteChat of remoteSnapshot.chats) {
+          if (!nextAssignedChatIds.has(remoteChat.id)) {
+            nextMeta.tombstones.chats[remoteChat.id] = stamp;
+          }
         }
       }
       for (const id of nextAssignedChatIds) {
-        delete meta.tombstones.chats[id];
+        delete nextMeta.tombstones.chats[id];
       }
 
       stampedProjects = {
@@ -312,12 +401,19 @@ export class CloudSyncManager {
       if (prevPrompts) {
         for (const prevId of Object.keys(prevPrompts.prompts)) {
           if (!nextPromptIds.has(prevId)) {
-            meta.tombstones.prompts[prevId] = stamp;
+            nextMeta.tombstones.prompts[prevId] = stamp;
+          }
+        }
+      }
+      if (remoteSnapshot) {
+        for (const remotePrompt of remoteSnapshot.prompts) {
+          if (!nextPromptIds.has(remotePrompt.id)) {
+            nextMeta.tombstones.prompts[remotePrompt.id] = stamp;
           }
         }
       }
       for (const id of nextPromptIds) {
-        delete meta.tombstones.prompts[id];
+        delete nextMeta.tombstones.prompts[id];
       }
 
       const nextPrompts: PromptsData['prompts'] = {};
@@ -327,9 +423,13 @@ export class CloudSyncManager {
       stampedPrompts = { version: 1, prompts: nextPrompts };
     }
 
-    meta.tombstones = pruneAndBoundTombstones(meta.tombstones, stamp, DRIVE_TOMBSTONES_BYTE_LIMIT);
-    await this.persistMeta(meta);
-    return { projects: stampedProjects, prompts: stampedPrompts, stamp };
+    nextMeta.tombstones = pruneAndBoundTombstones(nextMeta.tombstones, stamp, DRIVE_TOMBSTONES_BYTE_LIMIT);
+    // 不在此处提前落盘，由调用方与数据键一起原子写入后再提交内存态。
+    return { projects: stampedProjects, prompts: stampedPrompts, nextMeta, stamp };
+  }
+
+  public commitPreparedMeta(nextMeta: SyncLocalMeta): void {
+    this.localMeta = nextMeta;
   }
 
   public cancelDebouncedPush(): void {

@@ -46,10 +46,10 @@ Gemini Projects is built for Chrome and other Chromium-based browsers.
 ## Privacy
 
 - Projects and prompts are stored locally in your browser's extension storage (`chrome.storage.local`) by default, with zero network requests unless you opt in to Google Drive Sync.
-- **Google Drive Sync** (optional, off by default) uses Google OAuth (`chrome.identity.launchWebAuthFlow`) with the narrow `drive.appdata` scope to store a single sync file (`gemini-projects-sync-v1.json`) inside your private, hidden Google Drive `appDataFolder`. The extension cannot see or access your regular Google Drive files, and disconnecting Google Drive clears the local auth token without deleting your local or Drive data.
-- Unassigned chat history, sidebar collapse preferences, prompt usage statistics, and Google Drive auth tokens stay strictly on your device (tokens are never included in backups or sync payloads).
+- **Google Drive Sync** (optional, off by default) uses Google OAuth (`chrome.identity.launchWebAuthFlow`) with the narrow `drive.appdata` scope to store a single sync file (`gemini-projects-sync-v1.json`) inside your private, hidden Google Drive `appDataFolder`. When connected, the extension reads your Google account email from Google Drive's `about` endpoint (using the same `drive.appdata` scope, with no extra permissions) and stores it **locally only** in `gp_drive_auth_v1` as an OAuth `login_hint` for reliable multi-account silent token renewal; it is never written to Drive sync data or exported backups. The extension cannot see or access your regular Google Drive files, and disconnecting Google Drive clears the local auth token and `login_hint` without deleting your local or Drive data.
+- Unassigned chat history, sidebar collapse preferences, prompt usage statistics, and Google Drive auth tokens/metadata are never included in Google Drive sync payloads. Local JSON backups export your local Projects and Prompts data (including local preferences and prompt usage statistics), while strictly excluding auth tokens and sync metadata.
 - No third-party backend is used; when Google Drive Sync is connected, the extension communicates directly between your browser and Google's APIs.
-- Google's policies govern your Google Drive storage and Gemini account activity.
+- The extension's use and transfer to any other app of information received from Google APIs will adhere to the [Google API Services User Data Policy](https://developers.google.com/terms/api-services-user-data-policy), including the Limited Use requirements. Google's policies also govern your Google Drive storage and Gemini account activity.
 
 ## Build and Package
 

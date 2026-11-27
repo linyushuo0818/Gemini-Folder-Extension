@@ -56,7 +56,7 @@ export async function importData(file: File): Promise<{ success: boolean; messag
     const data: unknown = JSON.parse(await file.text());
     const response = await runtimeSendMessage<BackgroundResponse>({ type: 'restoreBackup', data });
     return response.ok
-      ? { success: true, message: 'Restore completed.' }
+      ? { success: true, message: response.warning || 'Restore completed.' }
       : { success: false, message: response.error };
   } catch {
     return { success: false, message: 'Could not restore the backup. Please check the file and try again.' };

@@ -17,6 +17,7 @@ import {
 } from '../shared/storage';
 import { createSeedData, normalizePromptsData, PROMPTS_KEY, PromptsData } from '../shared/prompts';
 import { validateBackup } from '../shared/backup';
+import { SYNC_LOCAL_META_KEY } from '../shared/sync';
 import { CloudSyncManager, StorageAreaLike } from './cloudSync';
 import type { GoogleDriveSyncClient } from './googleDriveSync';
 
@@ -261,15 +262,31 @@ export function createBackgroundService(deps: BackgroundServiceDeps): Background
           const { projects, prompts } = validateBackup(message.data);
           const prevState = await loadLocalState();
           const prevPrompts = await loadLocalPromptsRaw();
-          const prepared = await cloudSync.prepareBackupRestore(prevState, prevPrompts, projects, prompts);
+          const remoteSnapshot = await cloudSync.fetchRemoteSnapshotForRestore();
+          const prepared = await cloudSync.prepareBackupRestore(
+            prevState,
+            prevPrompts,
+            projects,
+            prompts,
+            remoteSnapshot
+          );
           await deps.local.set({
             ...(prepared.projects && { [STORAGE_KEY]: prepared.projects }),
-            ...(prepared.prompts && { [PROMPTS_KEY]: prepared.prompts })
+            ...(prepared.prompts && { [PROMPTS_KEY]: prepared.prompts }),
+            [SYNC_LOCAL_META_KEY]: prepared.nextMeta
           });
           if (prepared.projects) cachedState = prepared.projects;
           if (prepared.prompts) cachedPrompts = prepared.prompts;
-          await cloudSync.pushCurrentState();
-          return { ok: true };
+          cloudSync.commitPreparedMeta(prepared.nextMeta);
+          const syncResult = await cloudSync.pushCurrentState();
+          if (!syncResult.ok) {
+            return {
+              ok: true,
+              syncStatus: syncResult.status,
+              warning: 'Restored locally, but Google Drive sync failed. Click Sync now when back online.'
+            };
+          }
+          return { ok: true, syncStatus: syncResult.status };
         }
         case 'getPrompts':
           return { ok: true, prompts: await getPrompts() };

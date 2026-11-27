@@ -255,7 +255,7 @@ export class GoogleDriveSyncClient {
       if (!isRecord(data) || !isRecord(data.user)) return undefined;
       return sanitizeLoginHint(data.user.emailAddress);
     } catch {
-      // 仅用于静默续签优化；获取失败绝不能阻塞或中断登录流程。
+      // 交互登录获取失败不阻塞连接；静默续签会校验账号一致性以防切号。
       return undefined;
     }
   }
@@ -265,6 +265,10 @@ export class GoogleDriveSyncClient {
       throw new DriveAuthError('unavailable', 'Google Drive sync is unavailable in this browser.');
     }
     const safeHint = sanitizeLoginHint(loginHint);
+    if (!interactive && !safeHint) {
+      // 未绑定具体账号时拒绝静默续签，防止多账号环境下静默切号。
+      throw new DriveAuthError('auth_expired', DRIVE_SESSION_EXPIRED_MESSAGE);
+    }
     const state = this.generateState();
     const redirectUri = this.identity.getRedirectURL();
     const url = buildGoogleOAuthUrl(redirectUri, state, interactive, safeHint);
@@ -297,10 +301,21 @@ export class GoogleDriveSyncClient {
     }
 
     const parsedToken = parseGoogleOAuthRedirect(redirectUrl, state, this.clockNow(), interactive);
-    // 交互登录主动查当前账号；静默续签复用已知 hint，旧用户首次静默续签时自动补全。
-    const resolvedHint = interactive
-      ? await this.fetchAccountEmail(parsedToken.accessToken)
-      : safeHint ?? (await this.fetchAccountEmail(parsedToken.accessToken));
+    if (!interactive) {
+      const actualEmail = await this.fetchAccountEmail(parsedToken.accessToken);
+      if (!actualEmail) {
+        throw new DriveAuthError('auth_failed', 'Could not verify Google Drive account. Please try again.');
+      }
+      if (actualEmail.toLowerCase() !== safeHint!.toLowerCase()) {
+        await this.clearToken();
+        throw new DriveAuthError('auth_expired', DRIVE_SESSION_EXPIRED_MESSAGE);
+      }
+      const token: DriveAuthToken = { ...parsedToken, loginHint: actualEmail };
+      await this.local.set({ [DRIVE_AUTH_STORAGE_KEY]: token });
+      return token;
+    }
+
+    const resolvedHint = await this.fetchAccountEmail(parsedToken.accessToken);
     const token: DriveAuthToken = resolvedHint
       ? { ...parsedToken, loginHint: resolvedHint }
       : parsedToken;

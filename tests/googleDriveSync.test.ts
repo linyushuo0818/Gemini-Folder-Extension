@@ -1521,7 +1521,7 @@ test('14. Local-only OAuth login_hint supports multi-account silent renewal with
     'Account email must stay local-only and never be written into Drive sync JSON'
   );
 
-  // 14b. Pre-expiry silent renewal passes login_hint + prompt=none and preserves loginHint
+  // 14b. Pre-expiry silent renewal passes login_hint + prompt=none, verifies account via /about, and preserves loginHint
   clock.tick(200_000); // 100s remaining (< 120s buffer)
   const preExpiryWrite = await device.service.handleMessage({
     type: 'upsertProject',
@@ -1533,9 +1533,9 @@ test('14. Local-only OAuth login_hint supports multi-account silent renewal with
   assert.equal(device.identity.lastAuthUrl?.searchParams.get('prompt'), 'none');
   assert.equal(device.identity.lastAuthUrl?.searchParams.get('login_hint'), 'sync-owner@example.com');
   assert.equal((device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken).loginHint, 'sync-owner@example.com');
-  assert.equal(server.aboutCalls, 1, 'Known loginHint must be reused without extra /about calls');
+  assert.equal(server.aboutCalls, 2, 'Silent renewal must verify token ownership via /about');
 
-  // 14c. HTTP 401 silent renewal passes login_hint + prompt=none and preserves loginHint
+  // 14c. HTTP 401 silent renewal passes login_hint + prompt=none, verifies account via /about, and preserves loginHint
   server.revokeAllTokens();
   clock.tick(1000);
   const retry401Write = await device.service.handleMessage({
@@ -1548,8 +1548,9 @@ test('14. Local-only OAuth login_hint supports multi-account silent renewal with
   assert.equal(device.identity.lastAuthUrl?.searchParams.get('prompt'), 'none');
   assert.equal(device.identity.lastAuthUrl?.searchParams.get('login_hint'), 'sync-owner@example.com');
   assert.equal((device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken).loginHint, 'sync-owner@example.com');
+  assert.equal(server.aboutCalls, 3);
 
-  // 14d. Legacy cached token without loginHint backfills loginHint on next silent renewal
+  // 14d. Legacy cached token without loginHint refuses silent renewal with auth_expired
   const cachedWithoutHint = device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken;
   await device.local.set({
     [DRIVE_AUTH_STORAGE_KEY]: {
@@ -1559,17 +1560,22 @@ test('14. Local-only OAuth login_hint supports multi-account silent renewal with
   });
   server.revokeAllTokens();
   clock.tick(1000);
-  const backfillRes = await device.service.handleMessage({ type: 'syncNow' });
-  assert.equal(backfillRes.ok, true);
-  assert.equal(server.aboutCalls, 2, 'Legacy token without loginHint should backfill via /about on silent renewal');
-  assert.equal((device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken).loginHint, 'sync-owner@example.com');
+  const legacyUnboundRes = await device.service.handleMessage({ type: 'syncNow' });
+  assert.equal(legacyUnboundRes.ok, false);
+  assert.equal(legacyUnboundRes.syncStatus?.state, 'auth_expired');
+  assert.equal(device.identity.silentCalls, 2, 'Unbound legacy token must not attempt silent renewal');
+  assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
+
+  // Reconnect interactively to continue testing disconnect, /about 500, and account mismatch
+  assert.equal((await device.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
 
   // 14e. disconnectGoogleDrive clears gp_drive_auth_v1 including loginHint
   const discRes = await device.service.handleMessage({ type: 'disconnectGoogleDrive' });
   assert.equal(discRes.ok, true);
   assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
 
-  // 14f. If /drive/v3/about returns 500 during connect, connectGoogleDrive still succeeds cleanly without loginHint
+  // 14f. If /drive/v3/about returns 500 during connect, connectGoogleDrive succeeds without loginHint,
+  //      and subsequent silent renewal rejects with auth_expired rather than syncing to an unverified account
   server.failNextRequests.push({ status: 500 });
   const aboutFailConnect = await device.service.handleMessage({ type: 'connectGoogleDrive' });
   assert.equal(aboutFailConnect.ok, true);
@@ -1578,5 +1584,222 @@ test('14. Local-only OAuth login_hint supports multi-account silent renewal with
   assert.ok(cachedAfterAboutFail.accessToken);
   assert.equal(cachedAfterAboutFail.loginHint, undefined);
 
+  clock.tick(200_000); // token enters expiry buffer -> needs silent renewal without bound loginHint
+  const silentBeforeUnbound = device.identity.silentCalls;
+  await device.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-unbound-blocked', 'Should Not Sync Unbound', clock.now()),
+    editing: false
+  });
+  assert.equal(device.identity.silentCalls, silentBeforeUnbound, 'Unbound token must refuse silent renewal');
+  assert.equal((await device.service.handleMessage({ type: 'getSyncStatus' })).syncStatus?.state, 'auth_expired');
+  assert.equal(
+    server.files[0].content.includes('p-unbound-blocked'),
+    false,
+    'Unbound account must not upload local data via silent renewal'
+  );
+
+  // 14g. If silent renewal returns a token for a DIFFERENT email, reject with auth_expired and do NOT upload
+  assert.equal((await device.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  server.accountEmail = 'other-account@example.com';
+  clock.tick(200_000); // token enters expiry buffer -> triggers silent renewal
+  await device.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-mismatch-blocked', 'Should Not Leak To Other Account', clock.now()),
+    editing: false
+  });
+  const mismatchStatus = (await device.service.handleMessage({ type: 'getSyncStatus' })).syncStatus!;
+  assert.equal(mismatchStatus.state, 'auth_expired');
+  assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined, 'Mismatched token must be cleared');
+  assert.equal(
+    server.files[0].content.includes('p-mismatch-blocked'),
+    false,
+    'Local data must NOT be uploaded to a mismatched Google account'
+  );
+
   device.dispose();
+});
+
+// 15. Atomic restoreBackup, remote-aware tombstones, offline push warning, and stale-hash merge protection
+test('15. Atomic restoreBackup, remote-aware tombstones, offline push warning, and stale-hash merge protection', async () => {
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+
+  // 15a. Atomic restoreBackup: quota error on local.set leaves zero orphan tombstones and preserves original projects on later connect
+  const seedDevice = createDriveDevice(server, clock);
+  assert.equal((await seedDevice.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  assert.equal(
+    (
+      await seedDevice.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-orig', 'Original Project', clock.tick(10)),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+
+  const deviceA = createDriveDevice(server, clock);
+  await deviceA.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-orig', 'Original Project', clock.now()),
+    editing: false
+  });
+
+  const origSet = deviceA.local.set.bind(deviceA.local);
+  let failOnce = true;
+  deviceA.local.set = async (items) => {
+    if (failOnce && Object.hasOwn(items, STORAGE_KEY)) {
+      failOnce = false;
+      throw new Error('QuotaExceededError');
+    }
+    return origSet(items);
+  };
+
+  await assert.rejects(
+    () =>
+      deviceA.service.handleMessage({
+        type: 'restoreBackup',
+        data: {
+          version: 1,
+          exportedAt: new Date(clock.now()).toISOString(),
+          projects: {
+            schemaVersion: CURRENT_SCHEMA_VERSION,
+            projects: [makeProject('p-other', 'Other Project', 1000)],
+            chatIndex: {},
+            uiPrefs: { projectsCollapsed: false }
+          }
+        }
+      }),
+    /QuotaExceededError/
+  );
+
+  const metaAfterFail = deviceA.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta | undefined;
+  assert.equal(
+    metaAfterFail?.tombstones.projects['p-orig'],
+    undefined,
+    'Failed restoreBackup must NOT persist orphan tombstones'
+  );
+  const stateAfterFail = (await deviceA.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(stateAfterFail.projects.map((p) => p.id), ['p-orig']);
+
+  const connectAfterFail = await deviceA.service.handleMessage({ type: 'connectGoogleDrive' });
+  assert.equal(connectAfterFail.ok, true);
+  const stateAfterConnect = (await deviceA.service.handleMessage({ type: 'getState' })).state!;
+  assert.ok(
+    stateAfterConnect.projects.some((p) => p.id === 'p-orig'),
+    'Later connecting Google Drive must NOT delete original projects'
+  );
+
+  // 15b. Connected restoreBackup tombstones unpulled remote projects created by Device B so they do NOT come back
+  const deviceB = createDriveDevice(server, clock);
+  assert.equal((await deviceB.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  clock.tick(50);
+  assert.equal(
+    (
+      await deviceB.service.handleMessage({
+        type: 'upsertProject',
+        project: makeProject('p-unpulled-b', 'Unpulled Remote B', clock.now()),
+        editing: false
+      })
+    ).ok,
+    true
+  );
+
+  clock.tick(50);
+  const restoreRemoteAware = await deviceA.service.handleMessage({
+    type: 'restoreBackup',
+    data: {
+      version: 1,
+      exportedAt: new Date(clock.now()).toISOString(),
+      projects: {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        projects: [makeProject('p-orig', 'Original Project Restored', 1000)],
+        chatIndex: {},
+        uiPrefs: { projectsCollapsed: false }
+      },
+      prompts: { version: 1, prompts: {} }
+    }
+  });
+  assert.equal(restoreRemoteAware.ok, true);
+  assert.equal(restoreRemoteAware.warning, undefined);
+  const metaAfterRestore = deviceA.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta;
+  assert.ok(
+    (metaAfterRestore.tombstones.projects['p-unpulled-b'] ?? 0) > 0,
+    'Unpulled remote project must be tombstoned on restoreBackup'
+  );
+
+  await deviceB.service.handleMessage({ type: 'syncNow' });
+  const stateBAfterRestore = (await deviceB.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(stateBAfterRestore.projects.map((p) => p.id), ['p-orig']);
+
+  await deviceA.service.handleMessage({ type: 'syncNow' });
+  const stateAAfterSync = (await deviceA.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(stateAAfterSync.projects.map((p) => p.id), ['p-orig']);
+
+  // 15c. Connected restoreBackup when Drive push fails offline returns { ok: true, warning: ... }
+  const offlineDevice = createDriveDevice(server, clock, { retryDelayMs: 0 });
+  assert.equal((await offlineDevice.service.handleMessage({ type: 'connectGoogleDrive' })).ok, true);
+  server.failNextRequests.push(
+    { throwError: new Error('Network offline') },
+    { throwError: new Error('Network offline') },
+    { throwError: new Error('Network offline') },
+    { throwError: new Error('Network offline') }
+  );
+  const offlineRestoreRes = await offlineDevice.service.handleMessage({
+    type: 'restoreBackup',
+    data: {
+      version: 1,
+      exportedAt: new Date(clock.now()).toISOString(),
+      projects: {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        projects: [makeProject('p-offline-restored', 'Offline Restored', 1000)],
+        chatIndex: {},
+        uiPrefs: { projectsCollapsed: false }
+      }
+    }
+  });
+  assert.equal(offlineRestoreRes.ok, true);
+  assert.ok(
+    typeof offlineRestoreRes.warning === 'string' && offlineRestoreRes.warning.length > 0,
+    'Offline Drive push failure during restoreBackup must return a warning'
+  );
+  assert.equal(offlineRestoreRes.syncStatus?.state, 'error');
+  const offlineLocalState = (await offlineDevice.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(offlineLocalState.projects.map((p) => p.id), ['p-offline-restored']);
+
+  // 15d. Stale/mismatched hash in remote Drive envelope does NOT cause tryFastDrivePush to skip merge
+  const staleMeta = deviceA.local.data[SYNC_LOCAL_META_KEY] as SyncLocalMeta;
+  const currentRemoteEnv = JSON.parse(server.files[0].content) as DriveSyncEnvelopeV1;
+  const tamperedRemoteEnv: DriveSyncEnvelopeV1 = {
+    ...currentRemoteEnv,
+    clientId: 'other-device',
+    rev: currentRemoteEnv.rev + 1,
+    hash: staleMeta.lastSyncedHash, // intentionally stale hash matching deviceA.lastSyncedHash
+    snapshot: {
+      ...currentRemoteEnv.snapshot,
+      projects: [
+        ...currentRemoteEnv.snapshot.projects,
+        projectToSync(makeProject('p-remote-stale-hash', 'Remote With Stale Hash', clock.tick(10)))
+      ]
+    }
+  };
+  server.files[0].content = JSON.stringify(tamperedRemoteEnv);
+
+  const pushAfterStaleHash = await deviceA.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-local-after-stale', 'Local After Stale', clock.tick(10)),
+    editing: false
+  });
+  assert.equal(pushAfterStaleHash.ok, true);
+  const mergedAfterStale = (await deviceA.service.handleMessage({ type: 'getState' })).state!;
+  assert.deepEqual(
+    mergedAfterStale.projects.map((p) => p.id).sort(),
+    ['p-local-after-stale', 'p-orig', 'p-remote-stale-hash']
+  );
+
+  seedDevice.dispose();
+  deviceA.dispose();
+  deviceB.dispose();
+  offlineDevice.dispose();
 });
