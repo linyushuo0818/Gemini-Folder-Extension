@@ -9,6 +9,7 @@ export const GOOGLE_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.appdata
 const GOOGLE_OAUTH_AUTH_URL = 'https://accounts.google.com/o/oauth2/v2/auth';
 const DRIVE_FILES_API = 'https://www.googleapis.com/drive/v3/files';
 const DRIVE_UPLOAD_API = 'https://www.googleapis.com/upload/drive/v3/files';
+const DRIVE_ABOUT_USER_URL = 'https://www.googleapis.com/drive/v3/about?fields=user(emailAddress)';
 const LIST_SYNC_FILES_URL =
   `${DRIVE_FILES_API}?spaces=appDataFolder` +
   `&q=name%3D%27${DRIVE_SYNC_FILENAME}%27+and+trashed%3Dfalse` +
@@ -50,6 +51,7 @@ export interface IdentityAuthLike {
 export interface DriveAuthToken {
   accessToken: string;
   expiresAt: number;
+  loginHint?: string;
 }
 
 export interface DriveFileMeta {
@@ -74,7 +76,21 @@ export interface GoogleDriveClientOptions {
   retryDelayMs?: number;
 }
 
-export function buildGoogleOAuthUrl(redirectUri: string, state: string, interactive: boolean): string {
+function sanitizeLoginHint(raw: unknown): string | undefined {
+  if (typeof raw !== 'string') return undefined;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > 254 || !trimmed.includes('@') || /\s/.test(trimmed)) {
+    return undefined;
+  }
+  return trimmed;
+}
+
+export function buildGoogleOAuthUrl(
+  redirectUri: string,
+  state: string,
+  interactive: boolean,
+  loginHint?: string
+): string {
   const params = new URLSearchParams({
     client_id: GOOGLE_DRIVE_CLIENT_ID,
     redirect_uri: redirectUri,
@@ -85,6 +101,11 @@ export function buildGoogleOAuthUrl(redirectUri: string, state: string, interact
   });
   if (!interactive) {
     params.set('prompt', 'none');
+    // 仅在静默续签时透传 login_hint，手动连接/重连时保持账号选择器自由切换
+    const hint = sanitizeLoginHint(loginHint);
+    if (hint) {
+      params.set('login_hint', hint);
+    }
   }
   return `${GOOGLE_OAUTH_AUTH_URL}?${params.toString()}`;
 }
@@ -143,7 +164,12 @@ function sanitizeStoredToken(raw: unknown): DriveAuthToken | null {
   if (!isRecord(raw)) return null;
   if (typeof raw.accessToken !== 'string' || !raw.accessToken.trim()) return null;
   if (typeof raw.expiresAt !== 'number' || !Number.isFinite(raw.expiresAt) || raw.expiresAt <= 0) return null;
-  return { accessToken: raw.accessToken.trim(), expiresAt: raw.expiresAt };
+  const loginHint = sanitizeLoginHint(raw.loginHint);
+  return {
+    accessToken: raw.accessToken.trim(),
+    expiresAt: raw.expiresAt,
+    ...(loginHint ? { loginHint } : {})
+  };
 }
 
 function isUserCancelledMessage(message: string): boolean {
@@ -214,13 +240,34 @@ export class GoogleDriveSyncClient {
     await this.local.remove(DRIVE_AUTH_STORAGE_KEY);
   }
 
-  public async authenticate(interactive: boolean): Promise<DriveAuthToken> {
+  private async fetchAccountEmail(accessToken: string): Promise<string | undefined> {
+    try {
+      const response = await this.fetchWithTimeout(
+        DRIVE_ABOUT_USER_URL,
+        {
+          method: 'GET',
+          headers: { Authorization: `Bearer ${accessToken}` }
+        },
+        Math.min(this.requestTimeoutMs, 6_000)
+      );
+      if (!response.ok) return undefined;
+      const data: unknown = await response.json();
+      if (!isRecord(data) || !isRecord(data.user)) return undefined;
+      return sanitizeLoginHint(data.user.emailAddress);
+    } catch {
+      // 仅用于静默续签优化；获取失败绝不能阻塞或中断登录流程。
+      return undefined;
+    }
+  }
+
+  public async authenticate(interactive: boolean, loginHint?: string): Promise<DriveAuthToken> {
     if (!this.identity) {
       throw new DriveAuthError('unavailable', 'Google Drive sync is unavailable in this browser.');
     }
+    const safeHint = sanitizeLoginHint(loginHint);
     const state = this.generateState();
     const redirectUri = this.identity.getRedirectURL();
-    const url = buildGoogleOAuthUrl(redirectUri, state, interactive);
+    const url = buildGoogleOAuthUrl(redirectUri, state, interactive, safeHint);
 
     let redirectUrl: string | undefined;
     try {
@@ -249,7 +296,14 @@ export class GoogleDriveSyncClient {
       );
     }
 
-    const token = parseGoogleOAuthRedirect(redirectUrl, state, this.clockNow(), interactive);
+    const parsedToken = parseGoogleOAuthRedirect(redirectUrl, state, this.clockNow(), interactive);
+    // 交互登录主动查当前账号；静默续签复用已知 hint，旧用户首次静默续签时自动补全。
+    const resolvedHint = interactive
+      ? await this.fetchAccountEmail(parsedToken.accessToken)
+      : safeHint ?? (await this.fetchAccountEmail(parsedToken.accessToken));
+    const token: DriveAuthToken = resolvedHint
+      ? { ...parsedToken, loginHint: resolvedHint }
+      : parsedToken;
     await this.local.set({ [DRIVE_AUTH_STORAGE_KEY]: token });
     return token;
   }
@@ -259,8 +313,9 @@ export class GoogleDriveSyncClient {
     if (cached && cached.expiresAt - this.clockNow() > TOKEN_EXPIRY_BUFFER_MS) {
       return cached;
     }
+    const loginHint = cached?.loginHint;
     try {
-      return await this.authenticate(false);
+      return await this.authenticate(false, loginHint);
     } catch (error) {
       if (error instanceof DriveAuthError && (error.code === 'unavailable' || error.code === 'auth_failed')) {
         throw error;
@@ -337,10 +392,11 @@ export class GoogleDriveSyncClient {
           throw new DriveAuthError('auth_expired', DRIVE_SESSION_EXPIRED_MESSAGE);
         }
         hasRenewedAuth = true;
+        const loginHint = token.loginHint;
         // Token 被吊销或提前过期时，清理本地缓存并静默续签重试一次；绝不主动弹出交互窗口。
         await this.clearToken();
         try {
-          token = await this.authenticate(false);
+          token = await this.authenticate(false, loginHint);
         } catch (error) {
           if (error instanceof DriveAuthError && (error.code === 'unavailable' || error.code === 'auth_failed')) {
             throw error;

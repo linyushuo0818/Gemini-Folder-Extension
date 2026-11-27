@@ -5,6 +5,7 @@ import { StorageAreaLike } from '../src/background/cloudSync';
 import {
   DRIVE_SESSION_EXPIRED_MESSAGE,
   DriveApiError,
+  DriveAuthToken,
   GOOGLE_DRIVE_CLIENT_ID,
   GOOGLE_DRIVE_SCOPE,
   GoogleDriveSyncClient,
@@ -87,6 +88,8 @@ class MockGoogleDriveServer {
   public files: StoredDriveFile[] = [];
   public validTokens = new Set<string>();
   public failNextRequests: InjectedDriveFault[] = [];
+  public accountEmail = 'sync-owner@example.com';
+  public aboutCalls = 0;
   public listCalls = 0;
   public readCalls = 0;
   public createCalls = 0;
@@ -170,6 +173,17 @@ class MockGoogleDriveServer {
     if (!token || !this.validTokens.has(token)) {
       return new Response(JSON.stringify({ error: { code: 401, message: 'Invalid Credentials' } }), {
         status: 401,
+        headers: { 'Content-Type': 'application/json' }
+      });
+    }
+
+    // Drive about user info (resolves account email for silent multi-account login_hint)
+    if (method === 'GET' && url.pathname === '/drive/v3/about') {
+      this.aboutCalls += 1;
+      const fieldsParam = url.searchParams.get('fields') || '';
+      assert.ok(fieldsParam.includes('user(emailAddress)'), 'About request must request user(emailAddress)');
+      return new Response(JSON.stringify({ user: { emailAddress: this.accountEmail } }), {
+        status: 200,
         headers: { 'Content-Type': 'application/json' }
       });
     }
@@ -1482,4 +1496,87 @@ test('13. Backwards clock jump does not freeze syncIfStale and slow-clock chat r
 
   deviceFast.dispose();
   deviceSlow.dispose();
+});
+
+// 14. Local-only OAuth login_hint for reliable multi-account silent renewal
+test('14. Local-only OAuth login_hint supports multi-account silent renewal without leaking email into Drive sync file', async () => {
+  const clock = createClock();
+  const server = new MockGoogleDriveServer();
+  const device = createDriveDevice(server, clock);
+  device.identity.tokenLifetimeSec = 300;
+
+  // 14a. Interactive connect does NOT send login_hint, fetches /drive/v3/about,
+  //      persists loginHint in gp_drive_auth_v1, and never writes email into Drive JSON file
+  const connectRes = await device.service.handleMessage({ type: 'connectGoogleDrive' });
+  assert.equal(connectRes.ok, true);
+  assert.equal(device.identity.lastAuthUrl?.searchParams.get('login_hint'), null, 'Interactive OAuth must not force login_hint');
+  assert.equal(server.aboutCalls, 1);
+
+  const cachedAfterConnect = device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken;
+  assert.equal(cachedAfterConnect.loginHint, 'sync-owner@example.com');
+  assert.equal(server.files.length, 1);
+  assert.equal(
+    server.files[0].content.includes('sync-owner@example.com'),
+    false,
+    'Account email must stay local-only and never be written into Drive sync JSON'
+  );
+
+  // 14b. Pre-expiry silent renewal passes login_hint + prompt=none and preserves loginHint
+  clock.tick(200_000); // 100s remaining (< 120s buffer)
+  const preExpiryWrite = await device.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-hint-pre', 'Pre-Expiry Hint Renewal', clock.now()),
+    editing: false
+  });
+  assert.equal(preExpiryWrite.ok, true);
+  assert.equal(device.identity.silentCalls, 1);
+  assert.equal(device.identity.lastAuthUrl?.searchParams.get('prompt'), 'none');
+  assert.equal(device.identity.lastAuthUrl?.searchParams.get('login_hint'), 'sync-owner@example.com');
+  assert.equal((device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken).loginHint, 'sync-owner@example.com');
+  assert.equal(server.aboutCalls, 1, 'Known loginHint must be reused without extra /about calls');
+
+  // 14c. HTTP 401 silent renewal passes login_hint + prompt=none and preserves loginHint
+  server.revokeAllTokens();
+  clock.tick(1000);
+  const retry401Write = await device.service.handleMessage({
+    type: 'upsertProject',
+    project: makeProject('p-hint-401', '401 Hint Renewal', clock.now()),
+    editing: false
+  });
+  assert.equal(retry401Write.ok, true);
+  assert.equal(device.identity.silentCalls, 2);
+  assert.equal(device.identity.lastAuthUrl?.searchParams.get('prompt'), 'none');
+  assert.equal(device.identity.lastAuthUrl?.searchParams.get('login_hint'), 'sync-owner@example.com');
+  assert.equal((device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken).loginHint, 'sync-owner@example.com');
+
+  // 14d. Legacy cached token without loginHint backfills loginHint on next silent renewal
+  const cachedWithoutHint = device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken;
+  await device.local.set({
+    [DRIVE_AUTH_STORAGE_KEY]: {
+      accessToken: cachedWithoutHint.accessToken,
+      expiresAt: cachedWithoutHint.expiresAt
+    }
+  });
+  server.revokeAllTokens();
+  clock.tick(1000);
+  const backfillRes = await device.service.handleMessage({ type: 'syncNow' });
+  assert.equal(backfillRes.ok, true);
+  assert.equal(server.aboutCalls, 2, 'Legacy token without loginHint should backfill via /about on silent renewal');
+  assert.equal((device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken).loginHint, 'sync-owner@example.com');
+
+  // 14e. disconnectGoogleDrive clears gp_drive_auth_v1 including loginHint
+  const discRes = await device.service.handleMessage({ type: 'disconnectGoogleDrive' });
+  assert.equal(discRes.ok, true);
+  assert.equal(device.local.data[DRIVE_AUTH_STORAGE_KEY], undefined);
+
+  // 14f. If /drive/v3/about returns 500 during connect, connectGoogleDrive still succeeds cleanly without loginHint
+  server.failNextRequests.push({ status: 500 });
+  const aboutFailConnect = await device.service.handleMessage({ type: 'connectGoogleDrive' });
+  assert.equal(aboutFailConnect.ok, true);
+  assert.equal(aboutFailConnect.syncStatus?.state, 'synced');
+  const cachedAfterAboutFail = device.local.data[DRIVE_AUTH_STORAGE_KEY] as DriveAuthToken;
+  assert.ok(cachedAfterAboutFail.accessToken);
+  assert.equal(cachedAfterAboutFail.loginHint, undefined);
+
+  device.dispose();
 });
